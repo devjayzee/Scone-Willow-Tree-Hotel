@@ -37,7 +37,6 @@ interface DashboardData {
     createdAt: string;
     room: {
       roomNumber: string;
-      roomType: string | null;
     };
   }[];
 }

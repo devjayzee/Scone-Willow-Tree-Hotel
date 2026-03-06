@@ -1,5 +1,5 @@
 import { DefaultSession, DefaultUser } from "next-auth";
-import { JWT, DefaultJWT } from "next-auth/jwt";
+import { DefaultJWT } from "next-auth/jwt";
 
 declare module "next-auth" {
   interface Session {
@@ -19,7 +19,8 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT extends DefaultJWT {
-    id: string;
+    /** User ID. Null when session is invalidated (password change, deactivation). */
+    id: string | null;
     role: string;
     firstName: string;
     tokenVersion: number;

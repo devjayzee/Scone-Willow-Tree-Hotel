@@ -44,7 +44,6 @@ export async function GET(request: Request) {
           select: {
             id: true,
             roomNumber: true,
-            roomType: true,
           },
         },
       },
@@ -68,7 +67,6 @@ export async function GET(request: Request) {
           guestName: booking.guestName,
           guestEmail: booking.guestEmail,
           roomNumber: booking.room.roomNumber,
-          roomType: booking.room.roomType,
           status: booking.status,
         },
       };

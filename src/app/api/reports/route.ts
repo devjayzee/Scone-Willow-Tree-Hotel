@@ -72,7 +72,7 @@ export async function GET(request: Request) {
           orderBy: { createdAt: "desc" },
           include: {
             room: {
-              select: { roomNumber: true, roomType: true },
+              select: { roomNumber: true },
             },
           },
         }),
@@ -249,7 +249,6 @@ export async function GET(request: Request) {
         return {
           id: room.id,
           roomNumber: room.roomNumber,
-          roomType: room.roomType,
           pricePerNight: Number(room.pricePerNight),
           totalBookings,
           totalNights,

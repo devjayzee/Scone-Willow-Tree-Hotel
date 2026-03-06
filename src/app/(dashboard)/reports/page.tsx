@@ -11,7 +11,6 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 interface RoomPerformanceData {
   id: string;
   roomNumber: string;
-  roomType: string | null;
   pricePerNight: number;
   totalBookings: number;
   totalNights: number;
@@ -51,7 +50,7 @@ export default function ReportsPage() {
   const exportToCSV = (data: object[], filename: string) => {
     if (data.length === 0) return;
 
-    const headers = Object.keys(data[0]).filter((key) => key !== "id" && key !== "roomType");
+    const headers = Object.keys(data[0]).filter((key) => key !== "id");
     const csvContent = [
       headers.join(","),
       ...data.map((row) =>

@@ -11,17 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
-
-type RoomType = "SINGLE" | "STANDARD_DOUBLE" | "LARGE_DOUBLE" | "EXTRA_LARGE_DOUBLE" | "KING_SINGLE" | "LARGE_DOUBLE_PLUS";
-
-interface Room {
-  id: string;
-  roomNumber: string;
-  roomType: RoomType | null;
-  capacity: number;
-  pricePerNight: string | number;
-  description: string | null;
-}
+import type { Room } from "@/types/room";
 
 interface RoomTableProps {
   rooms: Room[];
@@ -32,7 +22,14 @@ interface RoomTableProps {
   onPageChange: (page: number) => void;
 }
 
-export function RoomTable({ rooms, onEdit, onDelete, isManager, currentPage, onPageChange }: RoomTableProps) {
+export function RoomTable({
+  rooms,
+  onEdit,
+  onDelete,
+  isManager,
+  currentPage,
+  onPageChange,
+}: RoomTableProps) {
   const { data: session } = useSession();
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -95,18 +92,19 @@ export function RoomTable({ rooms, onEdit, onDelete, isManager, currentPage, onP
             <th className="text-left px-6 py-3 w-[10%]">Capacity</th>
             <th className="text-left px-6 py-3 w-[10%]">Price</th>
             <th className="text-left px-6 py-3">Description</th>
-            {isManager && <th className="text-right px-6 py-3 w-[10%]">Actions</th>}
+            {isManager && (
+              <th className="text-right px-6 py-3 w-[10%]">Actions</th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y">
           {paginatedRooms.map((room) => (
-            <tr
-              key={room.id}
-              className="hover:bg-gray-50/50 transition-colors"
-            >
+            <tr key={room.id} className="hover:bg-gray-50/50 transition-colors">
               {/* Room Number */}
               <td className="px-6 py-4">
-                <span className="font-medium text-gray-900">{room.roomNumber}</span>
+                <span className="font-medium text-gray-900">
+                  {room.roomNumber}
+                </span>
               </td>
 
               {/* Capacity */}
@@ -156,7 +154,10 @@ export function RoomTable({ rooms, onEdit, onDelete, isManager, currentPage, onP
       <div className="px-6 py-3 border-t bg-gray-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <span>Show</span>
-          <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+          <Select
+            value={itemsPerPage.toString()}
+            onValueChange={handleItemsPerPageChange}
+          >
             <SelectTrigger className="w-[70px] h-8">
               <SelectValue />
             </SelectTrigger>
@@ -170,7 +171,8 @@ export function RoomTable({ rooms, onEdit, onDelete, isManager, currentPage, onP
         </div>
 
         <div className="text-sm text-gray-500">
-          Showing {startIndex + 1} to {Math.min(endIndex, rooms.length)} of {rooms.length} rooms
+          Showing {startIndex + 1} to {Math.min(endIndex, rooms.length)} of{" "}
+          {rooms.length} rooms
         </div>
 
         <div className="flex items-center gap-1">

@@ -41,7 +41,6 @@ interface Booking {
   createdAt: string;
   room: {
     roomNumber: string;
-    roomType: string | null;
     pricePerNight: string | number;
   };
   createdBy?: {
