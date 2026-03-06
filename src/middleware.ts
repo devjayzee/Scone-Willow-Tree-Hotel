@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { getClientIp } from "@/lib/utils/get-client-ip";
 
 // Initialize rate limiter (lazy to handle missing env vars gracefully)
 let loginRateLimiter: Ratelimit | null = null;
@@ -21,20 +22,6 @@ function getRateLimiter() {
     });
   }
   return loginRateLimiter;
-}
-
-// Get client IP from request
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const realIp = req.headers.get("x-real-ip");
-
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  if (realIp) {
-    return realIp;
-  }
-  return "127.0.0.1";
 }
 
 // Rate limiting middleware for auth endpoints
