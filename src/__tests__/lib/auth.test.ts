@@ -23,8 +23,9 @@ import { authOptions } from "@/lib/auth";
 
 // Get the authorize function from the credentials provider
 const getAuthorize = () => {
-  const credentialsProvider = authOptions.providers[0];
-  // @ts-expect-error - accessing internal authorize function
+  const credentialsProvider = authOptions.providers[0] as {
+    options: { authorize: (credentials: { email: string; password: string }) => Promise<unknown> };
+  };
   return credentialsProvider.options.authorize;
 };
 

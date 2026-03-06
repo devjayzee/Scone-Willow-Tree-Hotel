@@ -22,7 +22,6 @@ interface Booking {
   checkOut: string;
   room: {
     roomNumber: string;
-    roomType: string | null;
   };
 }
 

@@ -1,20 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
-
-// Get client IP from request
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const realIp = req.headers.get("x-real-ip");
-
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  if (realIp) {
-    return realIp;
-  }
-  return "127.0.0.1";
-}
+import { getClientIp } from "@/lib/utils/get-client-ip";
 
 export async function GET(req: NextRequest) {
   // Check if Upstash is configured

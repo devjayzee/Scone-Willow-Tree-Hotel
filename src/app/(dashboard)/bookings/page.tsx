@@ -11,14 +11,7 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import { format, parseISO, differenceInDays } from "date-fns";
-
-interface Room {
-  id: string;
-  roomNumber: string;
-  roomType: string | null;
-  pricePerNight: string | number;
-  description: string | null;
-}
+import type { RoomSummary } from "@/types/room";
 
 interface Booking {
   id: string;
@@ -39,7 +32,6 @@ interface Booking {
   createdAt: string;
   room: {
     roomNumber: string;
-    roomType: string | null;
     pricePerNight: string | number;
   };
   createdBy?: {
@@ -117,7 +109,7 @@ function PageSkeleton() {
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [error, setError] = useState("");

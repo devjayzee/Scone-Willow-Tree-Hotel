@@ -18,6 +18,7 @@ import { RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar.css";
 import { toast } from "sonner";
+import type { RoomSummary } from "@/types/room";
 
 const locales = {
   "en-AU": enAU,
@@ -33,14 +34,6 @@ const localizer = dateFnsLocalizer({
 
 type BookingStatus = "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED";
 
-interface Room {
-  id: string;
-  roomNumber: string;
-  roomType: string | null;
-  pricePerNight: string | number;
-  description: string | null;
-}
-
 interface CalendarEvent {
   id: string;
   title: string;
@@ -51,7 +44,6 @@ interface CalendarEvent {
     guestName: string;
     guestEmail: string;
     roomNumber: string;
-    roomType: string | null;
     status: BookingStatus;
   };
 }
@@ -76,7 +68,6 @@ interface Booking {
   createdAt: string;
   room: {
     roomNumber: string;
-    roomType: string | null;
     pricePerNight: string | number;
   };
   createdBy?: {
@@ -87,7 +78,7 @@ interface Booking {
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState<View>("month");
   const [date, setDate] = useState(new Date());

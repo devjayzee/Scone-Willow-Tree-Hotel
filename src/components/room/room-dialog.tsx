@@ -12,14 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-interface Room {
-  id: string;
-  roomNumber: string;
-  capacity: number;
-  pricePerNight: string | number;
-  description: string | null;
-}
+import type { Room } from "@/types/room";
 
 interface RoomDialogProps {
   open: boolean;

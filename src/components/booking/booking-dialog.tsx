@@ -26,7 +26,6 @@ import { jsPDF } from "jspdf";
 interface Room {
   id: string;
   roomNumber: string;
-  roomType: string | null;
   pricePerNight: string | number;
   description: string | null;
 }
