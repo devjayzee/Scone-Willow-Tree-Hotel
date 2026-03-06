@@ -1,66 +1,39 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
-
-const updateStaffSchema = z.object({
-  firstName: z.string().min(1).optional(),
-  lastName: z.string().min(1).optional(),
-  email: z.string().email().optional(),
-  password: z.string().min(6).optional(),
-  role: z.enum(["GENERAL_MANAGER", "STAFF"]).optional(),
-  isActive: z.boolean().optional(),
-});
+import { updateStaffSchema } from "@/lib/validations/staff";
+import {
+  getStaffById,
+  updateStaff,
+  deleteStaff,
+} from "@/lib/services/staff-service";
+import {
+  handleApiError,
+  UnauthorizedError,
+  ForbiddenError,
+} from "@/lib/api-error-handler";
 
 // GET /api/staffs/[id] - Get a single staff member
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      throw new ForbiddenError("Only managers can view staff details");
     }
 
     const { id } = await params;
-
-    const staff = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            bookings: true,
-          },
-        },
-      },
-    });
-
-    if (!staff) {
-      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
-    }
+    const staff = await getStaffById(id);
 
     return NextResponse.json(staff);
   } catch (error) {
-    console.error("Error fetching staff:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch staff" },
-      { status: 500 }
-    );
+    return handleApiError(error, "fetching staff");
   }
 }
 
@@ -72,11 +45,11 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      throw new ForbiddenError("Only managers can update staff");
     }
 
     const { id } = await params;
@@ -84,144 +57,40 @@ export async function PUT(
     const validation = updateStaffSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: validation.error.issues[0].message },
-        { status: 400 }
-      );
+      return handleApiError(validation.error, "updating staff");
     }
 
-    const existingStaff = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!existingStaff) {
-      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
-    }
-
-    // Check if updating email conflicts with another user
-    if (validation.data.email && validation.data.email !== existingStaff.email) {
-      const emailConflict = await prisma.user.findUnique({
-        where: { email: validation.data.email },
-      });
-      if (emailConflict) {
-        return NextResponse.json(
-          { error: "Email already exists" },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Build update data
-    const updateData: {
-      firstName?: string;
-      lastName?: string;
-      email?: string;
-      password?: string;
-      role?: "GENERAL_MANAGER" | "STAFF";
-      isActive?: boolean;
-    } = {};
-
-    if (validation.data.firstName) updateData.firstName = validation.data.firstName;
-    if (validation.data.lastName) updateData.lastName = validation.data.lastName;
-    if (validation.data.email) updateData.email = validation.data.email;
-    if (validation.data.role) updateData.role = validation.data.role;
-    if (validation.data.isActive !== undefined) updateData.isActive = validation.data.isActive;
-
-    // Hash password if provided
-    if (validation.data.password) {
-      updateData.password = await bcrypt.hash(validation.data.password, 10);
-    }
-
-    // If password changed, increment tokenVersion to invalidate existing sessions
-    const staff = await prisma.user.update({
-      where: { id },
-      data: validation.data.password
-        ? { ...updateData, tokenVersion: { increment: 1 } }
-        : updateData,
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const staff = await updateStaff(id, validation.data);
 
     return NextResponse.json(staff);
   } catch (error) {
-    console.error("Error updating staff:", error);
-    return NextResponse.json(
-      { error: "Failed to update staff" },
-      { status: 500 }
-    );
+    return handleApiError(error, "updating staff");
   }
 }
 
 // DELETE /api/staffs/[id] - Delete a staff member
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      throw new ForbiddenError("Only managers can delete staff");
     }
 
     const { id } = await params;
+    const result = await deleteStaff(id, session.user.id);
 
-    // Prevent self-deletion
-    if (id === session.user.id) {
-      return NextResponse.json(
-        { error: "Cannot delete your own account" },
-        { status: 400 }
-      );
-    }
-
-    const staff = await prisma.user.findUnique({
-      where: { id },
-      include: {
-        bookings: {
-          where: {
-            status: { in: ["CONFIRMED", "CHECKED_IN"] },
-          },
-        },
-      },
+    return NextResponse.json({
+      message: result.message,
+      deactivated: result.deactivated,
     });
-
-    if (!staff) {
-      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
-    }
-
-    // If staff has active bookings, deactivate instead of delete
-    if (staff.bookings.length > 0) {
-      await prisma.user.update({
-        where: { id },
-        data: { isActive: false },
-      });
-      return NextResponse.json({
-        message: "Staff deactivated (has active bookings)",
-        deactivated: true,
-      });
-    }
-
-    await prisma.user.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ message: "Staff deleted successfully" });
   } catch (error) {
-    console.error("Error deleting staff:", error);
-    return NextResponse.json(
-      { error: "Failed to delete staff" },
-      { status: 500 }
-    );
+    return handleApiError(error, "deleting staff");
   }
 }
