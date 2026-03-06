@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,8 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Check, X } from "lucide-react";
+import { checkPasswordStrength } from "@/lib/validations/password";
 import type { Staff, Role } from "@/types/staff";
+import { cn } from "@/lib/utils";
 
 interface StaffFormData {
   firstName: string;
@@ -44,22 +46,110 @@ function generateEmail(firstName: string, lastName: string): string {
   return `${cleanFirst}.${cleanLast}@sconewillowtree.com`;
 }
 
+/**
+ * Generate a strong password that meets all requirements:
+ * - At least 12 characters
+ * - Uppercase, lowercase, numbers, special characters
+ */
 function generatePassword(): string {
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const lowercase = "abcdefghijklmnopqrstuvwxyz";
   const numbers = "0123456789";
-  const all = uppercase + lowercase + numbers;
+  const special = "!@#$%^&*";
+  const all = uppercase + lowercase + numbers + special;
 
+  // Ensure at least one of each required type
   let password = "";
   password += uppercase[Math.floor(Math.random() * uppercase.length)];
   password += lowercase[Math.floor(Math.random() * lowercase.length)];
   password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += special[Math.floor(Math.random() * special.length)];
 
-  for (let i = 0; i < 5; i++) {
+  // Fill remaining characters (total 12 characters)
+  for (let i = 0; i < 8; i++) {
     password += all[Math.floor(Math.random() * all.length)];
   }
 
-  return password.split("").sort(() => Math.random() - 0.5).join("");
+  // Shuffle the password
+  return password
+    .split("")
+    .sort(() => Math.random() - 0.5)
+    .join("");
+}
+
+function PasswordStrengthIndicator({ password }: { password: string }) {
+  const { checks, strength } = useMemo(
+    () => checkPasswordStrength(password),
+    [password]
+  );
+
+  if (!password) return null;
+
+  const strengthColors = {
+    weak: "bg-red-500",
+    fair: "bg-orange-500",
+    good: "bg-yellow-500",
+    strong: "bg-green-500",
+  };
+
+  const strengthWidths = {
+    weak: "w-1/4",
+    fair: "w-2/4",
+    good: "w-3/4",
+    strong: "w-full",
+  };
+
+  return (
+    <div className="space-y-2 mt-2">
+      {/* Strength bar */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className={cn(
+              "h-full transition-all duration-300",
+              strengthColors[strength],
+              strengthWidths[strength]
+            )}
+          />
+        </div>
+        <span
+          className={cn(
+            "text-xs font-medium capitalize",
+            strength === "weak" && "text-red-600",
+            strength === "fair" && "text-orange-600",
+            strength === "good" && "text-yellow-600",
+            strength === "strong" && "text-green-600"
+          )}
+        >
+          {strength}
+        </span>
+      </div>
+
+      {/* Requirements checklist */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+        <RequirementCheck met={checks.minLength} label="8+ characters" />
+        <RequirementCheck met={checks.hasUppercase} label="Uppercase (A-Z)" />
+        <RequirementCheck met={checks.hasLowercase} label="Lowercase (a-z)" />
+        <RequirementCheck met={checks.hasNumber} label="Number (0-9)" />
+        <RequirementCheck met={checks.hasSpecial} label="Special (!@#$%)" />
+      </div>
+    </div>
+  );
+}
+
+function RequirementCheck({ met, label }: { met: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {met ? (
+        <Check className="h-3 w-3 text-green-600" />
+      ) : (
+        <X className="h-3 w-3 text-gray-400" />
+      )}
+      <span className={cn(met ? "text-green-700" : "text-gray-500")}>
+        {label}
+      </span>
+    </div>
+  );
 }
 
 export function StaffDialog({
@@ -79,6 +169,16 @@ export function StaffDialog({
   const [formError, setFormError] = useState("");
 
   const isEditing = staff !== null;
+
+  // Check if password meets requirements
+  const passwordStrength = useMemo(
+    () => checkPasswordStrength(formData.password),
+    [formData.password]
+  );
+
+  const isPasswordValid = isEditing
+    ? formData.password === "" || passwordStrength.isValid
+    : passwordStrength.isValid;
 
   // Reset form when dialog opens/closes or staff changes
   useEffect(() => {
@@ -122,6 +222,12 @@ export function StaffDialog({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError("");
+
+    // Validate password strength before submitting
+    if (!isPasswordValid) {
+      setFormError("Password does not meet security requirements");
+      return;
+    }
 
     try {
       await onSubmit(formData);
@@ -198,21 +304,26 @@ export function StaffDialog({
                   }
                   placeholder={isEditing ? "••••••••" : ""}
                   required={!isEditing}
-                  minLength={6}
                   className="font-mono"
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={() => setFormData({ ...formData, password: generatePassword() })}
+                  onClick={() =>
+                    setFormData({ ...formData, password: generatePassword() })
+                  }
                   title="Generate new password"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
-              {formData.password && (
-                <p className="text-xs text-muted-foreground">
+
+              {/* Password strength indicator */}
+              <PasswordStrengthIndicator password={formData.password} />
+
+              {formData.password && passwordStrength.isValid && (
+                <p className="text-xs text-muted-foreground mt-2">
                   {isEditing
                     ? "New password generated. Share this with the staff member."
                     : "Auto-generated password. Share this with the staff member."}
@@ -251,7 +362,7 @@ export function StaffDialog({
             <Button
               type="submit"
               className="bg-navy hover:bg-navy-dark text-cream"
-              disabled={isLoading}
+              disabled={isLoading || !isPasswordValid}
             >
               {isLoading
                 ? "Saving..."

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  strongPasswordSchema,
+  optionalStrongPasswordSchema,
+} from "./password";
 
 // Role enum for validation
 const roleEnum = z.enum(["GENERAL_MANAGER", "STAFF"]);
@@ -8,7 +12,7 @@ export const createStaffSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Valid email is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: strongPasswordSchema,
   role: roleEnum.default("STAFF"),
 });
 
@@ -17,7 +21,7 @@ export const updateStaffSchema = z.object({
   firstName: z.string().min(1, "First name is required").optional(),
   lastName: z.string().min(1, "Last name is required").optional(),
   email: z.string().email("Valid email is required").optional(),
-  password: z.string().min(6, "Password must be at least 6 characters").optional(),
+  password: optionalStrongPasswordSchema,
   role: roleEnum.optional(),
   isActive: z.boolean().optional(),
 });
