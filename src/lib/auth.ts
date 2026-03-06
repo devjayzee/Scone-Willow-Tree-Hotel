@@ -1,11 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
-const prisma = new PrismaClient({ adapter });
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,8 +12,11 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        // Security: Use generic error messages to prevent account enumeration
+        const invalidCredentialsError = "Invalid email or password";
+
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password are required");
+          throw new Error(invalidCredentialsError);
         }
 
         const user = await prisma.user.findUnique({
@@ -25,20 +24,22 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
-          throw new Error("Invalid email or password");
+          throw new Error(invalidCredentialsError);
         }
 
+        // Deactivated accounts get the same error as invalid credentials
+        // to prevent attackers from discovering valid email addresses
         if (!user.isActive) {
-          throw new Error("Account is deactivated");
+          throw new Error(invalidCredentialsError);
         }
 
         const isValidPassword = await bcrypt.compare(
           credentials.password,
-          user.password
+          user.password,
         );
 
         if (!isValidPassword) {
-          throw new Error("Invalid email or password");
+          throw new Error(invalidCredentialsError);
         }
 
         return {
@@ -47,20 +48,49 @@ export const authOptions: NextAuthOptions = {
           name: `${user.firstName} ${user.lastName}`,
           firstName: user.firstName,
           role: user.role,
+          tokenVersion: user.tokenVersion,
         };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
+      // Initial sign in - store user data in token
       if (user) {
         token.id = user.id;
         token.role = user.role;
         token.firstName = user.firstName;
+        token.tokenVersion = user.tokenVersion;
       }
+
+      // On subsequent requests, validate tokenVersion against database
+      // This ensures sessions are invalidated when password changes
+      if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { tokenVersion: true, isActive: true },
+        });
+
+        // Invalidate session if user not found, deactivated, or tokenVersion changed
+        if (
+          !dbUser ||
+          !dbUser.isActive ||
+          dbUser.tokenVersion !== token.tokenVersion
+        ) {
+          // Return empty token to force re-authentication
+          return { ...token, id: null };
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
+      // If token was invalidated (password changed), clear the session user
+      if (!token.id) {
+        // Return session with empty user to trigger re-authentication
+        return { ...session, user: undefined } as unknown as typeof session;
+      }
+
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;

@@ -32,16 +32,17 @@ enum BookingStatus {
 
 // Models
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  password  String
-  firstName String
-  lastName  String
-  role      Role      @default(STAFF)
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  bookings  Booking[] @relation("CreatedBy")
+  id           String    @id @default(cuid())
+  email        String    @unique
+  password     String
+  firstName    String
+  lastName     String
+  role         Role      @default(STAFF)
+  isActive     Boolean   @default(true)
+  tokenVersion Int       @default(0) // Incremented on password change to invalidate sessions
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[] @relation("CreatedBy")
 }
 
 model Room {
