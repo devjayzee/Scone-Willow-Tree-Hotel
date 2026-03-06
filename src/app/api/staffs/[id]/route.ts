@@ -60,7 +60,7 @@ export async function PUT(
       return handleApiError(validation.error, "updating staff");
     }
 
-    const staff = await updateStaff(id, validation.data);
+    const staff = await updateStaff(id, validation.data, session.user.id);
 
     return NextResponse.json(staff);
   } catch (error) {

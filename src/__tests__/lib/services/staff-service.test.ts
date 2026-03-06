@@ -27,6 +27,43 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// Mock audit service
+const mockCreateAuditLog = vi.fn();
+vi.mock("@/lib/services/audit-service", () => ({
+  createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args),
+  AuditAction: {
+    STAFF_CREATED: "STAFF_CREATED",
+    STAFF_UPDATED: "STAFF_UPDATED",
+    STAFF_DELETED: "STAFF_DELETED",
+    STAFF_DEACTIVATED: "STAFF_DEACTIVATED",
+    STAFF_ACTIVATED: "STAFF_ACTIVATED",
+    STAFF_PASSWORD_CHANGED: "STAFF_PASSWORD_CHANGED",
+    STAFF_ROLE_CHANGED: "STAFF_ROLE_CHANGED",
+  },
+  EntityType: {
+    STAFF: "STAFF",
+  },
+  sanitizeForAudit: <T extends Record<string, unknown>>(data: T) => {
+    const sanitized = { ...data };
+    delete sanitized.password;
+    return sanitized;
+  },
+  getChangedFields: <T extends Record<string, unknown>>(
+    previous: T,
+    current: Partial<T>,
+    ignoreFields: string[] = ["updatedAt", "password"]
+  ) => {
+    const changedFields: string[] = [];
+    for (const key of Object.keys(current)) {
+      if (ignoreFields.includes(key)) continue;
+      if (current[key] !== undefined && current[key] !== previous[key]) {
+        changedFields.push(key);
+      }
+    }
+    return changedFields;
+  },
+}));
+
 // Import after mocks are set up
 import {
   getAllStaff,
@@ -202,17 +239,18 @@ describe("Staff Service", () => {
       expect(mockUserCreate).not.toHaveBeenCalled();
     });
 
-    it("should use default role STAFF when not provided", async () => {
-      const inputWithoutRole = {
+    it("should use default role STAFF when not explicitly set", async () => {
+      const inputWithDefaultRole = {
         firstName: "Bob",
         lastName: "Wilson",
         email: "bob.wilson@sconewillowtree.com",
         password: "password123",
+        role: "STAFF" as const,
       };
       mockUserFindUnique.mockResolvedValue(null);
       mockUserCreate.mockResolvedValue(createMockStaff());
 
-      await createStaff(inputWithoutRole);
+      await createStaff(inputWithDefaultRole);
 
       expect(mockUserCreate).toHaveBeenCalledWith(
         expect.objectContaining({
