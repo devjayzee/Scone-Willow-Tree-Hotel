@@ -1,0 +1,104 @@
+// Hotel Booking Management System - Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums
+enum Role {
+  GENERAL_MANAGER
+  STAFF
+}
+
+enum RoomType {
+  SINGLE
+  STANDARD_DOUBLE
+  LARGE_DOUBLE
+  EXTRA_LARGE_DOUBLE
+  KING_SINGLE
+  LARGE_DOUBLE_PLUS
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+// Models
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  firstName String
+  lastName  String
+  role      Role      @default(STAFF)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  bookings  Booking[] @relation("CreatedBy")
+}
+
+model Room {
+  id            String    @id @default(cuid())
+  roomNumber    String    @unique
+  roomType      RoomType?
+  capacity      Int       @default(1)
+  pricePerNight Decimal   @default(0) @db.Decimal(10, 2)
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  bookings      Booking[]
+}
+
+model Booking {
+  id                 String        @id @default(cuid())
+  bookingRef         String        @unique
+  room               Room          @relation(fields: [roomId], references: [id])
+  roomId             String
+
+  // Guest Details
+  guestName          String
+  guestDateOfBirth   DateTime?
+  guestAddress       String?
+  guestPhone         String?
+  guestEmail         String
+  vehicleRego        String?
+  additionalGuests   String?
+
+  // Stay Details
+  checkIn            DateTime
+  checkInTime        String?       // e.g., "14:00"
+  checkOut           DateTime
+  checkOutTime       String?       // e.g., "10:00"
+  bondDeposit        Decimal?      @db.Decimal(10, 2)
+
+  status             BookingStatus @default(CONFIRMED)
+  notes              String?
+  createdBy          User          @relation("CreatedBy", fields: [createdById], references: [id])
+  createdById        String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([roomId])
+  @@index([checkIn, checkOut])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+}
