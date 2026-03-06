@@ -2,6 +2,13 @@ import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import type { CreateStaffInput, UpdateStaffInput } from "@/lib/validations/staff";
 import { NotFoundError, ConflictError, BusinessRuleError } from "@/lib/errors";
+import {
+  createAuditLog,
+  AuditAction,
+  EntityType,
+  sanitizeForAudit,
+  getChangedFields,
+} from "./audit-service";
 
 // Re-export error types for convenience
 export { NotFoundError, ConflictError, BusinessRuleError };
@@ -68,7 +75,10 @@ export async function getStaffById(id: string) {
  * Create a new staff member
  * @throws ConflictError if email already exists
  */
-export async function createStaff(data: CreateStaffInput) {
+export async function createStaff(
+  data: CreateStaffInput,
+  performedBy?: string
+) {
   // Check if email already exists
   const existingUser = await prisma.user.findUnique({
     where: { email: data.email },
@@ -92,6 +102,24 @@ export async function createStaff(data: CreateStaffInput) {
     select: staffSelectFieldsMinimal,
   });
 
+  // Audit log
+  if (performedBy) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.STAFF_CREATED,
+      EntityType.STAFF,
+      staff.id,
+      {
+        current: sanitizeForAudit({
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          email: staff.email,
+          role: staff.role,
+        }),
+      }
+    );
+  }
+
   return staff;
 }
 
@@ -100,7 +128,11 @@ export async function createStaff(data: CreateStaffInput) {
  * @throws NotFoundError if staff member not found
  * @throws ConflictError if new email already exists
  */
-export async function updateStaff(id: string, data: UpdateStaffInput) {
+export async function updateStaff(
+  id: string,
+  data: UpdateStaffInput,
+  performedBy?: string
+) {
   const existingStaff = await prisma.user.findUnique({
     where: { id },
   });
@@ -136,6 +168,11 @@ export async function updateStaff(id: string, data: UpdateStaffInput) {
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
+  // Track what changed for audit logging
+  const passwordChanged = !!data.password;
+  const roleChanged = data.role && data.role !== existingStaff.role;
+  const activeStatusChanged = data.isActive !== undefined && data.isActive !== existingStaff.isActive;
+
   // Hash password if provided and increment tokenVersion to invalidate sessions
   if (data.password) {
     updateData.password = await bcrypt.hash(data.password, 10);
@@ -147,6 +184,76 @@ export async function updateStaff(id: string, data: UpdateStaffInput) {
     data: updateData,
     select: staffSelectFieldsMinimal,
   });
+
+  // Audit logging
+  if (performedBy) {
+    const changedFields = getChangedFields(
+      existingStaff as Record<string, unknown>,
+      data as Record<string, unknown>
+    );
+
+    // Log password change specifically
+    if (passwordChanged) {
+      await createAuditLog(
+        performedBy,
+        AuditAction.STAFF_PASSWORD_CHANGED,
+        EntityType.STAFF,
+        id,
+        { reason: "Password updated" }
+      );
+    }
+
+    // Log role change specifically
+    if (roleChanged) {
+      await createAuditLog(
+        performedBy,
+        AuditAction.STAFF_ROLE_CHANGED,
+        EntityType.STAFF,
+        id,
+        {
+          previous: { role: existingStaff.role },
+          current: { role: data.role },
+        }
+      );
+    }
+
+    // Log activation/deactivation specifically
+    if (activeStatusChanged) {
+      await createAuditLog(
+        performedBy,
+        data.isActive ? AuditAction.STAFF_ACTIVATED : AuditAction.STAFF_DEACTIVATED,
+        EntityType.STAFF,
+        id,
+        {
+          previous: { isActive: existingStaff.isActive },
+          current: { isActive: data.isActive },
+        }
+      );
+    }
+
+    // Log general update if there are other changes
+    if (changedFields.length > 0 && !passwordChanged && !roleChanged && !activeStatusChanged) {
+      await createAuditLog(
+        performedBy,
+        AuditAction.STAFF_UPDATED,
+        EntityType.STAFF,
+        id,
+        {
+          previous: sanitizeForAudit(
+            Object.fromEntries(
+              changedFields.map((f) => [f, existingStaff[f as keyof typeof existingStaff]])
+            )
+          ),
+          current: sanitizeForAudit(
+            Object.fromEntries(
+              changedFields.map((f) => [f, data[f as keyof typeof data]])
+            )
+          ),
+          changedFields,
+        }
+      );
+    }
+  }
 
   return staff;
 }
@@ -167,7 +274,10 @@ export interface DeleteStaffResult {
  * @throws NotFoundError if staff member not found
  * @throws BusinessRuleError if attempting to delete own account
  */
-export async function deleteStaff(id: string, currentUserId: string): Promise<DeleteStaffResult> {
+export async function deleteStaff(
+  id: string,
+  currentUserId: string
+): Promise<DeleteStaffResult> {
   // Prevent self-deletion
   if (id === currentUserId) {
     throw new BusinessRuleError("Cannot delete your own account");
@@ -194,6 +304,19 @@ export async function deleteStaff(id: string, currentUserId: string): Promise<De
       where: { id },
       data: { isActive: false },
     });
+
+    // Audit log for deactivation
+    await createAuditLog(
+      currentUserId,
+      AuditAction.STAFF_DEACTIVATED,
+      EntityType.STAFF,
+      id,
+      {
+        reason: "Deactivated instead of deleted (has active bookings)",
+        current: { isActive: false, activeBookings: staff.bookings.length },
+      }
+    );
+
     return {
       deleted: false,
       deactivated: true,
@@ -204,6 +327,22 @@ export async function deleteStaff(id: string, currentUserId: string): Promise<De
   await prisma.user.delete({
     where: { id },
   });
+
+  // Audit log for deletion
+  await createAuditLog(
+    currentUserId,
+    AuditAction.STAFF_DELETED,
+    EntityType.STAFF,
+    id,
+    {
+      previous: sanitizeForAudit({
+        firstName: staff.firstName,
+        lastName: staff.lastName,
+        email: staff.email,
+        role: staff.role,
+      }),
+    }
+  );
 
   return {
     deleted: true,

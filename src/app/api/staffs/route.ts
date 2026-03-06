@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       return handleApiError(validation.error, "creating staff");
     }
 
-    const staff = await createStaff(validation.data);
+    const staff = await createStaff(validation.data, session.user.id);
     return NextResponse.json(staff, { status: 201 });
   } catch (error) {
     return handleApiError(error, "creating staff");
