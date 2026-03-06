@@ -13,6 +13,7 @@ declare module "next-auth" {
   interface User extends DefaultUser {
     role: string;
     firstName: string;
+    tokenVersion: number;
   }
 }
 
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     id: string;
     role: string;
     firstName: string;
+    tokenVersion: number;
   }
 }

@@ -26,6 +26,16 @@ export default function LoginPage() {
     const password = formData.get("password") as string;
 
     try {
+      // Check rate limit status before attempting login
+      const rateLimitRes = await fetch("/api/auth/rate-limit-status");
+      const rateLimitData = await rateLimitRes.json();
+
+      if (rateLimitData.limited) {
+        setError("Too many login attempts. Please try again in 15 minutes.");
+        setIsLoading(false);
+        return;
+      }
+
       const result = await signIn("credentials", {
         email,
         password,

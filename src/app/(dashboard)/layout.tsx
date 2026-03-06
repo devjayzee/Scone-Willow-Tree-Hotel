@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -12,6 +14,15 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // Redirect to login if session is invalid
+  useEffect(() => {
+    if (status === "unauthenticated" || (status === "authenticated" && !session?.user)) {
+      signOut({ callbackUrl: "/login" });
+    }
+  }, [session, status, router]);
 
   return (
     <div className="flex h-screen bg-cream-light">

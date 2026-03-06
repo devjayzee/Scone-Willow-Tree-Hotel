@@ -21,7 +21,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -71,7 +71,7 @@ export async function PUT(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -132,9 +132,12 @@ export async function PUT(
       updateData.password = await bcrypt.hash(validation.data.password, 10);
     }
 
+    // If password changed, increment tokenVersion to invalidate existing sessions
     const staff = await prisma.user.update({
       where: { id },
-      data: updateData,
+      data: validation.data.password
+        ? { ...updateData, tokenVersion: { increment: 1 } }
+        : updateData,
       select: {
         id: true,
         firstName: true,
@@ -164,7 +167,7 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
