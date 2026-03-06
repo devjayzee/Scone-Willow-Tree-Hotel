@@ -12,20 +12,9 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 import { Eye, Trash2, ChevronLeft, ChevronRight, FileDown } from "lucide-react";
+import type { BookingSummary } from "@/types/booking";
 
-interface Booking {
-  id: string;
-  bookingRef: string;
-  guestName: string;
-  guestEmail: string;
-  checkIn: string;
-  checkOut: string;
-  room: {
-    roomNumber: string;
-  };
-}
-
-interface BookingTableProps<T extends Booking> {
+interface BookingTableProps<T extends BookingSummary> {
   bookings: T[];
   onView: (booking: T) => void;
   onDelete: (booking: T) => void;
@@ -34,7 +23,7 @@ interface BookingTableProps<T extends Booking> {
   onPageChange: (page: number) => void;
 }
 
-export function BookingTable<T extends Booking>({
+export function BookingTable<T extends BookingSummary>({
   bookings,
   onView,
   onDelete,
