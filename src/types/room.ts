@@ -12,7 +12,7 @@ export interface RoomSummary {
   id: string;
   roomNumber: string;
   pricePerNight: string | number;
-  description: string | null;
+  description?: string | null;
 }
 
 // Input type for creating a room

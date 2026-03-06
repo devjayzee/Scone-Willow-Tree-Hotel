@@ -19,6 +19,7 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar.css";
 import { toast } from "sonner";
 import type { RoomSummary } from "@/types/room";
+import type { Booking, BookingStatus } from "@/types/booking";
 
 const locales = {
   "en-AU": enAU,
@@ -32,8 +33,6 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-type BookingStatus = "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED";
-
 interface CalendarEvent {
   id: string;
   title: string;
@@ -45,34 +44,6 @@ interface CalendarEvent {
     guestEmail: string;
     roomNumber: string;
     status: BookingStatus;
-  };
-}
-
-interface Booking {
-  id: string;
-  bookingRef: string;
-  guestName: string;
-  guestDateOfBirth?: string | null;
-  guestAddress?: string | null;
-  guestEmail: string;
-  guestPhone?: string | null;
-  vehicleRego?: string | null;
-  additionalGuests?: string | null;
-  checkIn: string;
-  checkInTime?: string | null;
-  checkOut: string;
-  checkOutTime?: string | null;
-  bondDeposit?: string | number | null;
-  status: BookingStatus;
-  notes?: string | null;
-  createdAt: string;
-  room: {
-    roomNumber: string;
-    pricePerNight: string | number;
-  };
-  createdBy?: {
-    firstName: string;
-    lastName: string;
   };
 }
 
