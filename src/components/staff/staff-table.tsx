@@ -33,16 +33,16 @@ export function StaffTable({
 }: StaffTableProps) {
   return (
     <div className="bg-white rounded-lg border overflow-hidden">
-      <table className="w-full">
+      <table className="w-full table-fixed">
         <thead>
           <tr className="border-b bg-gray-50/50 text-sm font-medium text-gray-500">
-            <th className="text-left px-6 py-3">Name</th>
-            <th className="text-left px-6 py-3">Email</th>
-            <th className="text-left px-6 py-3">Role</th>
-            <th className="text-left px-6 py-3">Status</th>
-            <th className="text-left px-6 py-3">Bookings</th>
-            <th className="text-left px-6 py-3">Created</th>
-            <th className="text-right px-6 py-3">Actions</th>
+            <th className="text-center px-6 py-3 w-[20%]">Name</th>
+            <th className="text-center px-6 py-3 w-[25%]">Email</th>
+            <th className="text-center px-6 py-3 w-[10%]">Role</th>
+            <th className="text-center px-6 py-3 w-[10%]">Status</th>
+            <th className="text-center px-6 py-3 w-[10%]">Bookings</th>
+            <th className="text-center px-6 py-3 w-[15%]">Created</th>
+            <th className="text-center px-6 py-3 w-[10%]">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -57,8 +57,8 @@ export function StaffTable({
               const initials = `${staff.firstName[0] || ""}${staff.lastName[0] || ""}`.toUpperCase();
               return (
                 <tr key={staff.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center gap-3">
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
                         staff.role === "GENERAL_MANAGER"
                           ? "bg-navy text-cream"
@@ -69,8 +69,8 @@ export function StaffTable({
                       <span className="font-medium text-gray-900">{staff.firstName} {staff.lastName}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{staff.email}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 text-center text-gray-600">{staff.email}</td>
+                  <td className="px-6 py-4 text-center">
                     <Badge
                       variant={staff.role === "GENERAL_MANAGER" ? "default" : "secondary"}
                       className={
@@ -82,7 +82,7 @@ export function StaffTable({
                       {staff.role === "GENERAL_MANAGER" ? "Manager" : "Staff"}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 text-center">
                     <Badge
                       variant={staff.isActive ? "default" : "secondary"}
                       className={
@@ -94,14 +94,14 @@ export function StaffTable({
                       {staff.isActive ? "Active" : "Inactive"}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">
+                  <td className="px-6 py-4 text-center text-gray-600">
                     {staff._count.bookings}
                   </td>
-                  <td className="px-6 py-4 text-gray-600">
+                  <td className="px-6 py-4 text-center text-gray-600">
                     {format(new Date(staff.createdAt), "MMM dd, yyyy")}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end">
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex justify-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
