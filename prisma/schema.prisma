@@ -11,6 +11,7 @@ datasource db {
 // Enums
 enum Role {
   GENERAL_MANAGER
+  MANAGER
   STAFF
 }
 

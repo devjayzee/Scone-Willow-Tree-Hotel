@@ -157,7 +157,7 @@ export async function updateStaff(
     lastName?: string;
     email?: string;
     password?: string;
-    role?: "GENERAL_MANAGER" | "STAFF";
+    role?: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
     isActive?: boolean;
     tokenVersion?: { increment: number };
   } = {};

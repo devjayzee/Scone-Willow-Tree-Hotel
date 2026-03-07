@@ -34,7 +34,11 @@ export function Header({ onMenuClick }: HeaderProps) {
     : (firstName[0] || "U").toUpperCase();
 
   const roleLabel =
-    session?.user?.role === "GENERAL_MANAGER" ? "General Manager" : "Staff";
+    session?.user?.role === "GENERAL_MANAGER"
+      ? "General Manager"
+      : session?.user?.role === "MANAGER"
+        ? "Manager"
+        : "Staff";
 
   return (
     <header className="h-16 border-b border-border bg-white px-4 flex items-center justify-between">

@@ -344,6 +344,7 @@ export function StaffDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="STAFF">Staff</SelectItem>
+                  <SelectItem value="MANAGER">Manager</SelectItem>
                   <SelectItem value="GENERAL_MANAGER">General Manager</SelectItem>
                 </SelectContent>
               </Select>
