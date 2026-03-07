@@ -63,7 +63,7 @@ export function StayDetailsStep({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="checkInTime">Time</Label>
+          <Label htmlFor="checkInTime">Est. Time of Arrival</Label>
           <Input
             id="checkInTime"
             type="time"
@@ -86,7 +86,7 @@ export function StayDetailsStep({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="checkOutTime">Time</Label>
+          <Label htmlFor="checkOutTime">Est. Time of Departure</Label>
           <Input
             id="checkOutTime"
             type="time"
