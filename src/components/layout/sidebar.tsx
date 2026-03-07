@@ -39,8 +39,8 @@ const navigation = [
     roles: ["GENERAL_MANAGER", "STAFF"],
   },
   {
-    name: "Staffs",
-    href: "/settings/staffs",
+    name: "Staff",
+    href: "/staff",
     icon: Users,
     roles: ["GENERAL_MANAGER"],
   },
