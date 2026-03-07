@@ -8,6 +8,7 @@ import {
   useCheckInBooking,
   useCheckOutBooking,
   useCancelBooking,
+  useTogglePayment,
 } from "@/hooks/use-bookings";
 import type { Booking, CreateBookingInput } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
@@ -32,6 +33,7 @@ export function useBookingManagement({
   const checkInMutation = useCheckInBooking();
   const checkOutMutation = useCheckOutBooking();
   const cancelMutation = useCancelBooking();
+  const togglePaymentMutation = useTogglePayment();
 
   // Room data (static, passed from server)
   const [rooms] = useState<RoomSummary[]>(initialRooms);
@@ -53,7 +55,8 @@ export function useBookingManagement({
     deleteMutation.isPending ||
     checkInMutation.isPending ||
     checkOutMutation.isPending ||
-    cancelMutation.isPending;
+    cancelMutation.isPending ||
+    togglePaymentMutation.isPending;
   const isCreating = createMutation.isPending;
   const isDeleting = deleteMutation.isPending;
 
@@ -139,6 +142,14 @@ export function useBookingManagement({
     [cancelMutation]
   );
 
+  // Toggle payment status
+  const togglePayment = useCallback(
+    async (booking: Booking) => {
+      await togglePaymentMutation.mutateAsync(booking.id);
+    },
+    [togglePaymentMutation]
+  );
+
   // Update search query
   const updateSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -189,6 +200,7 @@ export function useBookingManagement({
     checkInBooking,
     checkOutBooking,
     cancelBooking,
+    togglePayment,
     updateSearch,
     setCurrentPage,
     setBookingDialogOpen,

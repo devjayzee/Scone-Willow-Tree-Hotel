@@ -37,6 +37,7 @@ export function BookingsClient({
     openDeleteDialog,
     createBooking,
     confirmDelete,
+    togglePayment,
     updateSearch,
     setCurrentPage,
     setBookingDialogOpen,
@@ -83,6 +84,7 @@ export function BookingsClient({
         onView={openDetailsDialog}
         onDelete={openDeleteDialog}
         onDownloadPDF={downloadBookingPDF}
+        onTogglePayment={togglePayment}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
       />

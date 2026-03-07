@@ -26,6 +26,7 @@ export default async function BookingsPage() {
     checkOutTime: booking.checkOutTime,
     bondDeposit: booking.bondDeposit?.toString() ?? null,
     status: booking.status,
+    isPaid: booking.isPaid,
     notes: booking.notes,
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),

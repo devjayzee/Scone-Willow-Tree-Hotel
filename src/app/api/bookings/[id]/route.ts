@@ -9,6 +9,7 @@ import {
   checkInBooking,
   checkOutBooking,
   cancelBooking,
+  togglePaymentStatus,
 } from "@/lib/services/booking-service";
 import {
   handleApiError,
@@ -89,6 +90,9 @@ export async function PATCH(
         break;
       case "cancel":
         booking = await cancelBooking(id, reason, session.user.id);
+        break;
+      case "toggle-payment":
+        booking = await togglePaymentStatus(id, session.user.id);
         break;
       default:
         // Regular partial update
