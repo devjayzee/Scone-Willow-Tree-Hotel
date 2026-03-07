@@ -1,58 +1,38 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { z } from "zod";
-
-const updateBookingSchema = z.object({
-  guestName: z.string().min(1).optional(),
-  guestEmail: z.string().email().optional(),
-  guestPhone: z.string().optional(),
-  checkIn: z.string().optional(),
-  checkOut: z.string().optional(),
-  notes: z.string().optional(),
-  status: z.enum(["CONFIRMED", "CHECKED_IN", "CHECKED_OUT", "CANCELLED"]).optional(),
-});
+import { updateBookingSchema } from "@/lib/validations/booking";
+import {
+  getBookingById,
+  updateBooking,
+  deleteBooking,
+  checkInBooking,
+  checkOutBooking,
+  cancelBooking,
+} from "@/lib/services/booking-service";
+import {
+  handleApiError,
+  UnauthorizedError,
+  ForbiddenError,
+} from "@/lib/api-error-handler";
 
 // GET /api/bookings/[id] - Get a single booking
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
     }
 
     const { id } = await params;
-
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        room: true,
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    if (!booking) {
-      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-    }
+    const booking = await getBookingById(id);
 
     return NextResponse.json(booking);
   } catch (error) {
-    console.error("Error fetching booking:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch booking" },
-      { status: 500 }
-    );
+    return handleApiError(error, "fetching booking");
   }
 }
 
@@ -64,7 +44,7 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
     }
 
     const { id } = await params;
@@ -72,85 +52,80 @@ export async function PUT(
     const validation = updateBookingSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: validation.error.issues[0].message },
-        { status: 400 }
-      );
+      return handleApiError(validation.error, "updating booking");
     }
 
-    const existingBooking = await prisma.booking.findUnique({
-      where: { id },
-    });
-
-    if (!existingBooking) {
-      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-    }
-
-    // Build update data
-    const updateData: Record<string, unknown> = { ...validation.data };
-
-    // Convert date strings to Date objects if provided
-    if (validation.data.checkIn) {
-      updateData.checkIn = new Date(validation.data.checkIn);
-    }
-    if (validation.data.checkOut) {
-      updateData.checkOut = new Date(validation.data.checkOut);
-    }
-
-    const booking = await prisma.booking.update({
-      where: { id },
-      data: updateData,
-      include: {
-        room: true,
-      },
-    });
+    const booking = await updateBooking(id, validation.data, session.user.id);
 
     return NextResponse.json(booking);
   } catch (error) {
-    console.error("Error updating booking:", error);
-    return NextResponse.json(
-      { error: "Failed to update booking" },
-      { status: 500 }
-    );
+    return handleApiError(error, "updating booking");
   }
 }
 
-// DELETE /api/bookings/[id] - Delete a booking
-export async function DELETE(
+// PATCH /api/bookings/[id] - Partial update or status change
+export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      throw new UnauthorizedError();
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const { action, reason } = body as { action?: string; reason?: string };
+
+    let booking;
+
+    switch (action) {
+      case "check-in":
+        booking = await checkInBooking(id, session.user.id);
+        break;
+      case "check-out":
+        booking = await checkOutBooking(id, session.user.id);
+        break;
+      case "cancel":
+        booking = await cancelBooking(id, reason, session.user.id);
+        break;
+      default:
+        // Regular partial update
+        const validation = updateBookingSchema.safeParse(body);
+        if (!validation.success) {
+          return handleApiError(validation.error, "updating booking");
+        }
+        booking = await updateBooking(id, validation.data, session.user.id);
+    }
+
+    return NextResponse.json(booking);
+  } catch (error) {
+    return handleApiError(error, "updating booking");
+  }
+}
+
+// DELETE /api/bookings/[id] - Delete a booking
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      throw new UnauthorizedError();
     }
 
     // Only managers can delete bookings
     if (session.user.role !== "GENERAL_MANAGER") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      throw new ForbiddenError("Only managers can delete bookings");
     }
 
     const { id } = await params;
+    const result = await deleteBooking(id, session.user.id);
 
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-    });
-
-    if (!booking) {
-      return NextResponse.json({ error: "Booking not found" }, { status: 404 });
-    }
-
-    await prisma.booking.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ message: "Booking deleted successfully" });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Error deleting booking:", error);
-    return NextResponse.json(
-      { error: "Failed to delete booking" },
-      { status: 500 }
-    );
+    return handleApiError(error, "deleting booking");
   }
 }

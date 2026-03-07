@@ -18,29 +18,29 @@ const navigation = [
     name: "Bookings",
     href: "/bookings",
     icon: ClipboardList,
-    roles: ["GENERAL_MANAGER", "STAFF"],
+    roles: ["GENERAL_MANAGER", "MANAGER", "STAFF"],
   },
   {
     name: "Calendar",
     href: "/calendar",
     icon: CalendarDays,
-    roles: ["GENERAL_MANAGER", "STAFF"],
+    roles: ["GENERAL_MANAGER", "MANAGER", "STAFF"],
   },
   {
     name: "Rooms",
     href: "/rooms",
     icon: BedDouble,
-    roles: ["GENERAL_MANAGER", "STAFF"],
+    roles: ["GENERAL_MANAGER", "MANAGER"],
   },
   {
     name: "Reports",
     href: "/reports",
     icon: BarChart3,
-    roles: ["GENERAL_MANAGER", "STAFF"],
+    roles: ["GENERAL_MANAGER", "MANAGER"],
   },
   {
-    name: "Staffs",
-    href: "/settings/staffs",
+    name: "Staff",
+    href: "/staff",
     icon: Users,
     roles: ["GENERAL_MANAGER"],
   },
@@ -58,19 +58,15 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-52 flex-col bg-navy">
       {/* Logo */}
-      <div className="flex h-20 items-center justify-center border-b border-navy-light">
-        <Link href="/bookings" className="flex items-center gap-2">
-          <div className="relative w-12 h-12">
+      <div className="flex py-3 items-center justify-center border-b border-navy-light">
+        <Link href="/bookings">
+          <div className="relative w-44 h-20">
             <Image
-              src="/logo.jpg"
-              alt="Willow Tree"
+              src="/logo.png"
+              alt="Scone Willow Tree"
               fill
-              className="object-contain rounded-full"
+              className="object-contain"
             />
-          </div>
-          <div className="text-cream">
-            <p className="font-semibold text-sm">Scone</p>
-            <p className="font-bold text-lg leading-tight">Willow Tree</p>
           </div>
         </Link>
       </div>
