@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { getClientIp } from "@/lib/utils/get-client-ip";
 
 // Initialize rate limiter (lazy to handle missing env vars gracefully)
 let loginRateLimiter: Ratelimit | null = null;
@@ -21,20 +22,6 @@ function getRateLimiter() {
     });
   }
   return loginRateLimiter;
-}
-
-// Get client IP from request
-function getClientIp(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  const realIp = req.headers.get("x-real-ip");
-
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  if (realIp) {
-    return realIp;
-  }
-  return "127.0.0.1";
 }
 
 // Rate limiting middleware for auth endpoints
@@ -79,10 +66,17 @@ const authMiddleware = withAuth(
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
 
-    // Protected routes that require GENERAL_MANAGER role
-    const managerOnlyPaths = ["/settings/users", "/settings/logs"];
+    // Routes that require MANAGER or GENERAL_MANAGER role
+    const managerPaths = ["/rooms", "/reports"];
+    if (managerPaths.some((p) => path.startsWith(p))) {
+      if (token?.role !== "GENERAL_MANAGER" && token?.role !== "MANAGER") {
+        return NextResponse.redirect(new URL("/bookings", req.url));
+      }
+    }
 
-    if (managerOnlyPaths.some((p) => path.startsWith(p))) {
+    // Routes that require GENERAL_MANAGER role only
+    const generalManagerOnlyPaths = ["/staff"];
+    if (generalManagerOnlyPaths.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
@@ -121,11 +115,10 @@ export const config = {
   matcher: [
     "/login",
     "/api/auth/:path*",
-    "/dashboard/:path*",
     "/bookings/:path*",
     "/rooms/:path*",
     "/calendar/:path*",
     "/reports/:path*",
-    "/settings/:path*",
+    "/staff/:path*",
   ],
 };
