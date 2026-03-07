@@ -63,7 +63,7 @@ export default function LoginPage() {
         <div className="flex justify-center mb-4">
           <div className="w-48 h-48 relative">
             <Image
-              src="/logo.jpg"
+              src="/logo.png"
               alt="Scone Willow Tree"
               fill
               className="object-contain"
