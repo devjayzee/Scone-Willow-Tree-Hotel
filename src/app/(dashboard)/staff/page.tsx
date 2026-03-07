@@ -4,7 +4,13 @@ import { getAllStaff } from "@/lib/services/staff-service";
 import { StaffsClient } from "@/components/staff/staffs-client";
 import type { Staff } from "@/types/staff";
 
+// Revalidate every 5 minutes - staff data rarely changes
+export const revalidate = 300;
+
 export default async function StaffsPage() {
+  // Track when data was fetched for cache freshness
+  const fetchTime = Date.now();
+
   // Get current user session
   const session = await getServerSession(authOptions);
   const currentUserId = session?.user?.id;
@@ -25,5 +31,11 @@ export default async function StaffsPage() {
     _count: staff._count,
   }));
 
-  return <StaffsClient initialStaffs={serializedStaffs} currentUserId={currentUserId} />;
+  return (
+    <StaffsClient
+      initialStaffs={serializedStaffs}
+      currentUserId={currentUserId}
+      fetchTime={fetchTime}
+    />
+  );
 }

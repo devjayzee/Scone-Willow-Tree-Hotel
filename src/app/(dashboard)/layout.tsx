@@ -33,8 +33,8 @@ export default function DashboardLayout({
 
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-        <SheetContent side="left" className="p-0 w-52">
-          <Sidebar />
+        <SheetContent side="left" className="p-0 w-52" title="Navigation Menu">
+          <Sidebar onNavigate={() => setSidebarOpen(false)} />
         </SheetContent>
       </Sheet>
 
