@@ -5,7 +5,7 @@ import {
 } from "./password";
 
 // Role enum for validation
-const roleEnum = z.enum(["GENERAL_MANAGER", "STAFF"]);
+const roleEnum = z.enum(["GENERAL_MANAGER", "MANAGER", "STAFF"]);
 
 // Schema for creating a new staff member
 export const createStaffSchema = z.object({

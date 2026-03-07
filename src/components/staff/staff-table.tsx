@@ -8,13 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  MoreHorizontal,
-  Edit,
-  Trash2,
-  UserCheck,
-  UserX,
-} from "lucide-react";
+import { MoreHorizontal, Edit, Trash2, UserCheck, UserX } from "lucide-react";
 import { format } from "date-fns";
 import type { Staff } from "@/types/staff";
 
@@ -50,38 +44,58 @@ export function StaffTable({
         <tbody className="divide-y">
           {staffs.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+              <td
+                colSpan={7}
+                className="px-6 py-12 text-center text-muted-foreground"
+              >
                 No staff members found
               </td>
             </tr>
           ) : (
             staffs.map((staff) => {
-              const initials = `${staff.firstName[0] || ""}${staff.lastName[0] || ""}`.toUpperCase();
+              const initials =
+                `${staff.firstName[0] || ""}${staff.lastName[0] || ""}`.toUpperCase();
               return (
-                <tr key={staff.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-3">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                        staff.role === "GENERAL_MANAGER"
-                          ? "bg-navy text-cream"
-                          : "bg-gray-200 text-gray-600"
-                      }`}>
+                <tr
+                  key={staff.id}
+                  className="hover:bg-gray-50/50 transition-colors"
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          staff.role === "GENERAL_MANAGER" ||
+                          staff.role === "MANAGER"
+                            ? "bg-navy text-cream"
+                            : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
                         {initials}
                       </div>
-                      <span className="font-medium text-gray-900">{staff.firstName} {staff.lastName}</span>
+                      <span className="font-medium text-gray-900">
+                        {staff.firstName} {staff.lastName}
+                      </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center text-gray-600">{staff.email}</td>
+                  <td className="px-6 py-4 text-center text-gray-600">
+                    {staff.email}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <Badge
-                      variant={staff.role === "GENERAL_MANAGER" ? "default" : "secondary"}
+                      variant={staff.role === "STAFF" ? "secondary" : "default"}
                       className={
                         staff.role === "GENERAL_MANAGER"
                           ? "bg-navy text-cream"
-                          : ""
+                          : staff.role === "MANAGER"
+                            ? "bg-navy/80 text-cream"
+                            : ""
                       }
                     >
-                      {staff.role === "GENERAL_MANAGER" ? "Manager" : "Staff"}
+                      {staff.role === "GENERAL_MANAGER"
+                        ? "General Manager"
+                        : staff.role === "MANAGER"
+                          ? "Manager"
+                          : "Staff"}
                     </Badge>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -106,7 +120,11 @@ export function StaffTable({
                     <div className="flex justify-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -117,7 +135,9 @@ export function StaffTable({
                           </DropdownMenuItem>
                           {staff.id !== currentUserId && (
                             <>
-                              <DropdownMenuItem onClick={() => onToggleActive(staff)}>
+                              <DropdownMenuItem
+                                onClick={() => onToggleActive(staff)}
+                              >
                                 {staff.isActive ? (
                                   <>
                                     <UserX className="h-4 w-4 mr-2" />
