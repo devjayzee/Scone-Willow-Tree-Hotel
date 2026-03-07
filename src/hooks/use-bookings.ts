@@ -77,14 +77,14 @@ async function deleteBooking(
   return response.json();
 }
 
-// Perform booking action (check-in, check-out, cancel)
+// Perform booking action (check-in, check-out, cancel, toggle-payment)
 async function performBookingAction({
   id,
   action,
   reason,
 }: {
   id: string;
-  action: "check-in" | "check-out" | "cancel";
+  action: "check-in" | "check-out" | "cancel" | "toggle-payment";
   reason?: string;
 }): Promise<Booking> {
   const response = await fetch(`/api/bookings/${id}`, {
@@ -143,6 +143,7 @@ export function useCreateBooking() {
         checkOutTime: newBookingData.checkOutTime ?? null,
         bondDeposit: newBookingData.bondDeposit ?? null,
         status: "CONFIRMED",
+        isPaid: false,
         notes: newBookingData.notes ?? null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -414,6 +415,57 @@ export function useCancelBooking() {
     },
     onSuccess: () => {
       toast.success("Booking cancelled successfully");
+    },
+    onSettled: () => {
+      // Always refetch after error or success to sync with server
+      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+    },
+  });
+}
+
+// Hook to toggle payment status with optimistic update
+export function useTogglePayment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      performBookingAction({ id, action: "toggle-payment" }),
+    onMutate: async (id) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: bookingKeys.list() });
+
+      // Snapshot the previous value
+      const previousBookings = queryClient.getQueryData<Booking[]>(
+        bookingKeys.list()
+      );
+
+      // Optimistically toggle the payment status
+      queryClient.setQueryData<Booking[]>(bookingKeys.list(), (old) => {
+        if (!old) return old;
+        return old.map((booking) =>
+          booking.id === id
+            ? {
+                ...booking,
+                isPaid: !booking.isPaid,
+                updatedAt: new Date().toISOString(),
+              }
+            : booking
+        );
+      });
+
+      return { previousBookings };
+    },
+    onError: (error: Error, _id, context) => {
+      // Rollback to the previous value on error
+      if (context?.previousBookings) {
+        queryClient.setQueryData(bookingKeys.list(), context.previousBookings);
+      }
+      toast.error(error.message);
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.isPaid ? "Booking marked as paid" : "Booking marked as unpaid"
+      );
     },
     onSettled: () => {
       // Always refetch after error or success to sync with server
