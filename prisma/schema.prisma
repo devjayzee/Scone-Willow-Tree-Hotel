@@ -71,6 +71,7 @@ model Booking {
   bondDeposit        Decimal?      @db.Decimal(10, 2)
 
   status             BookingStatus @default(CONFIRMED)
+  isPaid             Boolean       @default(false)
   notes              String?
   createdBy          User          @relation("CreatedBy", fields: [createdById], references: [id])
   createdById        String

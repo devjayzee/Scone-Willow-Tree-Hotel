@@ -32,6 +32,7 @@ export interface Booking {
   checkOutTime?: string | null;
   bondDeposit?: string | number | null;
   status: BookingStatus;
+  isPaid: boolean;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -48,6 +49,7 @@ export interface BookingSummary {
   checkIn: string;
   checkOut: string;
   status: BookingStatus;
+  isPaid: boolean;
   room: {
     roomNumber: string;
   };
