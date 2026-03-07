@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, RefreshCw } from "lucide-react";
 import { StaffTable } from "@/components/staff/staff-table";
+import { StaffTableSkeleton } from "@/components/staff/staff-table-skeleton";
 import { StaffDialog } from "@/components/staff/staff-dialog";
 import { DeleteStaffDialog } from "@/components/staff/delete-staff-dialog";
 import { useStaffManagement } from "@/hooks/use-staff-management";
@@ -12,17 +13,20 @@ import type { Staff } from "@/types/staff";
 interface StaffsClientProps {
   initialStaffs: Staff[];
   currentUserId?: string;
+  fetchTime?: number;
 }
 
-export function StaffsClient({ initialStaffs, currentUserId }: StaffsClientProps) {
+export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: StaffsClientProps) {
   const {
     filteredStaffs,
     error,
+    isFetching,
     staffDialogOpen,
     deleteDialogOpen,
     selectedStaff,
     isProcessing,
     searchQuery,
+    fetchStaffs,
     openAddDialog,
     openEditDialog,
     openDeleteDialog,
@@ -32,7 +36,7 @@ export function StaffsClient({ initialStaffs, currentUserId }: StaffsClientProps
     updateSearch,
     setStaffDialogOpen,
     setDeleteDialogOpen,
-  } = useStaffManagement({ initialStaffs });
+  } = useStaffManagement({ initialStaffs, fetchTime });
 
   const handleDialogClose = (open: boolean) => {
     setStaffDialogOpen(open);
@@ -57,15 +61,26 @@ export function StaffsClient({ initialStaffs, currentUserId }: StaffsClientProps
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative flex-1 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          placeholder="Search staff..."
-          value={searchQuery}
-          onChange={(e) => updateSearch(e.target.value)}
-          className="pl-9 bg-white"
-        />
+      {/* Search and Refresh */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search staff..."
+            value={searchQuery}
+            onChange={(e) => updateSearch(e.target.value)}
+            className="pl-9 bg-white"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => fetchStaffs()}
+          disabled={isFetching}
+          title="Refresh staff"
+        >
+          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
       {error && (
@@ -74,13 +89,17 @@ export function StaffsClient({ initialStaffs, currentUserId }: StaffsClientProps
         </div>
       )}
 
-      <StaffTable
-        staffs={filteredStaffs}
-        currentUserId={currentUserId}
-        onEdit={openEditDialog}
-        onDelete={openDeleteDialog}
-        onToggleActive={toggleActive}
-      />
+      {isFetching ? (
+        <StaffTableSkeleton />
+      ) : (
+        <StaffTable
+          staffs={filteredStaffs}
+          currentUserId={currentUserId}
+          onEdit={openEditDialog}
+          onDelete={openDeleteDialog}
+          onToggleActive={toggleActive}
+        />
+      )}
 
       <StaffDialog
         open={staffDialogOpen}

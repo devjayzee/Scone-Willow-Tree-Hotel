@@ -569,10 +569,10 @@ export async function deleteBooking(
     throw new NotFoundError("Booking not found");
   }
 
-  // Only allow deletion of cancelled or checked out bookings
-  if (!["CANCELLED", "CHECKED_OUT"].includes(booking.status)) {
+  // Only allow deletion of cancelled bookings
+  if (booking.status !== "CANCELLED") {
     throw new BusinessRuleError(
-      `Cannot delete booking with status ${booking.status}. Cancel or check out first.`
+      `Cannot delete booking with status ${booking.status}. Cancel the booking first.`
     );
   }
 

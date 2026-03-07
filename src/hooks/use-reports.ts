@@ -123,12 +123,14 @@ export function useBookingTrends() {
 export function useRoomPerformance(
   initialData?: RoomPerformanceData[],
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  initialDataUpdatedAt?: number
 ) {
   return useQuery({
     queryKey: reportKeys.roomPerformanceFiltered(startDate, endDate),
     queryFn: () => fetchRoomPerformance(startDate, endDate),
     initialData,
+    initialDataUpdatedAt,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

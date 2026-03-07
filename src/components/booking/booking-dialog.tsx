@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ChevronRight, ChevronLeft } from "lucide-react";
-import type { CreateBookingInput } from "@/types/booking";
+import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 import { useBookingForm } from "@/hooks/use-booking-form";
 import {
@@ -24,6 +24,7 @@ interface BookingDialogProps {
   onOpenChange: (open: boolean) => void;
   rooms: RoomSummary[];
   onSubmit: (data: CreateBookingInput) => Promise<void>;
+  booking?: Booking | null;
 }
 
 export function BookingDialog({
@@ -31,19 +32,23 @@ export function BookingDialog({
   onOpenChange,
   rooms,
   onSubmit,
+  booking,
 }: BookingDialogProps) {
   const form = useBookingForm({
     open,
     rooms,
     onSubmit,
     onClose: () => onOpenChange(false),
+    initialBooking: booking,
   });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="text-navy">New Booking</DialogTitle>
+          <DialogTitle className="text-navy">
+            {form.isEditMode ? "Edit Booking" : "New Booking"}
+          </DialogTitle>
           <StepIndicator
             currentStep={form.step}
             canProceedToStay={form.canProceedToStay}
@@ -160,7 +165,13 @@ export function BookingDialog({
               className="bg-navy hover:bg-navy-dark text-cream"
               disabled={form.isLoading}
             >
-              {form.isLoading ? "Creating..." : "Create Booking"}
+              {form.isLoading
+                ? form.isEditMode
+                  ? "Saving..."
+                  : "Creating..."
+                : form.isEditMode
+                  ? "Save Changes"
+                  : "Create Booking"}
             </Button>
           )}
         </DialogFooter>

@@ -2,22 +2,20 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/use-rooms";
+import type { RoomFormData } from "@/hooks/use-rooms";
 import type { Room } from "@/types/room";
 
-export interface RoomFormData {
-  roomNumber: string;
-  capacity: number;
-  pricePerNight: number;
-  description?: string;
-}
+// Re-export for consumers that import from this module
+export type { RoomFormData } from "@/hooks/use-rooms";
 
 interface UseRoomManagementOptions {
   initialRooms: Room[];
+  fetchTime?: number;
 }
 
-export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
+export function useRoomManagement({ initialRooms, fetchTime }: UseRoomManagementOptions) {
   // TanStack Query hooks
-  const { data: rooms = initialRooms, error: queryError, refetch } = useRooms(initialRooms);
+  const { data: rooms = initialRooms, error: queryError, refetch, isFetching } = useRooms(initialRooms, fetchTime);
   const createMutation = useCreateRoom();
   const updateMutation = useUpdateRoom();
   const deleteMutation = useDeleteRoom();
@@ -27,9 +25,8 @@ export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
-  // Search and pagination state
+  // Search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Derived state
   const error = queryError?.message || "";
@@ -53,16 +50,6 @@ export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
     setDeleteDialogOpen(true);
   }, []);
 
-  // Close room dialog
-  const closeRoomDialog = useCallback(() => {
-    setRoomDialogOpen(false);
-  }, []);
-
-  // Close delete dialog
-  const closeDeleteDialog = useCallback(() => {
-    setDeleteDialogOpen(false);
-  }, []);
-
   // Create or update a room
   const saveRoom = useCallback(async (data: RoomFormData) => {
     if (selectedRoom) {
@@ -84,10 +71,9 @@ export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
     }
   }, [selectedRoom, deleteMutation]);
 
-  // Update search and reset pagination
+  // Update search
   const updateSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    setCurrentPage(1);
   }, []);
 
   // Filter rooms by search query
@@ -104,6 +90,7 @@ export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
     rooms,
     filteredRooms,
     error,
+    isFetching,
 
     // Dialog state
     roomDialogOpen,
@@ -111,18 +98,14 @@ export function useRoomManagement({ initialRooms }: UseRoomManagementOptions) {
     selectedRoom,
     isDeleting,
 
-    // Search and pagination
+    // Search
     searchQuery,
-    currentPage,
-    setCurrentPage,
 
     // Actions
     fetchRooms: refetch,
     openAddDialog,
     openEditDialog,
     openDeleteDialog,
-    closeRoomDialog,
-    closeDeleteDialog,
     saveRoom,
     confirmDelete,
     updateSearch,

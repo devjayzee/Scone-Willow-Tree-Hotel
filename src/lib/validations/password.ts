@@ -137,4 +137,35 @@ export function checkPasswordStrength(password: string): {
   return { isValid, checks, strength };
 }
 
+/**
+ * Generate a strong password that meets all requirements:
+ * - At least 12 characters
+ * - Uppercase, lowercase, numbers, special characters
+ */
+export function generatePassword(): string {
+  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const lowercase = "abcdefghijklmnopqrstuvwxyz";
+  const numbers = "0123456789";
+  const special = "!@#$%^&*";
+  const all = uppercase + lowercase + numbers + special;
+
+  // Ensure at least one of each required type
+  let password = "";
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += special[Math.floor(Math.random() * special.length)];
+
+  // Fill remaining characters (total 12 characters)
+  for (let i = 0; i < 8; i++) {
+    password += all[Math.floor(Math.random() * all.length)];
+  }
+
+  // Shuffle the password
+  return password
+    .split("")
+    .sort(() => Math.random() - 0.5)
+    .join("");
+}
+
 export { validatePasswordStrength, PASSWORD_MIN_LENGTH };
