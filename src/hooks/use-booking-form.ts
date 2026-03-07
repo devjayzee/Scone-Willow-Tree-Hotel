@@ -226,7 +226,7 @@ export function useBookingForm({
   const totalPrice = nights * pricePerNight;
   const bondAmount = bondDeposit ? parseFloat(bondDeposit) : 0;
 
-  const canProceedToStay = Boolean(guestName && guestEmail);
+  const canProceedToStay = Boolean(guestName && guestPhone);
   const canProceedToSummary = Boolean(roomId && checkIn && checkOut && nights > 0);
 
   // Generate PDF
