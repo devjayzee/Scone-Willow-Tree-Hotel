@@ -26,6 +26,7 @@ export function useBookingManagement({
   const {
     data: bookings = initialBookings,
     error: queryError,
+    isFetching,
     refetch,
   } = useBookings(initialBookings);
   const createMutation = useCreateBooking();
@@ -182,6 +183,7 @@ export function useBookingManagement({
     isProcessing,
     isCreating,
     isDeleting,
+    isRefreshing: isFetching,
 
     // Search and pagination
     searchQuery,
