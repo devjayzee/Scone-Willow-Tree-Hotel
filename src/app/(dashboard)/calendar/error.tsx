@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -11,7 +12,7 @@ interface ErrorProps {
 
 export default function CalendarError({ error, reset }: ErrorProps) {
   useEffect(() => {
-    console.error("Calendar page error:", error);
+    logger.error("Calendar page error", error, { digest: error.digest });
   }, [error]);
 
   return (

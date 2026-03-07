@@ -1,17 +1,22 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, addMonths, startOfMonth, endOfMonth } from "date-fns";
 import { enAU } from "date-fns/locale";
 import { toast } from "sonner";
+import { logger } from "@/lib/logger";
+import { CalendarSkeleton } from "@/components/calendar/calendar-skeleton";
 import { RoomCalendar } from "@/components/calendar/room-calendar";
 import { CalendarToolbar } from "@/components/calendar/calendar-toolbar";
+import { MobileCalendar } from "@/components/calendar/mobile-calendar";
+import { MobileWeekCalendar } from "@/components/calendar/mobile-week-calendar";
 import { BookingDetailsDialog } from "@/components/booking/booking-details-dialog";
 import { useCalendarEvents } from "@/hooks/use-calendar";
 import type { RoomSummary } from "@/types/room";
 import type { CalendarEvent } from "@/types/calendar";
 import type { Booking } from "@/types/booking";
+import { getRoomColor } from "@/lib/constants/room-colors";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar.css";
 
@@ -27,23 +32,12 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-// Color palette for rooms
-const roomColors: Record<string, { bg: string; text: string }> = {
-  "1": { bg: "#fef3c7", text: "#92400e" },
-  "2": { bg: "#dbeafe", text: "#1e40af" },
-  "3": { bg: "#dcfce7", text: "#166534" },
-  "4": { bg: "#fce7f3", text: "#9d174d" },
-  "5": { bg: "#e0e7ff", text: "#3730a3" },
-  "6": { bg: "#fed7aa", text: "#c2410c" },
-  "7": { bg: "#d1fae5", text: "#065f46" },
-  "8": { bg: "#fae8ff", text: "#86198f" },
-};
-
 type ViewType = "month" | "week";
 
 interface CalendarClientProps {
   initialEvents: CalendarEvent[];
   initialRooms: RoomSummary[];
+  fetchTime?: number;
 }
 
 // Local calendar event type with Date objects
@@ -58,6 +52,7 @@ interface LocalCalendarEvent {
 export function CalendarClient({
   initialEvents,
   initialRooms,
+  fetchTime,
 }: CalendarClientProps) {
   // Calendar state
   const [view, setView] = useState<ViewType>("month");
@@ -67,21 +62,30 @@ export function CalendarClient({
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  // Calculate date range for query
+  // Calculate date range for query (3 months back, 6 months ahead from current view)
   const startDate = useMemo(
-    () => startOfMonth(addMonths(date, -1)).toISOString(),
+    () => startOfMonth(addMonths(date, -3)).toISOString(),
     [date]
   );
   const endDate = useMemo(
-    () => endOfMonth(addMonths(date, 1)).toISOString(),
+    () => endOfMonth(addMonths(date, 6)).toISOString(),
     [date]
   );
 
+  // Track initial date range to only use initialData for matching queries
+  const initialDateRange = useRef({ start: startDate, end: endDate });
+  const isInitialRange =
+    startDate === initialDateRange.current.start &&
+    endDate === initialDateRange.current.end;
+
   // TanStack Query for calendar events
-  const { data: events = initialEvents } = useCalendarEvents(
-    initialEvents,
+  // Only pass initialData when on the initial date range to avoid stale data
+  const { data: events = initialEvents, refetch, isFetching } = useCalendarEvents(
+    isInitialRange ? initialEvents : undefined,
     startDate,
-    endDate
+    endDate,
+    undefined, // roomId
+    isInitialRange ? fetchTime : undefined
   );
 
   // Convert events from ISO strings to Date objects for react-big-calendar
@@ -128,15 +132,14 @@ export function CalendarClient({
       setSelectedBooking(booking);
       setDetailsDialogOpen(true);
     } catch (error) {
-      console.error("Failed to fetch booking details:", error);
+      logger.error("Failed to fetch booking details", error, { eventId });
       toast.error("Failed to fetch booking details");
     }
   };
 
   // Event styling for monthly view
   const eventStyleGetter = useCallback((event: LocalCalendarEvent) => {
-    const roomNumber = event.resource.roomNumber;
-    const colors = roomColors[roomNumber] || { bg: "#f3f4f6", text: "#374151" };
+    const colors = getRoomColor(event.resource.roomNumber);
 
     return {
       style: {
@@ -166,36 +169,65 @@ export function CalendarClient({
         view={view}
         onNavigate={handleNavigate}
         onViewChange={handleViewChange}
+        onRefresh={() => refetch()}
+        isRefreshing={isFetching}
       />
 
       {/* Calendar Views */}
-      <div className="bg-white rounded-lg border p-4">
-        {view === "month" ? (
-          <div style={{ minHeight: "700px" }}>
-            <Calendar
-              localizer={localizer}
-              events={localEvents}
-              startAccessor="start"
-              endAccessor="end"
-              view="month"
-              date={date}
-              onNavigate={handleNavigate}
-              onSelectEvent={handleSelectEvent}
-              eventPropGetter={eventStyleGetter}
-              toolbar={false}
-              showAllEvents
-              style={{ minHeight: "650px" }}
-            />
+      {isFetching ? (
+        <div className="bg-white rounded-lg border p-4">
+          <CalendarSkeleton />
+        </div>
+      ) : (
+        <>
+          {/* Mobile Calendar Views */}
+          <div className="md:hidden">
+            {view === "month" ? (
+              <MobileCalendar
+                date={date}
+                events={events}
+                onSelectEvent={handleSelectCalendarEvent}
+              />
+            ) : (
+              <MobileWeekCalendar
+                date={date}
+                events={events}
+                rooms={initialRooms}
+                onSelectEvent={handleSelectCalendarEvent}
+              />
+            )}
           </div>
-        ) : (
-          <RoomCalendar
-            date={date}
-            events={events}
-            rooms={initialRooms}
-            onSelectEvent={handleSelectCalendarEvent}
-          />
-        )}
-      </div>
+
+          {/* Desktop Calendar Views */}
+          <div className="hidden md:block bg-white rounded-lg border p-4">
+            {view === "month" ? (
+              <div style={{ minHeight: "700px" }}>
+                <Calendar
+                  localizer={localizer}
+                  events={localEvents}
+                  startAccessor="start"
+                  endAccessor="end"
+                  view="month"
+                  date={date}
+                  onNavigate={handleNavigate}
+                  onSelectEvent={handleSelectEvent}
+                  eventPropGetter={eventStyleGetter}
+                  toolbar={false}
+                  showAllEvents
+                  style={{ minHeight: "650px" }}
+                />
+              </div>
+            ) : (
+              <RoomCalendar
+                date={date}
+                events={events}
+                rooms={initialRooms}
+                onSelectEvent={handleSelectCalendarEvent}
+              />
+            )}
+          </div>
+        </>
+      )}
 
       <BookingDetailsDialog
         open={detailsDialogOpen}

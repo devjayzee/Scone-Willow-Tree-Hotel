@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, differenceInDays, addDays, parseISO } from "date-fns";
-import type { CreateBookingInput } from "@/types/booking";
+import { logger } from "@/lib/logger";
+import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 import {
   downloadDraftBookingPDF,
@@ -36,6 +37,7 @@ interface UseBookingFormOptions {
   rooms: RoomSummary[];
   onSubmit: (data: CreateBookingInput) => Promise<void>;
   onClose: () => void;
+  initialBooking?: Booking | null;
 }
 
 export function useBookingForm({
@@ -43,7 +45,10 @@ export function useBookingForm({
   rooms,
   onSubmit,
   onClose,
+  initialBooking,
 }: UseBookingFormOptions) {
+  const isEditMode = Boolean(initialBooking);
+
   // Step management
   const [step, setStep] = useState<BookingStep>("guest");
 
@@ -89,7 +94,7 @@ export function useBookingForm({
           setAvailableRooms(data);
         }
       } catch (err) {
-        console.error("Failed to fetch available rooms:", err);
+        logger.error("Failed to fetch available rooms", err);
         setAvailableRooms(rooms);
       } finally {
         setIsLoadingRooms(false);
@@ -118,15 +123,34 @@ export function useBookingForm({
     setError("");
   }, []);
 
-  // Set default dates when dialog opens
+  // Set default dates when dialog opens, or populate from initial booking
   useEffect(() => {
     if (open) {
-      const today = format(new Date(), "yyyy-MM-dd");
-      const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
-      setCheckIn(today);
-      setCheckOut(tomorrow);
+      if (initialBooking) {
+        // Edit mode: populate from existing booking
+        setGuestName(initialBooking.guestName);
+        setGuestDateOfBirth(initialBooking.guestDateOfBirth ? format(new Date(initialBooking.guestDateOfBirth), "yyyy-MM-dd") : "");
+        setGuestAddress(initialBooking.guestAddress || "");
+        setGuestPhone(initialBooking.guestPhone || "");
+        setGuestEmail(initialBooking.guestEmail || "");
+        setVehicleRego(initialBooking.vehicleRego || "");
+        setAdditionalGuests(initialBooking.additionalGuests || "");
+        setRoomId(initialBooking.roomId);
+        setCheckIn(format(new Date(initialBooking.checkIn), "yyyy-MM-dd"));
+        setCheckInTime(initialBooking.checkInTime || "14:00");
+        setCheckOut(format(new Date(initialBooking.checkOut), "yyyy-MM-dd"));
+        setCheckOutTime(initialBooking.checkOutTime || "10:00");
+        setBondDeposit(initialBooking.bondDeposit?.toString() || "");
+        setNotes(initialBooking.notes || "");
+      } else {
+        // Create mode: set default dates
+        const today = format(new Date(), "yyyy-MM-dd");
+        const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
+        setCheckIn(today);
+        setCheckOut(tomorrow);
+      }
     }
-  }, [open]);
+  }, [open, initialBooking]);
 
   // Fetch available rooms when dates change
   useEffect(() => {
@@ -281,6 +305,9 @@ export function useBookingForm({
   }, []);
 
   return {
+    // Mode
+    isEditMode,
+
     // Step
     step,
     setStep,

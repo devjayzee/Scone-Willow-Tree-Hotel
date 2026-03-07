@@ -8,20 +8,9 @@ import {
   format,
   isToday,
 } from "date-fns";
+import { getRoomColor } from "@/lib/constants/room-colors";
 import type { CalendarEvent } from "@/types/calendar";
 import type { RoomSummary } from "@/types/room";
-
-// Color palette for rooms
-const roomColors: Record<string, { bg: string; text: string; border: string }> = {
-  "1": { bg: "#fef3c7", text: "#92400e", border: "#f59e0b" },
-  "2": { bg: "#dbeafe", text: "#1e40af", border: "#3b82f6" },
-  "3": { bg: "#dcfce7", text: "#166534", border: "#22c55e" },
-  "4": { bg: "#fce7f3", text: "#9d174d", border: "#ec4899" },
-  "5": { bg: "#e0e7ff", text: "#3730a3", border: "#6366f1" },
-  "6": { bg: "#fed7aa", text: "#c2410c", border: "#f97316" },
-  "7": { bg: "#d1fae5", text: "#065f46", border: "#10b981" },
-  "8": { bg: "#fae8ff", text: "#86198f", border: "#d946ef" },
-};
 
 interface RoomCalendarProps {
   date: Date;
@@ -88,11 +77,7 @@ export function RoomCalendar({
         </thead>
         <tbody>
           {rooms.map((room) => {
-            const colors = roomColors[room.roomNumber] || {
-              bg: "#f3f4f6",
-              text: "#374151",
-              border: "#9ca3af",
-            };
+            const colors = getRoomColor(room.roomNumber);
 
             return (
               <tr key={room.id}>

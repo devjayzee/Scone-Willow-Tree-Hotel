@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { invalidateWithRelated } from "@/lib/query-invalidation";
 import type { Room } from "@/types/room";
 
 export interface RoomFormData {
@@ -19,6 +20,7 @@ export const roomKeys = {
   details: () => [...roomKeys.all, "detail"] as const,
   detail: (id: string) => [...roomKeys.details(), id] as const,
 };
+
 
 // Fetch all rooms
 async function fetchRooms(): Promise<Room[]> {
@@ -80,11 +82,13 @@ async function deleteRoom(id: string): Promise<void> {
 }
 
 // Hook to fetch all rooms
-export function useRooms(initialData?: Room[]) {
+export function useRooms(initialData?: Room[], initialDataUpdatedAt?: number) {
   return useQuery({
     queryKey: roomKeys.list(),
     queryFn: fetchRooms,
     initialData,
+    initialDataUpdatedAt,
+    staleTime: 1000 * 60 * 5, // 5 minutes - room data rarely changes
   });
 }
 
@@ -135,8 +139,8 @@ export function useCreateRoom() {
       toast.success("Room created successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      // Invalidate rooms and all related caches (bookings, calendar, reports)
+      invalidateWithRelated(queryClient, "rooms");
     },
   });
 }
@@ -189,8 +193,8 @@ export function useUpdateRoom() {
       toast.success("Room updated successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      // Invalidate rooms and all related caches (bookings, calendar, reports)
+      invalidateWithRelated(queryClient, "rooms");
     },
   });
 }
@@ -227,8 +231,8 @@ export function useDeleteRoom() {
       toast.success("Room deleted successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      // Invalidate rooms and all related caches (bookings, calendar, reports)
+      invalidateWithRelated(queryClient, "rooms");
     },
   });
 }

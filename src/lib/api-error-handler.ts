@@ -9,6 +9,7 @@ import {
   ForbiddenError,
   BusinessRuleError,
 } from "./errors";
+import { logger } from "./logger";
 
 /**
  * Standard API error response format.
@@ -77,8 +78,7 @@ export function handleApiError(
   }
 
   // Log unexpected errors
-  const contextMsg = context ? ` while ${context}` : "";
-  console.error(`Unexpected error${contextMsg}:`, error);
+  logger.error("Unexpected API error", error, { context });
 
   // Return generic error for unknown errors (don't leak internal details)
   return NextResponse.json(
