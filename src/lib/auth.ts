@@ -67,7 +67,7 @@ export const authOptions: NextAuthOptions = {
       // This ensures sessions are invalidated when password changes
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
+          where: { id: token.id },
           select: { tokenVersion: true, isActive: true },
         });
 
@@ -92,9 +92,9 @@ export const authOptions: NextAuthOptions = {
       }
 
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.firstName = token.firstName as string;
+        session.user.id = token.id;
+        session.user.role = token.role;
+        session.user.firstName = token.firstName;
       }
       return session;
     },

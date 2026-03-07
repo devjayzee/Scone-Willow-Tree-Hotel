@@ -21,34 +21,7 @@ import {
   Clock,
   Cake,
 } from "lucide-react";
-
-interface Booking {
-  id: string;
-  bookingRef: string;
-  guestName: string;
-  guestDateOfBirth?: string | null;
-  guestAddress?: string | null;
-  guestEmail: string;
-  guestPhone?: string | null;
-  vehicleRego?: string | null;
-  additionalGuests?: string | null;
-  checkIn: string;
-  checkInTime?: string | null;
-  checkOut: string;
-  checkOutTime?: string | null;
-  bondDeposit?: string | number | null;
-  notes?: string | null;
-  createdAt: string;
-  room: {
-    roomNumber: string;
-    roomType: string | null;
-    pricePerNight: string | number;
-  };
-  createdBy?: {
-    firstName: string;
-    lastName: string;
-  };
-}
+import type { Booking } from "@/types/booking";
 
 interface BookingDetailsDialogProps {
   open: boolean;
