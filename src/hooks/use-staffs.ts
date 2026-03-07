@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { invalidateWithRelated } from "@/lib/query-invalidation";
 import type { Staff, Role } from "@/types/staff";
 
 export interface StaffFormData {
@@ -92,11 +93,13 @@ async function deleteStaff(id: string): Promise<{ message: string; deactivated?:
 }
 
 // Hook to fetch all staffs
-export function useStaffs(initialData?: Staff[]) {
+export function useStaffs(initialData?: Staff[], initialDataUpdatedAt?: number) {
   return useQuery({
     queryKey: staffKeys.list(),
     queryFn: fetchStaffs,
     initialData,
+    initialDataUpdatedAt,
+    staleTime: 1000 * 60 * 5, // 5 minutes - staff data rarely changes
   });
 }
 
@@ -146,8 +149,8 @@ export function useCreateStaff() {
       toast.success("Staff created successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      // Invalidate staff and all related caches
+      invalidateWithRelated(queryClient, "staff");
     },
   });
 }
@@ -193,8 +196,8 @@ export function useUpdateStaff() {
       toast.error(error.message);
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      // Invalidate staff and all related caches
+      invalidateWithRelated(queryClient, "staff");
     },
   });
 }
@@ -235,8 +238,8 @@ export function useDeleteStaff() {
       }
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      // Invalidate staff and all related caches
+      invalidateWithRelated(queryClient, "staff");
     },
   });
 }
@@ -279,8 +282,8 @@ export function useToggleStaffActive() {
       toast.success(variables.isActive ? "Staff activated" : "Staff deactivated");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: staffKeys.lists() });
+      // Invalidate staff and all related caches
+      invalidateWithRelated(queryClient, "staff");
     },
   });
 }

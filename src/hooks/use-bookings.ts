@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { invalidateWithRelated } from "@/lib/query-invalidation";
 import type { Booking, CreateBookingInput, UpdateBookingInput } from "@/types/booking";
 
 // Query key factory for bookings
@@ -13,6 +14,7 @@ export const bookingKeys = {
   details: () => [...bookingKeys.all, "detail"] as const,
   detail: (id: string) => [...bookingKeys.details(), id] as const,
 };
+
 
 // Fetch all bookings
 async function fetchBookings(): Promise<Booking[]> {
@@ -102,11 +104,13 @@ async function performBookingAction({
 }
 
 // Hook to fetch all bookings
-export function useBookings(initialData?: Booking[]) {
+export function useBookings(initialData?: Booking[], initialDataUpdatedAt?: number) {
   return useQuery({
     queryKey: bookingKeys.list(),
     queryFn: fetchBookings,
     initialData,
+    initialDataUpdatedAt,
+    staleTime: 1000 * 30, // 30 seconds - bookings change frequently
   });
 }
 
@@ -175,8 +179,8 @@ export function useCreateBooking() {
       toast.success("Booking created successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -230,8 +234,8 @@ export function useUpdateBooking() {
       toast.success("Booking updated successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -270,8 +274,8 @@ export function useDeleteBooking() {
       toast.success("Booking deleted successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -319,8 +323,8 @@ export function useCheckInBooking() {
       toast.success("Guest checked in successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -368,8 +372,8 @@ export function useCheckOutBooking() {
       toast.success("Guest checked out successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -417,8 +421,8 @@ export function useCancelBooking() {
       toast.success("Booking cancelled successfully");
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }
@@ -468,8 +472,8 @@ export function useTogglePayment() {
       );
     },
     onSettled: () => {
-      // Always refetch after error or success to sync with server
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      // Invalidate bookings and all related caches (calendar, reports)
+      invalidateWithRelated(queryClient, "bookings");
     },
   });
 }

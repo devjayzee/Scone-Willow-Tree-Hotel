@@ -37,13 +37,15 @@ export function useCalendarEvents(
   initialData?: CalendarEvent[],
   startDate?: string,
   endDate?: string,
-  roomId?: string
+  roomId?: string,
+  initialDataUpdatedAt?: number
 ) {
   return useQuery({
     queryKey: calendarKeys.eventsFiltered(startDate, endDate, roomId),
     queryFn: () => fetchCalendarEvents(startDate, endDate, roomId),
     initialData,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    initialDataUpdatedAt,
+    staleTime: 1000 * 30, // 30 seconds - derived from bookings, should match
   });
 }
 

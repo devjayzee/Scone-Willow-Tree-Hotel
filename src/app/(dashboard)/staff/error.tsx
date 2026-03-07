@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ErrorProps {
   error: Error & { digest?: string };
@@ -11,7 +12,7 @@ interface ErrorProps {
 
 export default function StaffsError({ error, reset }: ErrorProps) {
   useEffect(() => {
-    console.error("Staffs page error:", error);
+    logger.error("Staffs page error", error, { digest: error.digest });
   }, [error]);
 
   return (

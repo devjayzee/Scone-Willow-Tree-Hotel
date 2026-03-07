@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from "react";
 import {
   useBookings,
   useCreateBooking,
+  useUpdateBooking,
   useDeleteBooking,
   useCheckInBooking,
   useCheckOutBooking,
@@ -16,11 +17,13 @@ import type { RoomSummary } from "@/types/room";
 interface UseBookingManagementOptions {
   initialBookings: Booking[];
   initialRooms: RoomSummary[];
+  fetchTime?: number;
 }
 
 export function useBookingManagement({
   initialBookings,
   initialRooms,
+  fetchTime,
 }: UseBookingManagementOptions) {
   // TanStack Query hooks
   const {
@@ -28,8 +31,9 @@ export function useBookingManagement({
     error: queryError,
     isFetching,
     refetch,
-  } = useBookings(initialBookings);
+  } = useBookings(initialBookings, fetchTime);
   const createMutation = useCreateBooking();
+  const updateMutation = useUpdateBooking();
   const deleteMutation = useDeleteBooking();
   const checkInMutation = useCheckInBooking();
   const checkOutMutation = useCheckOutBooking();
@@ -45,25 +49,32 @@ export function useBookingManagement({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
-  // Search and pagination state
+  // Search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Derived state
   const error = queryError?.message || "";
   const isProcessing =
     createMutation.isPending ||
+    updateMutation.isPending ||
     deleteMutation.isPending ||
     checkInMutation.isPending ||
     checkOutMutation.isPending ||
     cancelMutation.isPending ||
     togglePaymentMutation.isPending;
   const isCreating = createMutation.isPending;
+  const isUpdating = updateMutation.isPending;
   const isDeleting = deleteMutation.isPending;
 
   // Open create dialog
   const openCreateDialog = useCallback(() => {
     setSelectedBooking(null);
+    setBookingDialogOpen(true);
+  }, []);
+
+  // Open edit dialog
+  const openEditDialog = useCallback((booking: Booking) => {
+    setSelectedBooking(booking);
     setBookingDialogOpen(true);
   }, []);
 
@@ -79,31 +90,38 @@ export function useBookingManagement({
     setDeleteDialogOpen(true);
   }, []);
 
-  // Close booking dialog
-  const closeBookingDialog = useCallback(() => {
-    setBookingDialogOpen(false);
-    setSelectedBooking(null);
-  }, []);
-
-  // Close details dialog
-  const closeDetailsDialog = useCallback(() => {
-    setDetailsDialogOpen(false);
-    setSelectedBooking(null);
-  }, []);
-
-  // Close delete dialog
-  const closeDeleteDialog = useCallback(() => {
-    setDeleteDialogOpen(false);
-    setSelectedBooking(null);
-  }, []);
-
-  // Create a new booking
-  const createBooking = useCallback(
+  // Create or update a booking
+  const submitBooking = useCallback(
     async (data: CreateBookingInput) => {
-      await createMutation.mutateAsync(data);
+      if (selectedBooking) {
+        // Update existing booking
+        await updateMutation.mutateAsync({
+          id: selectedBooking.id,
+          data: {
+            roomId: data.roomId,
+            guestName: data.guestName,
+            guestDateOfBirth: data.guestDateOfBirth,
+            guestAddress: data.guestAddress,
+            guestPhone: data.guestPhone,
+            guestEmail: data.guestEmail,
+            vehicleRego: data.vehicleRego,
+            additionalGuests: data.additionalGuests,
+            checkIn: data.checkIn,
+            checkInTime: data.checkInTime,
+            checkOut: data.checkOut,
+            checkOutTime: data.checkOutTime,
+            bondDeposit: data.bondDeposit,
+            notes: data.notes,
+          },
+        });
+      } else {
+        // Create new booking
+        await createMutation.mutateAsync(data);
+      }
       setBookingDialogOpen(false);
+      setSelectedBooking(null);
     },
-    [createMutation]
+    [selectedBooking, createMutation, updateMutation]
   );
 
   // Delete a booking
@@ -154,7 +172,6 @@ export function useBookingManagement({
   // Update search query
   const updateSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    setCurrentPage(1);
   }, []);
 
   // Filter bookings by search query
@@ -182,29 +199,26 @@ export function useBookingManagement({
     selectedBooking,
     isProcessing,
     isCreating,
+    isUpdating,
     isDeleting,
-    isRefreshing: isFetching,
+    isFetching,
 
-    // Search and pagination
+    // Search
     searchQuery,
-    currentPage,
 
     // Actions
     fetchBookings: refetch,
     openCreateDialog,
+    openEditDialog,
     openDetailsDialog,
     openDeleteDialog,
-    closeBookingDialog,
-    closeDetailsDialog,
-    closeDeleteDialog,
-    createBooking,
+    submitBooking,
     confirmDelete,
     checkInBooking,
     checkOutBooking,
     cancelBooking,
     togglePayment,
     updateSearch,
-    setCurrentPage,
     setBookingDialogOpen,
     setDetailsDialogOpen,
     setDeleteDialogOpen,

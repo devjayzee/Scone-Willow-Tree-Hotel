@@ -13,11 +13,12 @@ import type { StaffFormData } from "@/components/staff/staff-dialog";
 
 interface UseStaffManagementOptions {
   initialStaffs: Staff[];
+  fetchTime?: number;
 }
 
-export function useStaffManagement({ initialStaffs }: UseStaffManagementOptions) {
+export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagementOptions) {
   // TanStack Query hooks
-  const { data: staffs = initialStaffs, error: queryError, refetch } = useStaffs(initialStaffs);
+  const { data: staffs = initialStaffs, error: queryError, refetch, isFetching } = useStaffs(initialStaffs, fetchTime);
   const createMutation = useCreateStaff();
   const updateMutation = useUpdateStaff();
   const deleteMutation = useDeleteStaff();
@@ -55,12 +56,6 @@ export function useStaffManagement({ initialStaffs }: UseStaffManagementOptions)
   const openDeleteDialog = useCallback((staff: Staff) => {
     setSelectedStaff(staff);
     setDeleteDialogOpen(true);
-  }, []);
-
-  // Close staff dialog
-  const closeStaffDialog = useCallback(() => {
-    setStaffDialogOpen(false);
-    setSelectedStaff(null);
   }, []);
 
   // Create or update a staff member
@@ -139,6 +134,7 @@ export function useStaffManagement({ initialStaffs }: UseStaffManagementOptions)
     staffs,
     filteredStaffs,
     error,
+    isFetching,
 
     // Dialog state
     staffDialogOpen,
@@ -154,7 +150,6 @@ export function useStaffManagement({ initialStaffs }: UseStaffManagementOptions)
     openAddDialog,
     openEditDialog,
     openDeleteDialog,
-    closeStaffDialog,
     saveStaff,
     confirmDelete,
     toggleActive,
