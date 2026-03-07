@@ -22,8 +22,8 @@ export interface Booking {
   guestName: string;
   guestDateOfBirth?: string | null;
   guestAddress?: string | null;
-  guestEmail: string;
-  guestPhone?: string | null;
+  guestEmail?: string | null;
+  guestPhone: string;
   vehicleRego?: string | null;
   additionalGuests?: string | null;
   checkIn: string;
@@ -44,7 +44,7 @@ export interface BookingSummary {
   id: string;
   bookingRef: string;
   guestName: string;
-  guestEmail: string;
+  guestPhone: string;
   checkIn: string;
   checkOut: string;
   status: BookingStatus;
@@ -59,8 +59,8 @@ export interface CreateBookingInput {
   guestName: string;
   guestDateOfBirth?: string;
   guestAddress?: string;
-  guestPhone?: string;
-  guestEmail: string;
+  guestPhone: string;
+  guestEmail?: string;
   vehicleRego?: string;
   additionalGuests?: string;
   checkIn: string;

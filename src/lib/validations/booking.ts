@@ -8,8 +8,17 @@ const bookingStatusEnum = z.enum([
   "CANCELLED",
 ]);
 
-// Phone number validation (Australian format or international)
+// Phone number validation (Australian format or international) - Required
 const phoneSchema = z
+  .string()
+  .min(1, "Mobile number is required")
+  .regex(
+    /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/,
+    "Please enter a valid phone number"
+  );
+
+// Optional phone number for updates
+const optionalPhoneSchema = z
   .string()
   .regex(
     /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/,
@@ -53,7 +62,7 @@ export const createBookingSchema = z
     guestDateOfBirth: optionalDateStringSchema,
     guestAddress: z.string().max(500, "Address is too long").optional().or(z.literal("")),
     guestPhone: phoneSchema,
-    guestEmail: z.string().email("Valid email is required"),
+    guestEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
     vehicleRego: z
       .string()
       .max(20, "Vehicle registration is too long")
@@ -88,8 +97,8 @@ export const updateBookingSchema = z
     guestName: z.string().min(1, "Guest name is required").max(100, "Name is too long").optional(),
     guestDateOfBirth: optionalDateStringSchema.nullable(),
     guestAddress: z.string().max(500, "Address is too long").optional().nullable(),
-    guestPhone: phoneSchema.nullable(),
-    guestEmail: z.string().email("Valid email is required").optional(),
+    guestPhone: optionalPhoneSchema.nullable(),
+    guestEmail: z.string().email("Valid email is required").optional().or(z.literal("")).nullable(),
     vehicleRego: z.string().max(20, "Vehicle registration is too long").optional().nullable(),
     additionalGuests: z.string().max(1000, "Additional guests text is too long").optional().nullable(),
     // Stay Details

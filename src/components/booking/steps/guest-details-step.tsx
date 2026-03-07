@@ -67,24 +67,24 @@ export function GuestDetailsStep({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="guestPhone">Mobile Number</Label>
+          <Label htmlFor="guestPhone">Mobile Number *</Label>
           <Input
             id="guestPhone"
             type="tel"
             value={guest.guestPhone}
             onChange={(e) => onGuestPhoneChange(e.target.value)}
             placeholder="0400 000 000"
+            required
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="guestEmail">Email *</Label>
+          <Label htmlFor="guestEmail">Email</Label>
           <Input
             id="guestEmail"
             type="email"
             value={guest.guestEmail}
             onChange={(e) => onGuestEmailChange(e.target.value)}
             placeholder="guest@example.com"
-            required
           />
         </div>
       </div>
