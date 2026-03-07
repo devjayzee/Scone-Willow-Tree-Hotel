@@ -66,10 +66,17 @@ const authMiddleware = withAuth(
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
 
-    // Protected routes that require GENERAL_MANAGER role
-    const managerOnlyPaths = ["/rooms", "/reports", "/staff"];
+    // Routes that require MANAGER or GENERAL_MANAGER role
+    const managerPaths = ["/rooms", "/reports"];
+    if (managerPaths.some((p) => path.startsWith(p))) {
+      if (token?.role !== "GENERAL_MANAGER" && token?.role !== "MANAGER") {
+        return NextResponse.redirect(new URL("/bookings", req.url));
+      }
+    }
 
-    if (managerOnlyPaths.some((p) => path.startsWith(p))) {
+    // Routes that require GENERAL_MANAGER role only
+    const generalManagerOnlyPaths = ["/staff"];
+    if (generalManagerOnlyPaths.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
