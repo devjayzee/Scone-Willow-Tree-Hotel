@@ -10,8 +10,8 @@ export interface BookingPDFData {
   guestName: string;
   guestDateOfBirth?: string | null;
   guestAddress?: string | null;
-  guestEmail: string;
-  guestPhone?: string | null;
+  guestEmail?: string | null;
+  guestPhone: string;
   vehicleRego?: string | null;
   additionalGuests?: string | null;
   checkIn: string;

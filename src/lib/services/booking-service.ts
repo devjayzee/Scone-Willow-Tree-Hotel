@@ -257,8 +257,8 @@ export async function createBooking(
         ? new Date(data.guestDateOfBirth)
         : null,
       guestAddress: data.guestAddress || null,
-      guestPhone: data.guestPhone || null,
-      guestEmail: data.guestEmail,
+      guestPhone: data.guestPhone,
+      guestEmail: data.guestEmail || null,
       vehicleRego: data.vehicleRego || null,
       additionalGuests: data.additionalGuests || null,
       checkIn: checkInDate,

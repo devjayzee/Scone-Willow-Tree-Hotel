@@ -19,7 +19,7 @@ export interface RecentBooking {
   id: string;
   bookingRef: string;
   guestName: string;
-  guestEmail: string;
+  guestPhone: string;
   checkIn: string | Date;
   checkOut: string | Date;
   status: BookingStatus;

@@ -63,7 +63,7 @@ export async function getCalendarEvents(
       resource: {
         bookingRef: booking.bookingRef,
         guestName: booking.guestName,
-        guestEmail: booking.guestEmail,
+        guestPhone: booking.guestPhone,
         roomNumber: booking.room.roomNumber,
         roomId: booking.room.id,
         status: booking.status,

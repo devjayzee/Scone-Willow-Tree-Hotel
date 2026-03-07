@@ -109,7 +109,7 @@ export function BookingTable<T extends BookingSummary>({
               <td className="px-6 py-4">
                 <div>
                   <p className="font-medium text-gray-900">{booking.guestName}</p>
-                  <p className="text-sm text-gray-500">{booking.guestEmail}</p>
+                  <p className="text-sm text-gray-500">{booking.guestPhone}</p>
                 </div>
               </td>
               <td className="px-6 py-4">
