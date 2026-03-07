@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { TablePagination } from "@/components/ui/table-pagination";
+import { useTablePagination } from "@/hooks/use-table-pagination";
+import { Pencil, Trash2, Users, DollarSign, MoreHorizontal } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Room } from "@/types/room";
 
 interface RoomTableProps {
@@ -18,8 +17,6 @@ interface RoomTableProps {
   onEdit: (room: Room) => void;
   onDelete: (room: Room) => void;
   isManager: boolean;
-  currentPage: number;
-  onPageChange: (page: number) => void;
 }
 
 export function RoomTable({
@@ -27,56 +24,59 @@ export function RoomTable({
   onEdit,
   onDelete,
   isManager,
-  currentPage,
-  onPageChange,
 }: RoomTableProps) {
-  const { data: session } = useSession();
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-
-  const storageKey = `rooms-per-page-${session?.user?.id || "default"}`;
-
-  // Load saved preference on mount
-  useEffect(() => {
-    if (session?.user?.id) {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = parseInt(saved);
-        if ([10, 20, 50].includes(parsed)) {
-          setItemsPerPage(parsed);
-        }
-      }
-    }
-  }, [session?.user?.id, storageKey]);
-
-  // Adjust current page if it exceeds total pages after data changes
-  useEffect(() => {
-    const totalPages = Math.ceil(rooms.length / itemsPerPage);
-    if (currentPage > totalPages && totalPages > 0) {
-      onPageChange(totalPages);
-    }
-  }, [rooms.length, itemsPerPage, currentPage, onPageChange]);
+  // Use shared pagination hook
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalPages,
+    paginatedItems: paginatedRooms,
+    startIndex,
+    endIndex,
+    pageSizeOptions,
+  } = useTablePagination(rooms, {
+    storageKeyPrefix: "rooms",
+  });
 
   const formatPrice = (price: string | number) => {
     const numPrice = typeof price === "string" ? parseFloat(price) : price;
     return `$${numPrice.toFixed(0)}/night`;
   };
 
-  // Pagination calculations
-  const totalPages = Math.ceil(rooms.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedRooms = rooms.slice(startIndex, endIndex);
-
-  const handleItemsPerPageChange = (value: string) => {
-    const newValue = parseInt(value);
-    setItemsPerPage(newValue);
-    onPageChange(1);
-    localStorage.setItem(storageKey, value);
-  };
+  // Reusable action menu for mobile
+  const renderActionMenu = (room: Room) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-gray-400 hover:text-gray-600"
+          aria-label={`Actions for Room ${room.roomNumber}`}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onEdit(room)}>
+          <Pencil className="h-4 w-4 mr-2" aria-hidden="true" />
+          Edit Room
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onDelete(room)}
+          className="text-red-600 focus:text-red-600"
+        >
+          <Trash2 className="h-4 w-4 mr-2" aria-hidden="true" />
+          Delete Room
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   if (rooms.length === 0) {
     return (
-      <div className="bg-white rounded-lg border p-12 text-center">
+      <div className="bg-white rounded-lg border p-12 text-center" role="status">
         <p className="text-muted-foreground">No rooms found</p>
       </div>
     );
@@ -84,131 +84,120 @@ export function RoomTable({
 
   return (
     <div className="bg-white rounded-lg border overflow-hidden">
-      {/* Table */}
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-gray-50/50 text-sm font-medium text-gray-500">
-            <th className="text-left px-6 py-3 w-[8%]">Room</th>
-            <th className="text-left px-6 py-3 w-[10%]">Capacity</th>
-            <th className="text-left px-6 py-3 w-[10%]">Price</th>
-            <th className="text-left px-6 py-3">Description</th>
-            {isManager && (
-              <th className="text-right px-6 py-3 w-[10%]">Actions</th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {paginatedRooms.map((room) => (
-            <tr key={room.id} className="hover:bg-gray-50/50 transition-colors">
-              {/* Room Number */}
-              <td className="px-6 py-4">
-                <span className="font-medium text-gray-900">
-                  {room.roomNumber}
+      {/* Mobile Card View */}
+      <div className="md:hidden divide-y" role="list" aria-label="Rooms list">
+        {paginatedRooms.map((room) => (
+          <article
+            key={room.id}
+            className="p-4 space-y-3"
+            aria-label={`Room ${room.roomNumber}`}
+          >
+            {/* Header: Room Number & Actions */}
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-gray-900 text-lg">
+                Room {room.roomNumber}
+              </span>
+              {isManager && renderActionMenu(room)}
+            </div>
+
+            {/* Details */}
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                <span className="text-gray-600">
+                  {room.capacity} {room.capacity === 1 ? "Guest" : "Guests"}
                 </span>
-              </td>
+              </div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-gray-400" aria-hidden="true" />
+                <span className="font-medium text-gray-900">
+                  {formatPrice(room.pricePerNight)}
+                </span>
+              </div>
+            </div>
 
-              {/* Capacity */}
-              <td className="px-6 py-4 text-gray-600">
-                {room.capacity} {room.capacity === 1 ? "Guest" : "Guests"}
-              </td>
+            {/* Description */}
+            {room.description && (
+              <p className="text-sm text-gray-500">{room.description}</p>
+            )}
+          </article>
+        ))}
+      </div>
 
-              {/* Price */}
-              <td className="px-6 py-4 text-gray-900 font-medium">
-                {formatPrice(room.pricePerNight)}
-              </td>
-
-              {/* Description */}
-              <td className="px-6 py-4 text-gray-500 text-sm">
-                {room.description || "—"}
-              </td>
-
-              {/* Actions */}
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full" role="table" aria-label="Rooms table">
+          <thead>
+            <tr className="border-b bg-gray-50/50 text-sm font-medium text-gray-500">
+              <th scope="col" className="text-left px-6 py-3">Room</th>
+              <th scope="col" className="text-left px-6 py-3">Capacity</th>
+              <th scope="col" className="text-left px-6 py-3">Price</th>
+              <th scope="col" className="text-left px-6 py-3">Description</th>
               {isManager && (
-                <td className="px-6 py-4">
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEdit(room)}
-                      className="h-8 w-8 text-gray-400 hover:text-gray-600"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(room)}
-                      className="h-8 w-8 text-gray-400 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </td>
+                <th scope="col" className="text-right px-6 py-3">Actions</th>
               )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {paginatedRooms.map((room) => (
+              <tr key={room.id} className="hover:bg-gray-50/50 transition-colors">
+                <td className="px-6 py-4">
+                  <span className="font-medium text-gray-900">
+                    {room.roomNumber}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-gray-600">
+                  {room.capacity} {room.capacity === 1 ? "Guest" : "Guests"}
+                </td>
+                <td className="px-6 py-4 text-gray-900 font-medium">
+                  {formatPrice(room.pricePerNight)}
+                </td>
+                <td className="px-6 py-4 text-gray-500 text-sm">
+                  {room.description || "—"}
+                </td>
+                {isManager && (
+                  <td className="px-6 py-4">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEdit(room)}
+                        className="h-8 w-8 text-gray-400 hover:text-gray-600"
+                        aria-label={`Edit Room ${room.roomNumber}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(room)}
+                        className="h-8 w-8 text-gray-400 hover:text-red-600"
+                        aria-label={`Delete Room ${room.roomNumber}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* Pagination Footer */}
-      <div className="px-6 py-3 border-t bg-gray-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span>Show</span>
-          <Select
-            value={itemsPerPage.toString()}
-            onValueChange={handleItemsPerPageChange}
-          >
-            <SelectTrigger className="w-[70px] h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="10">10</SelectItem>
-              <SelectItem value="20">20</SelectItem>
-              <SelectItem value="50">50</SelectItem>
-            </SelectContent>
-          </Select>
-          <span>per page</span>
-        </div>
-
-        <div className="text-sm text-gray-500">
-          Showing {startIndex + 1} to {Math.min(endIndex, rooms.length)} of{" "}
-          {rooms.length} rooms
-        </div>
-
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <Button
-              key={page}
-              variant={currentPage === page ? "default" : "outline"}
-              size="icon"
-              className={`h-8 w-8 ${currentPage === page ? "bg-navy hover:bg-navy-dark text-cream" : ""}`}
-              onClick={() => onPageChange(page)}
-            >
-              {page}
-            </Button>
-          ))}
-
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <TablePagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={rooms.length}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        itemsPerPage={itemsPerPage}
+        pageSizeOptions={pageSizeOptions}
+        onPageChange={setCurrentPage}
+        onItemsPerPageChange={setItemsPerPage}
+        itemLabel="rooms"
+      />
     </div>
   );
 }

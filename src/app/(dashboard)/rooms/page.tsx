@@ -4,7 +4,13 @@ import { getAllRooms } from "@/lib/services/room-service";
 import { RoomsClient } from "@/components/room/rooms-client";
 import type { Room } from "@/types/room";
 
+// Revalidate every 5 minutes - room data rarely changes
+export const revalidate = 300;
+
 export default async function RoomsPage() {
+  // Track when data was fetched for cache freshness
+  const fetchTime = Date.now();
+
   const session = await getServerSession(authOptions);
   const isManager = session?.user?.role === "GENERAL_MANAGER";
 
@@ -20,5 +26,11 @@ export default async function RoomsPage() {
     description: room.description,
   }));
 
-  return <RoomsClient initialRooms={serializedRooms} isManager={isManager} />;
+  return (
+    <RoomsClient
+      initialRooms={serializedRooms}
+      isManager={isManager}
+      fetchTime={fetchTime}
+    />
+  );
 }
