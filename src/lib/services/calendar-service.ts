@@ -49,27 +49,43 @@ export async function getCalendarEvents(
   });
 
   // Transform bookings to calendar events
-  // For hotel bookings, checkout day means the room is available for new guests
-  // Subtract 1 day from checkout to show only the occupied nights
-  const events: CalendarEvent[] = bookings.map((booking) => {
-    const displayEnd = new Date(booking.checkOut);
-    displayEnd.setDate(displayEnd.getDate() - 1);
+  // Create individual day events for each night of the stay
+  // This shows bookings as blocks within each day cell instead of spanning bars
+  const events: CalendarEvent[] = [];
 
-    return {
-      id: booking.id,
-      title: `Room ${booking.room.roomNumber} - ${booking.guestName}`,
-      start: booking.checkIn.toISOString(),
-      end: displayEnd.toISOString(),
-      resource: {
-        bookingRef: booking.bookingRef,
-        guestName: booking.guestName,
-        guestPhone: booking.guestPhone,
-        roomNumber: booking.room.roomNumber,
-        roomId: booking.room.id,
-        status: booking.status,
-      },
-    };
-  });
+  for (const booking of bookings) {
+    const checkIn = new Date(booking.checkIn);
+    const checkOut = new Date(booking.checkOut);
+
+    // Create an event for each night of the stay
+    const currentDate = new Date(checkIn);
+    while (currentDate < checkOut) {
+      // Set event times (e.g., 2pm check-in style display)
+      const eventStart = new Date(currentDate);
+      eventStart.setHours(14, 0, 0, 0);
+
+      const eventEnd = new Date(currentDate);
+      eventEnd.setHours(16, 0, 0, 0);
+
+      events.push({
+        id: `${booking.id}::${currentDate.toISOString().split("T")[0]}`,
+        title: `Room ${booking.room.roomNumber} - ${booking.guestName}`,
+        start: eventStart.toISOString(),
+        end: eventEnd.toISOString(),
+        resource: {
+          bookingRef: booking.bookingRef,
+          guestName: booking.guestName,
+          guestPhone: booking.guestPhone,
+          roomNumber: booking.room.roomNumber,
+          roomId: booking.room.id,
+          status: booking.status,
+        },
+      });
+
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+  }
 
   return events;
 }

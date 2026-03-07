@@ -32,6 +32,7 @@ export default async function BookingsPage() {
     room: {
       id: booking.room.id,
       roomNumber: booking.room.roomNumber,
+      capacity: booking.room.capacity,
       pricePerNight: booking.room.pricePerNight.toString(),
     },
     createdBy: booking.createdBy

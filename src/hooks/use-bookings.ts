@@ -149,6 +149,7 @@ export function useCreateBooking() {
         room: {
           id: newBookingData.roomId,
           roomNumber: "...",
+          capacity: 0,
           pricePerNight: "0",
         },
       };

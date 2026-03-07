@@ -42,6 +42,7 @@ const bookingSelectFields = {
     select: {
       id: true,
       roomNumber: true,
+      capacity: true,
       pricePerNight: true,
     },
   },
