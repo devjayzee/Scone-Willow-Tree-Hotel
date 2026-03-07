@@ -20,6 +20,7 @@ import type { Staff } from "@/types/staff";
 
 interface StaffTableProps {
   staffs: Staff[];
+  currentUserId?: string;
   onEdit: (staff: Staff) => void;
   onDelete: (staff: Staff) => void;
   onToggleActive: (staff: Staff) => void;
@@ -27,6 +28,7 @@ interface StaffTableProps {
 
 export function StaffTable({
   staffs,
+  currentUserId,
   onEdit,
   onDelete,
   onToggleActive,
@@ -113,26 +115,30 @@ export function StaffTable({
                             <Edit className="h-4 w-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => onToggleActive(staff)}>
-                            {staff.isActive ? (
-                              <>
-                                <UserX className="h-4 w-4 mr-2" />
-                                Deactivate
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="h-4 w-4 mr-2" />
-                                Activate
-                              </>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => onDelete(staff)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
+                          {staff.id !== currentUserId && (
+                            <>
+                              <DropdownMenuItem onClick={() => onToggleActive(staff)}>
+                                {staff.isActive ? (
+                                  <>
+                                    <UserX className="h-4 w-4 mr-2" />
+                                    Deactivate
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="h-4 w-4 mr-2" />
+                                    Activate
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => onDelete(staff)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
