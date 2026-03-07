@@ -8,6 +8,7 @@ import { BookingDetailsDialog } from "@/components/booking/booking-details-dialo
 import { DeleteBookingDialog } from "@/components/booking/delete-booking-dialog";
 import { Plus, Search, RefreshCw } from "lucide-react";
 import { useBookingManagement } from "@/hooks/use-booking-management";
+import { BookingTableSkeleton } from "@/components/booking/booking-table-skeleton";
 import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration";
 import type { RoomSummary } from "@/types/room";
 import type { Booking } from "@/types/booking";
@@ -15,11 +16,13 @@ import type { Booking } from "@/types/booking";
 interface BookingsClientProps {
   initialBookings: Booking[];
   initialRooms: RoomSummary[];
+  fetchTime?: number;
 }
 
 export function BookingsClient({
   initialBookings,
   initialRooms,
+  fetchTime,
 }: BookingsClientProps) {
   const {
     filteredBookings,
@@ -31,21 +34,23 @@ export function BookingsClient({
     selectedBooking,
     isDeleting,
     searchQuery,
-    currentPage,
     openCreateDialog,
+    openEditDialog,
     openDetailsDialog,
     openDeleteDialog,
-    createBooking,
+    submitBooking,
     confirmDelete,
     togglePayment,
+    checkInBooking,
+    checkOutBooking,
+    cancelBooking,
     updateSearch,
-    setCurrentPage,
     fetchBookings,
-    isRefreshing,
+    isFetching,
     setBookingDialogOpen,
     setDetailsDialogOpen,
     setDeleteDialogOpen,
-  } = useBookingManagement({ initialBookings, initialRooms });
+  } = useBookingManagement({ initialBookings, initialRooms, fetchTime });
 
   return (
     <div className="space-y-6">
@@ -79,10 +84,10 @@ export function BookingsClient({
           variant="outline"
           size="icon"
           onClick={() => fetchBookings()}
-          disabled={isRefreshing}
+          disabled={isFetching}
           title="Refresh bookings"
         >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
         </Button>
       </div>
 
@@ -92,21 +97,28 @@ export function BookingsClient({
         </div>
       )}
 
-      <BookingTable
-        bookings={filteredBookings}
-        onView={openDetailsDialog}
-        onDelete={openDeleteDialog}
-        onDownloadPDF={downloadBookingPDF}
-        onTogglePayment={togglePayment}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-      />
+      {isFetching ? (
+        <BookingTableSkeleton />
+      ) : (
+        <BookingTable
+          bookings={filteredBookings}
+          onView={openDetailsDialog}
+          onEdit={openEditDialog}
+          onDelete={openDeleteDialog}
+          onDownloadPDF={downloadBookingPDF}
+          onTogglePayment={togglePayment}
+          onCheckIn={(booking) => checkInBooking(booking.id)}
+          onCheckOut={(booking) => checkOutBooking(booking.id)}
+          onCancel={(booking) => cancelBooking(booking.id)}
+        />
+      )}
 
       <BookingDialog
         open={bookingDialogOpen}
         onOpenChange={setBookingDialogOpen}
         rooms={rooms}
-        onSubmit={createBooking}
+        onSubmit={submitBooking}
+        booking={selectedBooking}
       />
 
       <BookingDetailsDialog

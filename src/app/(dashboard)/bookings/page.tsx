@@ -4,9 +4,18 @@ import { BookingsClient } from "@/components/booking/bookings-client";
 import type { Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 
+// Disable caching - always fetch fresh data
+export const dynamic = "force-dynamic";
+
 export default async function BookingsPage() {
+  // Track when data was fetched for cache freshness
+  const fetchTime = Date.now();
+
   // Fetch data server-side
-  const [bookings, rooms] = await Promise.all([getAllBookings(), getAllRooms()]);
+  const [bookings, rooms] = await Promise.all([
+    getAllBookings(),
+    getAllRooms(),
+  ]);
 
   // Serialize dates for client component
   const serializedBookings: Booking[] = bookings.map((booking) => ({
@@ -57,6 +66,7 @@ export default async function BookingsPage() {
     <BookingsClient
       initialBookings={serializedBookings}
       initialRooms={serializedRooms}
+      fetchTime={fetchTime}
     />
   );
 }

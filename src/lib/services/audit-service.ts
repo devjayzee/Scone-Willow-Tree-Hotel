@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * Audit action types for staff management.
@@ -86,7 +87,7 @@ export async function createAuditLog(
     });
   } catch (error) {
     // Log error but don't fail the main operation
-    console.error("Failed to create audit log:", error);
+    logger.error("Failed to create audit log", error, { userId, action, entityType, entityId });
   }
 }
 
