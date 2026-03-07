@@ -6,7 +6,7 @@ import { BookingTable } from "@/components/booking/booking-table";
 import { BookingDialog } from "@/components/booking/booking-dialog";
 import { BookingDetailsDialog } from "@/components/booking/booking-details-dialog";
 import { DeleteBookingDialog } from "@/components/booking/delete-booking-dialog";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, RefreshCw } from "lucide-react";
 import { useBookingManagement } from "@/hooks/use-booking-management";
 import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration";
 import type { RoomSummary } from "@/types/room";
@@ -40,6 +40,8 @@ export function BookingsClient({
     togglePayment,
     updateSearch,
     setCurrentPage,
+    fetchBookings,
+    isRefreshing,
     setBookingDialogOpen,
     setDetailsDialogOpen,
     setDeleteDialogOpen,
@@ -62,15 +64,26 @@ export function BookingsClient({
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative flex-1 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          placeholder="Search bookings..."
-          value={searchQuery}
-          onChange={(e) => updateSearch(e.target.value)}
-          className="pl-9 bg-white"
-        />
+      {/* Search and Refresh */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search bookings..."
+            value={searchQuery}
+            onChange={(e) => updateSearch(e.target.value)}
+            className="pl-9 bg-white"
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => fetchBookings()}
+          disabled={isRefreshing}
+          title="Refresh bookings"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+        </Button>
       </div>
 
       {error && (
