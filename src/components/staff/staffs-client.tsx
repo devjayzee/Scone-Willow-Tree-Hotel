@@ -11,9 +11,10 @@ import type { Staff } from "@/types/staff";
 
 interface StaffsClientProps {
   initialStaffs: Staff[];
+  currentUserId?: string;
 }
 
-export function StaffsClient({ initialStaffs }: StaffsClientProps) {
+export function StaffsClient({ initialStaffs, currentUserId }: StaffsClientProps) {
   const {
     filteredStaffs,
     error,
@@ -75,6 +76,7 @@ export function StaffsClient({ initialStaffs }: StaffsClientProps) {
 
       <StaffTable
         staffs={filteredStaffs}
+        currentUserId={currentUserId}
         onEdit={openEditDialog}
         onDelete={openDeleteDialog}
         onToggleActive={toggleActive}

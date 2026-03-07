@@ -1,8 +1,14 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { getAllStaff } from "@/lib/services/staff-service";
 import { StaffsClient } from "@/components/staff/staffs-client";
 import type { Staff } from "@/types/staff";
 
 export default async function StaffsPage() {
+  // Get current user session
+  const session = await getServerSession(authOptions);
+  const currentUserId = session?.user?.id;
+
   // Fetch staffs server-side
   const staffs = await getAllStaff();
 
@@ -19,5 +25,5 @@ export default async function StaffsPage() {
     _count: staff._count,
   }));
 
-  return <StaffsClient initialStaffs={serializedStaffs} />;
+  return <StaffsClient initialStaffs={serializedStaffs} currentUserId={currentUserId} />;
 }
