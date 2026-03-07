@@ -58,8 +58,8 @@ model Booking {
   guestName          String
   guestDateOfBirth   DateTime?
   guestAddress       String?
-  guestPhone         String?
-  guestEmail         String
+  guestPhone         String
+  guestEmail         String?
   vehicleRego        String?
   additionalGuests   String?
 

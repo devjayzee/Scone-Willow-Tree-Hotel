@@ -12,7 +12,7 @@ import { BookingStatus } from "@prisma/client";
 export interface CalendarEventResource {
   bookingRef: string;
   guestName: string;
-  guestEmail: string;
+  guestPhone: string;
   roomNumber: string;
   roomId: string;
   status: BookingStatus;

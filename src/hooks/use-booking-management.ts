@@ -151,7 +151,7 @@ export function useBookingManagement({
       (booking) =>
         booking.bookingRef.toLowerCase().includes(searchQuery.toLowerCase()) ||
         booking.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        booking.guestEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        booking.guestPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
         booking.room.roomNumber.includes(searchQuery)
     );
   }, [bookings, searchQuery]);
