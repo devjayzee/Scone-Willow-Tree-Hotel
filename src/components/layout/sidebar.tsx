@@ -58,19 +58,18 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-52 flex-col bg-navy">
       {/* Logo */}
-      <div className="flex h-20 items-center justify-center border-b border-navy-light">
-        <Link href="/bookings" className="flex items-center gap-2">
-          <div className="relative w-12 h-12">
+      <div className="flex h-32 items-center justify-center border-b border-navy-light px-3">
+        <Link href="/bookings" className="flex flex-col items-center gap-1">
+          <div className="relative w-36 h-20">
             <Image
-              src="/logo.jpg"
-              alt="Willow Tree"
+              src="/logo.png"
+              alt="Scone Willow Tree"
               fill
-              className="object-contain rounded-full"
+              className="object-contain"
             />
           </div>
-          <div className="text-cream">
-            <p className="font-semibold text-sm">Scone</p>
-            <p className="font-bold text-lg leading-tight">Willow Tree</p>
+          <div className="text-cream text-center">
+            <p className="font-bold text-sm leading-tight">Scone Willow Tree</p>
           </div>
         </Link>
       </div>
