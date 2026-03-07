@@ -11,6 +11,7 @@ export interface Room {
 export interface RoomSummary {
   id: string;
   roomNumber: string;
+  capacity: number;
   pricePerNight: string | number;
   description?: string | null;
 }
