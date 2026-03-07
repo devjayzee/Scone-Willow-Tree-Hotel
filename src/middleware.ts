@@ -67,7 +67,7 @@ const authMiddleware = withAuth(
     }
 
     // Protected routes that require GENERAL_MANAGER role
-    const managerOnlyPaths = ["/settings/users", "/settings/logs"];
+    const managerOnlyPaths = ["/rooms", "/reports", "/staff"];
 
     if (managerOnlyPaths.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER") {
@@ -108,11 +108,10 @@ export const config = {
   matcher: [
     "/login",
     "/api/auth/:path*",
-    "/dashboard/:path*",
     "/bookings/:path*",
     "/rooms/:path*",
     "/calendar/:path*",
     "/reports/:path*",
-    "/settings/:path*",
+    "/staff/:path*",
   ],
 };
