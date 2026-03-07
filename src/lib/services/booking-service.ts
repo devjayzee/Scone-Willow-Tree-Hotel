@@ -35,6 +35,7 @@ const bookingSelectFields = {
   checkOutTime: true,
   bondDeposit: true,
   status: true,
+  isPaid: true,
   notes: true,
   createdAt: true,
   updatedAt: true,
@@ -602,4 +603,43 @@ export async function deleteBooking(
     deleted: true,
     message: "Booking deleted successfully",
   };
+}
+
+/**
+ * Toggle payment status for a booking
+ * @throws NotFoundError if booking not found
+ */
+export async function togglePaymentStatus(id: string, performedBy?: string) {
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    select: { id: true, isPaid: true, bookingRef: true, guestName: true },
+  });
+
+  if (!booking) {
+    throw new NotFoundError("Booking not found");
+  }
+
+  const newIsPaid = !booking.isPaid;
+
+  const updatedBooking = await prisma.booking.update({
+    where: { id },
+    data: { isPaid: newIsPaid },
+    select: bookingSelectFields,
+  });
+
+  // Audit log
+  if (performedBy) {
+    await createAuditLog(
+      performedBy,
+      newIsPaid ? AuditAction.BOOKING_UPDATED : AuditAction.BOOKING_UPDATED,
+      EntityType.BOOKING,
+      id,
+      {
+        previous: { isPaid: booking.isPaid },
+        current: { isPaid: newIsPaid },
+      }
+    );
+  }
+
+  return updatedBooking;
 }
