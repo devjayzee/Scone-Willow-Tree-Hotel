@@ -3,6 +3,25 @@ import { format, parseISO, differenceInDays } from "date-fns";
 import type { Booking } from "@/types/booking";
 
 /**
+ * Fetch the logo image and convert to base64 for PDF embedding
+ */
+async function getLogoBase64(): Promise<string | null> {
+  try {
+    // Add cache-busting parameter to ensure fresh logo is fetched
+    const response = await fetch(`/logo.png?v=${Date.now()}`);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Data structure for PDF generation
  * Supports both existing bookings and draft booking data
  */
@@ -79,9 +98,13 @@ export function bookingToPDFData(booking: Booking): BookingPDFData {
 /**
  * Generate a guest registration PDF document
  * @param data - Booking data for the PDF
+ * @param logoBase64 - Optional base64 encoded logo image
  * @returns jsPDF document instance
  */
-export function generateBookingRegistrationPDF(data: BookingPDFData): jsPDF {
+export function generateBookingRegistrationPDF(
+  data: BookingPDFData,
+  logoBase64?: string | null
+): jsPDF {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 25;
@@ -98,6 +121,15 @@ export function generateBookingRegistrationPDF(data: BookingPDFData): jsPDF {
 
   // Use black color throughout
   doc.setTextColor(0, 0, 0);
+
+  // Add logo if available
+  if (logoBase64) {
+    const logoWidth = 50;
+    const logoHeight = 35;
+    const logoX = (pageWidth - logoWidth) / 2;
+    doc.addImage(logoBase64, "PNG", logoX, y, logoWidth, logoHeight);
+    y += logoHeight + 5;
+  }
 
   // Header - Times New Roman, Bold, Centered
   doc.setFontSize(14);
@@ -348,9 +380,10 @@ export function generateBookingRegistrationPDF(data: BookingPDFData): jsPDF {
  * Generate and save a guest registration PDF for a booking
  * @param booking - The booking to generate PDF for
  */
-export function downloadBookingPDF(booking: Booking): void {
+export async function downloadBookingPDF(booking: Booking): Promise<void> {
   const pdfData = bookingToPDFData(booking);
-  const doc = generateBookingRegistrationPDF(pdfData);
+  const logoBase64 = await getLogoBase64();
+  const doc = generateBookingRegistrationPDF(pdfData, logoBase64);
   const filename = `guest-registration-${booking.guestName
     .replace(/\s+/g, "-")
     .toLowerCase()}.pdf`;
@@ -362,11 +395,12 @@ export function downloadBookingPDF(booking: Booking): void {
  * @param data - The draft booking data
  * @param guestName - Guest name for the filename
  */
-export function downloadDraftBookingPDF(
+export async function downloadDraftBookingPDF(
   data: BookingPDFData,
   guestName: string
-): void {
-  const doc = generateBookingRegistrationPDF(data);
+): Promise<void> {
+  const logoBase64 = await getLogoBase64();
+  const doc = generateBookingRegistrationPDF(data, logoBase64);
   const filename = `guest-registration-${guestName
     .replace(/\s+/g, "-")
     .toLowerCase()}.pdf`;
