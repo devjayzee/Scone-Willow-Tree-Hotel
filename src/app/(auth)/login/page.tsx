@@ -60,8 +60,8 @@ export default function LoginPage() {
     <Card className="w-full max-w-md shadow-xl border-0 bg-white">
       <CardHeader className="text-center pb-2">
         {/* Logo */}
-        <div className="flex justify-center mb-4">
-          <div className="w-48 h-48 relative">
+        <div className="flex justify-center mb-2">
+          <div className="w-56 h-40 relative">
             <Image
               src="/logo.png"
               alt="Scone Willow Tree"
