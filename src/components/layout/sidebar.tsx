@@ -73,7 +73,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
       {/* Logo */}
       <div className="flex py-3 items-center justify-center border-b border-navy-light">
         <Link href="/bookings" onClick={handleNavClick}>
-          <div className="relative w-44 h-20">
+          <div className="relative w-48 h-28">
             <Image
               src="/logo.png"
               alt="Scone Willow Tree"
