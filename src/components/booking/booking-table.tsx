@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { useTablePagination } from "@/hooks/use-table-pagination";
-import { format } from "date-fns";
+import { format, startOfDay } from "date-fns";
 import {
   MoreHorizontal,
   Eye,
@@ -25,6 +25,7 @@ import {
   Calendar,
   User,
   Home,
+  Undo2,
 } from "lucide-react";
 import type { BookingSummary } from "@/types/booking";
 
@@ -37,6 +38,7 @@ interface BookingTableProps<T extends BookingSummary> {
   onTogglePayment: (booking: T) => void;
   onCheckIn: (booking: T) => void;
   onCheckOut: (booking: T) => void;
+  onUndoCheckOut: (booking: T) => void;
   onCancel: (booking: T) => void;
 }
 
@@ -49,6 +51,7 @@ export function BookingTable<T extends BookingSummary>({
   onTogglePayment,
   onCheckIn,
   onCheckOut,
+  onUndoCheckOut,
   onCancel,
 }: BookingTableProps<T>) {
   // Use shared pagination hook
@@ -68,6 +71,14 @@ export function BookingTable<T extends BookingSummary>({
 
   const formatDate = (dateString: string) => {
     return format(new Date(dateString), "MMM dd, yyyy");
+  };
+
+  // Check if checkout date has not passed yet (can undo checkout)
+  const canUndoCheckOut = (booking: T) => {
+    if (booking.status !== "CHECKED_OUT") return false;
+    const today = startOfDay(new Date());
+    const checkOutDate = startOfDay(new Date(booking.checkOut));
+    return today <= checkOutDate;
   };
 
   const getStatusBadge = (status: string) => {
@@ -152,6 +163,15 @@ export function BookingTable<T extends BookingSummary>({
           >
             <LogOut className="mr-2 h-4 w-4" />
             Check Out
+          </DropdownMenuItem>
+        )}
+        {canUndoCheckOut(booking) && (
+          <DropdownMenuItem
+            onClick={() => onUndoCheckOut(booking)}
+            className="text-orange-600 focus:text-orange-600"
+          >
+            <Undo2 className="mr-2 h-4 w-4" />
+            Undo Checkout
           </DropdownMenuItem>
         )}
         {(booking.status === "CONFIRMED" ||
