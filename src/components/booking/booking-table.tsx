@@ -117,7 +117,7 @@ export function BookingTable<T extends BookingSummary>({
       };
     const style = styles[status] || styles.CONFIRMED;
     return (
-      <Badge className={`${style.bg} ${style.text} hover:${style.bg}`}>
+      <Badge className={`${style.bg} ${style.text} hover:${style.bg} min-w-[85px] justify-center`}>
         {style.label}
       </Badge>
     );
@@ -312,31 +312,31 @@ export function BookingTable<T extends BookingSummary>({
 
       {/* Desktop Table View */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full" role="table" aria-label="Bookings table">
+        <table className="w-full table-fixed" role="table" aria-label="Bookings table">
           <thead>
             <tr className="border-b bg-gray-50/50 text-sm font-medium text-gray-500">
-              <th scope="col" className="text-left px-6 py-3">
+              <th scope="col" className="text-left px-6 py-3 w-[140px]">
                 Booking Ref
               </th>
-              <th scope="col" className="text-left px-6 py-3">
+              <th scope="col" className="text-left px-6 py-3 w-[180px]">
                 Guest
               </th>
-              <th scope="col" className="text-left px-6 py-3">
+              <th scope="col" className="text-left px-6 py-3 w-[80px]">
                 Room
               </th>
-              <th scope="col" className="text-left px-6 py-3">
+              <th scope="col" className="text-left px-6 py-3 w-[120px]">
                 Check In
               </th>
-              <th scope="col" className="text-left px-6 py-3">
+              <th scope="col" className="text-left px-6 py-3 w-[120px]">
                 Check Out
               </th>
-              <th scope="col" className="text-center px-6 py-3">
+              <th scope="col" className="text-center px-6 py-3 w-[110px]">
                 Status
               </th>
-              <th scope="col" className="text-center px-6 py-3">
+              <th scope="col" className="text-center px-6 py-3 w-[80px]">
                 Paid
               </th>
-              <th scope="col" className="text-right px-6 py-3">
+              <th scope="col" className="text-right px-6 py-3 w-[70px]">
                 Actions
               </th>
             </tr>
