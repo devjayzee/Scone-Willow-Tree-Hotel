@@ -46,11 +46,12 @@ export const bookingSelectFields = {
  * Maps current status to allowed next statuses.
  *
  * Note: CHECKED_OUT -> CHECKED_IN is allowed only if checkout date hasn't passed.
- * This validation is handled in booking-status.ts undoCheckOutBooking function.
+ * Note: CANCELLED -> CONFIRMED is allowed only if check-in date hasn't passed.
+ * These validations are handled in booking-status.ts undo functions.
  */
 export const VALID_STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   CONFIRMED: ["CHECKED_IN", "CANCELLED"],
   CHECKED_IN: ["CHECKED_OUT", "CANCELLED"],
   CHECKED_OUT: ["CHECKED_IN"], // Can undo checkout if checkout date hasn't passed
-  CANCELLED: [], // Terminal state
+  CANCELLED: ["CONFIRMED"], // Can undo cancel if check-in date hasn't passed
 };

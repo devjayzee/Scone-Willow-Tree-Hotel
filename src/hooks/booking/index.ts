@@ -25,6 +25,7 @@ export {
   useCancelBooking,
   useTogglePayment,
   useUndoCheckOutBooking,
+  useUndoCancelBooking,
 } from "./booking-mutations";
 
 // Export optimistic update utilities (for advanced use cases)

@@ -30,4 +30,5 @@ export {
   cancelBooking,
   togglePaymentStatus,
   undoCheckOutBooking,
+  undoCancelBooking,
 } from "./booking";

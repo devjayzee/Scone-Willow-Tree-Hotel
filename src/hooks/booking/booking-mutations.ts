@@ -179,3 +179,21 @@ export function useUndoCheckOutBooking() {
     successMessage: "Checkout undone - guest is now checked in",
   });
 }
+
+/**
+ * Hook to undo cancellation (revert to confirmed status) with optimistic update.
+ * Only allowed if the check-in date has not passed yet.
+ */
+export function useUndoCancelBooking() {
+  return useOptimisticBookingMutation({
+    mutationFn: (id: string) => performBookingAction({ id, action: "undo-cancel" }),
+    onMutateOptimistic: (id: string, queryClient) => {
+      updateBookingInCache(queryClient, id, (booking) => ({
+        ...booking,
+        status: "CONFIRMED" as const,
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    successMessage: "Cancellation undone - booking is now confirmed",
+  });
+}

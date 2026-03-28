@@ -37,6 +37,7 @@ export {
   cancelBooking,
   togglePaymentStatus,
   undoCheckOutBooking,
+  undoCancelBooking,
 } from "./booking-status";
 
 // Export utilities (for advanced use cases)
