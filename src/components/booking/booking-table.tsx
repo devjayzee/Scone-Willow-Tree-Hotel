@@ -83,12 +83,12 @@ export function BookingTable<T extends BookingSummary>({
     return today <= checkOutDate;
   };
 
-  // Check if check-in date has not passed yet (can undo cancel)
+  // Check if checkout date has not passed yet (can undo cancel)
   const canUndoCancel = (booking: T) => {
     if (booking.status !== "CANCELLED") return false;
     const today = startOfDay(new Date());
-    const checkInDate = startOfDay(new Date(booking.checkIn));
-    return today <= checkInDate;
+    const checkOutDate = startOfDay(new Date(booking.checkOut));
+    return today <= checkOutDate;
   };
 
   const getStatusBadge = (status: string) => {
