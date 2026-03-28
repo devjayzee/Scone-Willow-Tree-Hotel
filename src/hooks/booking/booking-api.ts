@@ -73,7 +73,7 @@ export async function deleteBookingApi(
   return response.json();
 }
 
-export type BookingAction = "check-in" | "check-out" | "undo-checkout" | "cancel" | "toggle-payment";
+export type BookingAction = "check-in" | "check-out" | "undo-checkout" | "cancel" | "undo-cancel" | "toggle-payment";
 
 /**
  * Perform a booking action (check-in, check-out, cancel, toggle-payment).

@@ -11,6 +11,7 @@ import {
   cancelBooking,
   togglePaymentStatus,
   undoCheckOutBooking,
+  undoCancelBooking,
 } from "@/lib/services/booking-service";
 import {
   handleApiError,
@@ -91,6 +92,9 @@ export async function PATCH(
         break;
       case "undo-checkout":
         booking = await undoCheckOutBooking(id, session.user.id);
+        break;
+      case "undo-cancel":
+        booking = await undoCancelBooking(id, session.user.id);
         break;
       case "cancel":
         booking = await cancelBooking(id, reason, session.user.id);

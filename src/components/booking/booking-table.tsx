@@ -40,6 +40,7 @@ interface BookingTableProps<T extends BookingSummary> {
   onCheckOut: (booking: T) => void;
   onUndoCheckOut: (booking: T) => void;
   onCancel: (booking: T) => void;
+  onUndoCancel: (booking: T) => void;
 }
 
 export function BookingTable<T extends BookingSummary>({
@@ -53,6 +54,7 @@ export function BookingTable<T extends BookingSummary>({
   onCheckOut,
   onUndoCheckOut,
   onCancel,
+  onUndoCancel,
 }: BookingTableProps<T>) {
   // Use shared pagination hook
   const {
@@ -79,6 +81,14 @@ export function BookingTable<T extends BookingSummary>({
     const today = startOfDay(new Date());
     const checkOutDate = startOfDay(new Date(booking.checkOut));
     return today <= checkOutDate;
+  };
+
+  // Check if check-in date has not passed yet (can undo cancel)
+  const canUndoCancel = (booking: T) => {
+    if (booking.status !== "CANCELLED") return false;
+    const today = startOfDay(new Date());
+    const checkInDate = startOfDay(new Date(booking.checkIn));
+    return today <= checkInDate;
   };
 
   const getStatusBadge = (status: string) => {
@@ -172,6 +182,15 @@ export function BookingTable<T extends BookingSummary>({
           >
             <Undo2 className="mr-2 h-4 w-4" />
             Undo Checkout
+          </DropdownMenuItem>
+        )}
+        {canUndoCancel(booking) && (
+          <DropdownMenuItem
+            onClick={() => onUndoCancel(booking)}
+            className="text-green-600 focus:text-green-600"
+          >
+            <Undo2 className="mr-2 h-4 w-4" />
+            Undo Cancel
           </DropdownMenuItem>
         )}
         {(booking.status === "CONFIRMED" ||

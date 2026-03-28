@@ -10,6 +10,7 @@ import {
   useCheckOutBooking,
   useUndoCheckOutBooking,
   useCancelBooking,
+  useUndoCancelBooking,
   useTogglePayment,
 } from "@/hooks/use-bookings";
 import type { Booking, CreateBookingInput } from "@/types/booking";
@@ -40,6 +41,7 @@ export function useBookingManagement({
   const checkOutMutation = useCheckOutBooking();
   const undoCheckOutMutation = useUndoCheckOutBooking();
   const cancelMutation = useCancelBooking();
+  const undoCancelMutation = useUndoCancelBooking();
   const togglePaymentMutation = useTogglePayment();
 
   // Room data (static, passed from server)
@@ -64,6 +66,7 @@ export function useBookingManagement({
     checkOutMutation.isPending ||
     undoCheckOutMutation.isPending ||
     cancelMutation.isPending ||
+    undoCancelMutation.isPending ||
     togglePaymentMutation.isPending;
   const isCreating = createMutation.isPending;
   const isUpdating = updateMutation.isPending;
@@ -164,6 +167,14 @@ export function useBookingManagement({
     [undoCheckOutMutation]
   );
 
+  // Undo cancellation (revert to confirmed)
+  const undoCancelBooking = useCallback(
+    async (bookingId: string) => {
+      await undoCancelMutation.mutateAsync(bookingId);
+    },
+    [undoCancelMutation]
+  );
+
   // Cancel a booking
   const cancelBooking = useCallback(
     async (bookingId: string, reason?: string) => {
@@ -229,6 +240,7 @@ export function useBookingManagement({
     checkOutBooking,
     undoCheckOutBooking,
     cancelBooking,
+    undoCancelBooking,
     togglePayment,
     updateSearch,
     setBookingDialogOpen,

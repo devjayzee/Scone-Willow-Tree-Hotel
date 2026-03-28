@@ -231,3 +231,62 @@ export async function undoCheckOutBooking(id: string, performedBy?: string) {
 
   return updatedBooking;
 }
+
+/**
+ * Undo cancellation for a booking (change status from CANCELLED back to CONFIRMED)
+ * Only allowed if the check-in date has not passed yet.
+ * @throws NotFoundError if booking not found
+ * @throws BusinessRuleError if check-in date has passed or status transition is invalid
+ */
+export async function undoCancelBooking(id: string, performedBy?: string) {
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      checkIn: true,
+      bookingRef: true,
+      guestName: true,
+    },
+  });
+
+  if (!booking) {
+    throw new NotFoundError("Booking not found");
+  }
+
+  // Validate status transition
+  validateStatusTransition(booking.status, "CONFIRMED");
+
+  // Check if check-in date has passed
+  const today = startOfDay(new Date());
+  const checkInDate = startOfDay(new Date(booking.checkIn));
+
+  if (today > checkInDate) {
+    throw new BusinessRuleError(
+      "Cannot undo cancellation after the check-in date has passed"
+    );
+  }
+
+  const updatedBooking = await prisma.booking.update({
+    where: { id },
+    data: { status: "CONFIRMED" },
+    select: bookingSelectFields,
+  });
+
+  // Audit log
+  if (performedBy) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.BOOKING_UPDATED,
+      EntityType.BOOKING,
+      id,
+      {
+        previous: { status: booking.status },
+        current: { status: "CONFIRMED" },
+        reason: "Undo accidental cancellation",
+      }
+    );
+  }
+
+  return updatedBooking;
+}
