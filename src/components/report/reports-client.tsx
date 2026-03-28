@@ -33,7 +33,7 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
 
   // Use TanStack Query for data fetching
   // Only use initialData when there's no date filter (showing all-time data)
-  const { data: roomPerformance = initialData, isFetching, refetch } = useRoomPerformance(
+  const { data: roomPerformance = initialData, isLoading, isFetching, refetch } = useRoomPerformance(
     hasDateFilter ? undefined : initialData,
     startDate,
     endDate,
@@ -127,7 +127,7 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
           </Button>
         </CardHeader>
         <CardContent className="px-0 sm:px-6">
-          {isFetching ? (
+          {isLoading ? (
             <div className="px-4 sm:px-0">
               <ReportTableSkeleton />
             </div>
