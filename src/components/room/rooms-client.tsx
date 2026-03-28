@@ -23,6 +23,7 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
   const {
     filteredRooms,
     error,
+    isLoading,
     isFetching,
     roomDialogOpen,
     deleteDialogOpen,
@@ -90,7 +91,7 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
         </div>
       )}
 
-      {isFetching ? (
+      {isLoading ? (
         <RoomTableSkeleton />
       ) : (
         <RoomTable

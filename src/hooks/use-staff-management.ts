@@ -18,7 +18,7 @@ interface UseStaffManagementOptions {
 
 export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagementOptions) {
   // TanStack Query hooks
-  const { data: staffs = initialStaffs, error: queryError, refetch, isFetching } = useStaffs(initialStaffs, fetchTime);
+  const { data: staffs = initialStaffs, error: queryError, refetch, isLoading, isFetching } = useStaffs(initialStaffs, fetchTime);
   const createMutation = useCreateStaff();
   const updateMutation = useUpdateStaff();
   const deleteMutation = useDeleteStaff();
@@ -134,6 +134,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
     staffs,
     filteredStaffs,
     error,
+    isLoading,
     isFetching,
 
     // Dialog state

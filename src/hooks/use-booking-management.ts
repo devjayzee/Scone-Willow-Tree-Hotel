@@ -31,6 +31,7 @@ export function useBookingManagement({
   const {
     data: bookings = initialBookings,
     error: queryError,
+    isLoading,
     isFetching,
     refetch,
   } = useBookings(initialBookings, fetchTime);
@@ -223,6 +224,7 @@ export function useBookingManagement({
     isCreating,
     isUpdating,
     isDeleting,
+    isLoading,
     isFetching,
 
     // Search
