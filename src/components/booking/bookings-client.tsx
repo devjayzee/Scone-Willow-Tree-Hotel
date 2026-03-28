@@ -99,7 +99,7 @@ export function BookingsClient({
         </div>
       )}
 
-      {isFetching ? (
+      {isFetching && filteredBookings.length === 0 ? (
         <BookingTableSkeleton />
       ) : (
         <BookingTable
