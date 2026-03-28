@@ -1,33 +1,16 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { useTablePagination } from "@/hooks/use-table-pagination";
-import { format, startOfDay } from "date-fns";
-import {
-  MoreHorizontal,
-  Eye,
-  Pencil,
-  Trash2,
-  FileDown,
-  DollarSign,
-  LogIn,
-  LogOut,
-  XCircle,
-  Calendar,
-  User,
-  Home,
-  Undo2,
-} from "lucide-react";
+import { Calendar, User, Home } from "lucide-react";
 import type { BookingSummary } from "@/types/booking";
+import {
+  BOOKING_COLUMNS,
+  BookingStatusBadge,
+  PaymentStatusBadge,
+  formatBookingDate,
+} from "./booking-table-columns";
+import { BookingTableActions } from "./booking-table-actions";
 
 interface BookingTableProps<T extends BookingSummary> {
   bookings: T[];
@@ -71,154 +54,19 @@ export function BookingTable<T extends BookingSummary>({
     storageKeyPrefix: "bookings",
   });
 
-  const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "MMM dd, yyyy");
+  // Action handlers object to pass to BookingTableActions
+  const actionHandlers = {
+    onView,
+    onEdit,
+    onDelete,
+    onDownloadPDF,
+    onTogglePayment,
+    onCheckIn,
+    onCheckOut,
+    onUndoCheckOut,
+    onCancel,
+    onUndoCancel,
   };
-
-  // Check if checkout date has not passed yet (can undo checkout)
-  const canUndoCheckOut = (booking: T) => {
-    if (booking.status !== "CHECKED_OUT") return false;
-    const today = startOfDay(new Date());
-    const checkOutDate = startOfDay(new Date(booking.checkOut));
-    return today <= checkOutDate;
-  };
-
-  // Check if checkout date has not passed yet (can undo cancel)
-  const canUndoCancel = (booking: T) => {
-    if (booking.status !== "CANCELLED") return false;
-    const today = startOfDay(new Date());
-    const checkOutDate = startOfDay(new Date(booking.checkOut));
-    return today <= checkOutDate;
-  };
-
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, { bg: string; text: string; label: string }> =
-      {
-        CONFIRMED: {
-          bg: "bg-blue-100",
-          text: "text-blue-800",
-          label: "Confirmed",
-        },
-        CHECKED_IN: {
-          bg: "bg-green-100",
-          text: "text-green-800",
-          label: "Checked In",
-        },
-        CHECKED_OUT: {
-          bg: "bg-gray-100",
-          text: "text-gray-800",
-          label: "Checked Out",
-        },
-        CANCELLED: {
-          bg: "bg-red-100",
-          text: "text-red-800",
-          label: "Cancelled",
-        },
-      };
-    const style = styles[status] || styles.CONFIRMED;
-    return (
-      <Badge className={`${style.bg} ${style.text} hover:${style.bg} min-w-[85px] justify-center`}>
-        {style.label}
-      </Badge>
-    );
-  };
-
-  // Reusable action menu
-  const renderActionMenu = (booking: T) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-gray-400 hover:text-gray-600"
-          aria-label={`Actions for booking ${booking.bookingRef}`}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={() => onView(booking)}>
-          <Eye className="mr-2 h-4 w-4" />
-          View Details
-        </DropdownMenuItem>
-        {(booking.status === "CONFIRMED" ||
-          booking.status === "CHECKED_IN") && (
-          <DropdownMenuItem onClick={() => onEdit(booking)}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit Booking
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem onClick={() => onDownloadPDF(booking)}>
-          <FileDown className="mr-2 h-4 w-4" />
-          Download PDF
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onTogglePayment(booking)}>
-          <DollarSign className="mr-2 h-4 w-4" />
-          {booking.isPaid ? "Mark as Unpaid" : "Mark as Paid"}
-        </DropdownMenuItem>
-        {booking.status === "CONFIRMED" && (
-          <DropdownMenuItem
-            onClick={() => onCheckIn(booking)}
-            className="text-green-600 focus:text-green-600"
-          >
-            <LogIn className="mr-2 h-4 w-4" />
-            Check In
-          </DropdownMenuItem>
-        )}
-        {booking.status === "CHECKED_IN" && (
-          <DropdownMenuItem
-            onClick={() => onCheckOut(booking)}
-            className="text-blue-600 focus:text-blue-600"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Check Out
-          </DropdownMenuItem>
-        )}
-        {canUndoCheckOut(booking) && (
-          <DropdownMenuItem
-            onClick={() => onUndoCheckOut(booking)}
-            className="text-orange-600 focus:text-orange-600"
-          >
-            <Undo2 className="mr-2 h-4 w-4" />
-            Undo Checkout
-          </DropdownMenuItem>
-        )}
-        {canUndoCancel(booking) && (
-          <DropdownMenuItem
-            onClick={() => onUndoCancel(booking)}
-            className="text-green-600 focus:text-green-600"
-          >
-            <Undo2 className="mr-2 h-4 w-4" />
-            Undo Cancel
-          </DropdownMenuItem>
-        )}
-        {(booking.status === "CONFIRMED" ||
-          booking.status === "CHECKED_IN") && (
-          <DropdownMenuItem
-            onClick={() => onCancel(booking)}
-            className="text-orange-600 focus:text-orange-600"
-          >
-            <XCircle className="mr-2 h-4 w-4" />
-            Cancel Booking
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => onDelete(booking)}
-          disabled={booking.status !== "CANCELLED"}
-          className={
-            booking.status === "CANCELLED"
-              ? "text-red-600 focus:text-red-600"
-              : "text-gray-400 cursor-not-allowed"
-          }
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 
   if (bookings.length === 0) {
     return (
@@ -251,25 +99,11 @@ export function BookingTable<T extends BookingSummary>({
                 <span className="font-semibold text-gray-900">
                   {booking.bookingRef}
                 </span>
-                <Badge
-                  variant={booking.isPaid ? "default" : "outline"}
-                  className={
-                    booking.isPaid
-                      ? "bg-green-100 text-green-800 hover:bg-green-100 text-xs"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-100 text-xs"
-                  }
-                  aria-label={
-                    booking.isPaid
-                      ? "Payment status: Paid"
-                      : "Payment status: Unpaid"
-                  }
-                >
-                  {booking.isPaid ? "Paid" : "Unpaid"}
-                </Badge>
+                <PaymentStatusBadge isPaid={booking.isPaid} size="small" />
               </div>
               <div className="flex items-center gap-2">
-                {getStatusBadge(booking.status)}
-                {renderActionMenu(booking)}
+                <BookingStatusBadge status={booking.status} />
+                <BookingTableActions booking={booking} {...actionHandlers} />
               </div>
             </div>
 
@@ -300,9 +134,9 @@ export function BookingTable<T extends BookingSummary>({
                 />
                 <span
                   className="text-gray-600"
-                  aria-label={`Stay from ${formatDate(booking.checkIn)} to ${formatDate(booking.checkOut)}`}
+                  aria-label={`Stay from ${formatBookingDate(booking.checkIn)} to ${formatBookingDate(booking.checkOut)}`}
                 >
-                  {formatDate(booking.checkIn)} - {formatDate(booking.checkOut)}
+                  {formatBookingDate(booking.checkIn)} - {formatBookingDate(booking.checkOut)}
                 </span>
               </div>
             </div>
@@ -315,30 +149,15 @@ export function BookingTable<T extends BookingSummary>({
         <table className="w-full table-fixed" role="table" aria-label="Bookings table">
           <thead>
             <tr className="border-b bg-gray-50/50 text-sm font-medium text-gray-500">
-              <th scope="col" className="text-left px-6 py-3 w-[140px]">
-                Booking Ref
-              </th>
-              <th scope="col" className="text-left px-6 py-3 w-[180px]">
-                Guest
-              </th>
-              <th scope="col" className="text-left px-6 py-3 w-[80px]">
-                Room
-              </th>
-              <th scope="col" className="text-left px-6 py-3 w-[120px]">
-                Check In
-              </th>
-              <th scope="col" className="text-left px-6 py-3 w-[120px]">
-                Check Out
-              </th>
-              <th scope="col" className="text-center px-6 py-3 w-[110px]">
-                Status
-              </th>
-              <th scope="col" className="text-center px-6 py-3 w-[80px]">
-                Paid
-              </th>
-              <th scope="col" className="text-right px-6 py-3 w-[70px]">
-                Actions
-              </th>
+              {BOOKING_COLUMNS.map((col) => (
+                <th
+                  key={col.key}
+                  scope="col"
+                  className={`${col.align} px-6 py-3 ${col.width}`}
+                >
+                  {col.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -368,29 +187,20 @@ export function BookingTable<T extends BookingSummary>({
                   </span>
                 </td>
                 <td className="px-6 py-4 text-gray-600">
-                  {formatDate(booking.checkIn)}
+                  {formatBookingDate(booking.checkIn)}
                 </td>
                 <td className="px-6 py-4 text-gray-600">
-                  {formatDate(booking.checkOut)}
+                  {formatBookingDate(booking.checkOut)}
                 </td>
                 <td className="px-6 py-4 text-center">
-                  {getStatusBadge(booking.status)}
+                  <BookingStatusBadge status={booking.status} />
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <Badge
-                    variant={booking.isPaid ? "default" : "outline"}
-                    className={
-                      booking.isPaid
-                        ? "bg-green-100 text-green-800 hover:bg-green-100"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-100"
-                    }
-                  >
-                    {booking.isPaid ? "Paid" : "Unpaid"}
-                  </Badge>
+                  <PaymentStatusBadge isPaid={booking.isPaid} />
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex justify-end">
-                    {renderActionMenu(booking)}
+                    <BookingTableActions booking={booking} {...actionHandlers} />
                   </div>
                 </td>
               </tr>
