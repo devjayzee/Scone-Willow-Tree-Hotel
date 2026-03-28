@@ -8,6 +8,7 @@ import {
   useDeleteBooking,
   useCheckInBooking,
   useCheckOutBooking,
+  useUndoCheckOutBooking,
   useCancelBooking,
   useTogglePayment,
 } from "@/hooks/use-bookings";
@@ -37,6 +38,7 @@ export function useBookingManagement({
   const deleteMutation = useDeleteBooking();
   const checkInMutation = useCheckInBooking();
   const checkOutMutation = useCheckOutBooking();
+  const undoCheckOutMutation = useUndoCheckOutBooking();
   const cancelMutation = useCancelBooking();
   const togglePaymentMutation = useTogglePayment();
 
@@ -60,6 +62,7 @@ export function useBookingManagement({
     deleteMutation.isPending ||
     checkInMutation.isPending ||
     checkOutMutation.isPending ||
+    undoCheckOutMutation.isPending ||
     cancelMutation.isPending ||
     togglePaymentMutation.isPending;
   const isCreating = createMutation.isPending;
@@ -153,6 +156,14 @@ export function useBookingManagement({
     [checkOutMutation]
   );
 
+  // Undo checkout (revert to checked-in)
+  const undoCheckOutBooking = useCallback(
+    async (bookingId: string) => {
+      await undoCheckOutMutation.mutateAsync(bookingId);
+    },
+    [undoCheckOutMutation]
+  );
+
   // Cancel a booking
   const cancelBooking = useCallback(
     async (bookingId: string, reason?: string) => {
@@ -216,6 +227,7 @@ export function useBookingManagement({
     confirmDelete,
     checkInBooking,
     checkOutBooking,
+    undoCheckOutBooking,
     cancelBooking,
     togglePayment,
     updateSearch,
