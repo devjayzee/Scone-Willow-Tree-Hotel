@@ -43,6 +43,7 @@ export function BookingsClient({
     togglePayment,
     checkInBooking,
     checkOutBooking,
+    undoCheckOutBooking,
     cancelBooking,
     updateSearch,
     fetchBookings,
@@ -109,6 +110,7 @@ export function BookingsClient({
           onTogglePayment={togglePayment}
           onCheckIn={(booking) => checkInBooking(booking.id)}
           onCheckOut={(booking) => checkOutBooking(booking.id)}
+          onUndoCheckOut={(booking) => undoCheckOutBooking(booking.id)}
           onCancel={(booking) => cancelBooking(booking.id)}
         />
       )}
