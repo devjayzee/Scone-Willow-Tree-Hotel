@@ -21,7 +21,7 @@ function createMockBooking(
     id: string;
     bookingRef: string;
     guestName: string;
-    guestEmail: string;
+    guestPhone: string | null;
     checkIn: Date;
     checkOut: Date;
     status: BookingStatus;
@@ -33,7 +33,7 @@ function createMockBooking(
     id: overrides.id ?? "booking-1",
     bookingRef: overrides.bookingRef ?? "BK-001",
     guestName: overrides.guestName ?? "John Doe",
-    guestEmail: overrides.guestEmail ?? "john@example.com",
+    guestPhone: overrides.guestPhone ?? "0412345678",
     checkIn: overrides.checkIn ?? new Date("2024-03-01T14:00:00Z"),
     checkOut: overrides.checkOut ?? new Date("2024-03-05T10:00:00Z"),
     status: overrides.status ?? BookingStatus.CONFIRMED,
@@ -51,16 +51,15 @@ describe("Calendar Service", () => {
   // getCalendarEvents
   // ============================================================
   describe("getCalendarEvents", () => {
-    it("should return formatted calendar events", async () => {
+    it("should return formatted calendar events for each night of stay", async () => {
+      // Booking from March 1 to March 3 (2 nights)
       const mockBookings = [
         createMockBooking({
           id: "booking-1",
           bookingRef: "BK-001",
           guestName: "John Doe",
-          guestEmail: "john@example.com",
           checkIn: new Date("2024-03-01T14:00:00Z"),
-          checkOut: new Date("2024-03-05T10:00:00Z"),
-          status: BookingStatus.CONFIRMED,
+          checkOut: new Date("2024-03-03T10:00:00Z"), // 2 nights
           room: { id: "room-1", roomNumber: "101" },
         }),
       ];
@@ -68,8 +67,9 @@ describe("Calendar Service", () => {
 
       const result = await getCalendarEvents();
 
-      expect(result).toHaveLength(1);
-      expect(result[0]).toHaveProperty("id", "booking-1");
+      // Should create 2 events (one for each night)
+      expect(result).toHaveLength(2);
+      expect(result[0]).toHaveProperty("id");
       expect(result[0]).toHaveProperty("title", "Room 101 - John Doe");
       expect(result[0]).toHaveProperty("start");
       expect(result[0]).toHaveProperty("end");
@@ -81,8 +81,10 @@ describe("Calendar Service", () => {
         createMockBooking({
           bookingRef: "BK-123",
           guestName: "Jane Smith",
-          guestEmail: "jane@example.com",
+          guestPhone: "0400111222",
           status: BookingStatus.CHECKED_IN,
+          checkIn: new Date("2024-03-01T14:00:00Z"),
+          checkOut: new Date("2024-03-02T10:00:00Z"), // 1 night
           room: { id: "room-2", roomNumber: "202" },
         }),
       ];
@@ -93,34 +95,35 @@ describe("Calendar Service", () => {
       expect(result[0].resource).toEqual({
         bookingRef: "BK-123",
         guestName: "Jane Smith",
-        guestEmail: "jane@example.com",
+        guestPhone: "0400111222",
         roomNumber: "202",
         roomId: "room-2",
         status: BookingStatus.CHECKED_IN,
       });
     });
 
-    it("should subtract one day from checkout for display end date", async () => {
+    it("should create event IDs with booking ID and date", async () => {
       const mockBookings = [
         createMockBooking({
+          id: "booking-123",
           checkIn: new Date("2024-03-01T14:00:00Z"),
-          checkOut: new Date("2024-03-05T10:00:00Z"), // March 5
+          checkOut: new Date("2024-03-02T10:00:00Z"), // 1 night
         }),
       ];
       mockBookingFindMany.mockResolvedValue(mockBookings);
 
       const result = await getCalendarEvents();
 
-      // End date should be March 4 (one day before checkout)
-      const endDate = new Date(result[0].end);
-      expect(endDate.getDate()).toBe(4);
+      // Event ID should contain booking ID and date
+      expect(result[0].id).toContain("booking-123");
+      expect(result[0].id).toContain("2024-03-01");
     });
 
     it("should return ISO string dates", async () => {
       const mockBookings = [
         createMockBooking({
           checkIn: new Date("2024-03-01T14:00:00Z"),
-          checkOut: new Date("2024-03-05T10:00:00Z"),
+          checkOut: new Date("2024-03-02T10:00:00Z"),
         }),
       ];
       mockBookingFindMany.mockResolvedValue(mockBookings);
@@ -272,6 +275,8 @@ describe("Calendar Service", () => {
       const mockBookings = [
         createMockBooking({
           guestName: "Alice Johnson",
+          checkIn: new Date("2024-03-01T14:00:00Z"),
+          checkOut: new Date("2024-03-02T10:00:00Z"),
           room: { id: "room-1", roomNumber: "305" },
         }),
       ];
@@ -282,32 +287,32 @@ describe("Calendar Service", () => {
       expect(result[0].title).toBe("Room 305 - Alice Johnson");
     });
 
-    it("should handle multiple bookings", async () => {
+    it("should handle multiple bookings with multiple nights", async () => {
       const mockBookings = [
         createMockBooking({
           id: "booking-1",
           guestName: "Guest One",
+          checkIn: new Date("2024-03-01T14:00:00Z"),
+          checkOut: new Date("2024-03-02T10:00:00Z"), // 1 night
           room: { id: "room-1", roomNumber: "101" },
         }),
         createMockBooking({
           id: "booking-2",
           guestName: "Guest Two",
+          checkIn: new Date("2024-03-01T14:00:00Z"),
+          checkOut: new Date("2024-03-03T10:00:00Z"), // 2 nights
           room: { id: "room-2", roomNumber: "102" },
-        }),
-        createMockBooking({
-          id: "booking-3",
-          guestName: "Guest Three",
-          room: { id: "room-3", roomNumber: "103" },
         }),
       ];
       mockBookingFindMany.mockResolvedValue(mockBookings);
 
       const result = await getCalendarEvents();
 
+      // 1 event for booking 1, 2 events for booking 2 = 3 total
       expect(result).toHaveLength(3);
       expect(result[0].title).toBe("Room 101 - Guest One");
       expect(result[1].title).toBe("Room 102 - Guest Two");
-      expect(result[2].title).toBe("Room 103 - Guest Three");
+      expect(result[2].title).toBe("Room 102 - Guest Two");
     });
 
     it("should apply all filters together", async () => {
