@@ -15,7 +15,7 @@ interface UseRoomManagementOptions {
 
 export function useRoomManagement({ initialRooms, fetchTime }: UseRoomManagementOptions) {
   // TanStack Query hooks
-  const { data: rooms = initialRooms, error: queryError, refetch, isFetching } = useRooms(initialRooms, fetchTime);
+  const { data: rooms = initialRooms, error: queryError, refetch, isLoading, isFetching } = useRooms(initialRooms, fetchTime);
   const createMutation = useCreateRoom();
   const updateMutation = useUpdateRoom();
   const deleteMutation = useDeleteRoom();
@@ -90,6 +90,7 @@ export function useRoomManagement({ initialRooms, fetchTime }: UseRoomManagement
     rooms,
     filteredRooms,
     error,
+    isLoading,
     isFetching,
 
     // Dialog state
