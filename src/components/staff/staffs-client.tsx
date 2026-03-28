@@ -20,6 +20,7 @@ export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: Staffs
   const {
     filteredStaffs,
     error,
+    isLoading,
     isFetching,
     staffDialogOpen,
     deleteDialogOpen,
@@ -89,7 +90,7 @@ export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: Staffs
         </div>
       )}
 
-      {isFetching ? (
+      {isLoading ? (
         <StaffTableSkeleton />
       ) : (
         <StaffTable

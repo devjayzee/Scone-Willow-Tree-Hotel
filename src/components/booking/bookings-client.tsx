@@ -48,6 +48,7 @@ export function BookingsClient({
     undoCancelBooking,
     updateSearch,
     fetchBookings,
+    isLoading,
     isFetching,
     setBookingDialogOpen,
     setDetailsDialogOpen,
@@ -99,7 +100,7 @@ export function BookingsClient({
         </div>
       )}
 
-      {isFetching ? (
+      {isLoading ? (
         <BookingTableSkeleton />
       ) : (
         <BookingTable
