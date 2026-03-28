@@ -234,9 +234,9 @@ export async function undoCheckOutBooking(id: string, performedBy?: string) {
 
 /**
  * Undo cancellation for a booking (change status from CANCELLED back to CONFIRMED)
- * Only allowed if the check-in date has not passed yet.
+ * Only allowed if the checkout date has not passed yet.
  * @throws NotFoundError if booking not found
- * @throws BusinessRuleError if check-in date has passed or status transition is invalid
+ * @throws BusinessRuleError if checkout date has passed or status transition is invalid
  */
 export async function undoCancelBooking(id: string, performedBy?: string) {
   const booking = await prisma.booking.findUnique({
@@ -244,7 +244,7 @@ export async function undoCancelBooking(id: string, performedBy?: string) {
     select: {
       id: true,
       status: true,
-      checkIn: true,
+      checkOut: true,
       bookingRef: true,
       guestName: true,
     },
@@ -257,13 +257,13 @@ export async function undoCancelBooking(id: string, performedBy?: string) {
   // Validate status transition
   validateStatusTransition(booking.status, "CONFIRMED");
 
-  // Check if check-in date has passed
+  // Check if checkout date has passed
   const today = startOfDay(new Date());
-  const checkInDate = startOfDay(new Date(booking.checkIn));
+  const checkOutDate = startOfDay(new Date(booking.checkOut));
 
-  if (today > checkInDate) {
+  if (today > checkOutDate) {
     throw new BusinessRuleError(
-      "Cannot undo cancellation after the check-in date has passed"
+      "Cannot undo cancellation after the checkout date has passed"
     );
   }
 
