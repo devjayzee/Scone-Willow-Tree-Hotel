@@ -80,7 +80,7 @@ export function CalendarClient({
 
   // TanStack Query for calendar events
   // Only pass initialData when on the initial date range to avoid stale data
-  const { data: events = initialEvents, refetch, isFetching } = useCalendarEvents(
+  const { data: events = initialEvents, refetch, isLoading, isFetching } = useCalendarEvents(
     isInitialRange ? initialEvents : undefined,
     startDate,
     endDate,
@@ -174,7 +174,7 @@ export function CalendarClient({
       />
 
       {/* Calendar Views */}
-      {isFetching ? (
+      {isLoading ? (
         <div className="bg-white rounded-lg border p-4">
           <CalendarSkeleton />
         </div>
