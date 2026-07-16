@@ -350,8 +350,7 @@ dashboard
 
 ### C. References
 - [Architecture Metrics Reference](architecture-metrics.md)
-- [ISO/IEC 25010 Quality Model](iso-25010-quality-model.md)
-- [SOLID Principles](solid-principles.md)
+- Project hard rules: `.claude/rules/`
 ```
 
 ---
