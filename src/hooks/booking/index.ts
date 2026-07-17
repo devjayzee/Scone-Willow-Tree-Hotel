@@ -43,6 +43,7 @@ export {
 // Export API functions (for direct use if needed)
 export {
   fetchBookings,
+  fetchBookingById,
   createBookingApi,
   updateBookingApi,
   deleteBookingApi,
