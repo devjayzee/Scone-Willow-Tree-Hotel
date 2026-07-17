@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay, addMonths, startOfMonth, endOfMonth } from "date-fns";
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  addMonths,
+  startOfMonth,
+  endOfMonth,
+} from "date-fns";
 import { enAU } from "date-fns/locale";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
 import { CalendarSkeleton } from "@/components/calendar/calendar-skeleton";
@@ -13,6 +22,7 @@ import { MobileCalendar } from "@/components/calendar/mobile-calendar";
 import { MobileWeekCalendar } from "@/components/calendar/mobile-week-calendar";
 import { BookingDetailsDialog } from "@/components/booking/booking-details-dialog";
 import { useCalendarEvents } from "@/hooks/use-calendar";
+import { bookingKeys, fetchBookingById } from "@/hooks/booking";
 import type { RoomSummary } from "@/types/room";
 import type { CalendarEvent } from "@/types/calendar";
 import type { Booking } from "@/types/booking";
@@ -54,6 +64,8 @@ export function CalendarClient({
   initialRooms,
   fetchTime,
 }: CalendarClientProps) {
+  const queryClient = useQueryClient();
+
   // Calendar state
   const [view, setView] = useState<ViewType>("month");
   const [date, setDate] = useState(new Date());
@@ -65,27 +77,34 @@ export function CalendarClient({
   // Calculate date range for query (3 months back, 6 months ahead from current view)
   const startDate = useMemo(
     () => startOfMonth(addMonths(date, -3)).toISOString(),
-    [date]
+    [date],
   );
   const endDate = useMemo(
     () => endOfMonth(addMonths(date, 6)).toISOString(),
-    [date]
+    [date],
   );
 
   // Track initial date range to only use initialData for matching queries
-  const initialDateRange = useRef({ start: startDate, end: endDate });
+  const [initialDateRange] = useState(() => ({
+    start: startDate,
+    end: endDate,
+  }));
   const isInitialRange =
-    startDate === initialDateRange.current.start &&
-    endDate === initialDateRange.current.end;
+    startDate === initialDateRange.start && endDate === initialDateRange.end;
 
   // TanStack Query for calendar events
   // Only pass initialData when on the initial date range to avoid stale data
-  const { data: events = initialEvents, refetch, isLoading, isFetching } = useCalendarEvents(
+  const {
+    data: events = initialEvents,
+    refetch,
+    isLoading,
+    isFetching,
+  } = useCalendarEvents(
     isInitialRange ? initialEvents : undefined,
     startDate,
     endDate,
     undefined, // roomId
-    isInitialRange ? fetchTime : undefined
+    isInitialRange ? fetchTime : undefined,
   );
 
   // Convert events from ISO strings to Date objects for react-big-calendar
@@ -96,7 +115,7 @@ export function CalendarClient({
         start: new Date(event.start),
         end: new Date(event.end),
       })),
-    [events]
+    [events],
   );
 
   // Navigation handlers
@@ -108,34 +127,45 @@ export function CalendarClient({
     setView(newView);
   }, []);
 
-  // Event selection handler for monthly view
-  const handleSelectEvent = useCallback(async (event: LocalCalendarEvent) => {
-    await fetchAndShowBooking(event.id);
-  }, []);
-
-  // Event selection handler for weekly view
-  const handleSelectCalendarEvent = useCallback(async (event: CalendarEvent) => {
-    await fetchAndShowBooking(event.id);
-  }, []);
-
   // Fetch booking details and show dialog
-  const fetchAndShowBooking = async (eventId: string) => {
-    try {
+  const fetchAndShowBooking = useCallback(
+    async (eventId: string) => {
       // Extract the original booking ID (remove date suffix if present)
       const bookingId = eventId.includes("::")
         ? eventId.split("::")[0]
         : eventId;
 
-      const response = await fetch(`/api/bookings/${bookingId}`);
-      if (!response.ok) throw new Error("Failed to fetch booking");
-      const booking = await response.json();
-      setSelectedBooking(booking);
-      setDetailsDialogOpen(true);
-    } catch (error) {
-      logger.error("Failed to fetch booking details", error, { eventId });
-      toast.error("Failed to fetch booking details");
-    }
-  };
+      try {
+        const booking = await queryClient.fetchQuery({
+          queryKey: bookingKeys.detail(bookingId),
+          queryFn: () => fetchBookingById(bookingId),
+          staleTime: 1000 * 30,
+        });
+        setSelectedBooking(booking);
+        setDetailsDialogOpen(true);
+      } catch (error) {
+        logger.error("Failed to fetch booking details", error, { eventId });
+        toast.error("Failed to fetch booking details");
+      }
+    },
+    [queryClient],
+  );
+
+  // Event selection handler for monthly view
+  const handleSelectEvent = useCallback(
+    async (event: LocalCalendarEvent) => {
+      await fetchAndShowBooking(event.id);
+    },
+    [fetchAndShowBooking],
+  );
+
+  // Event selection handler for weekly view
+  const handleSelectCalendarEvent = useCallback(
+    async (event: CalendarEvent) => {
+      await fetchAndShowBooking(event.id);
+    },
+    [fetchAndShowBooking],
+  );
 
   // Event styling for monthly view
   const eventStyleGetter = useCallback((event: LocalCalendarEvent) => {
