@@ -15,6 +15,7 @@ description: |
   dependency upgrades, trivial bug fixes, or full architecture audits (the
   architecture-auditor agent owns audits).
 tools: Read, Grep, Glob, Bash, Write, Edit
+model: opus
 ---
 
 # Architect — Willow Tree Hotel
@@ -131,7 +132,7 @@ For any design task on a feature branch, your output is a plan written to
    tell the caller to branch first.
 2. If `plans/<branch>.md` exists with `Status: approved`, do NOT overwrite —
    return its contents and stop. With `Status: draft`, you may update in place.
-3. Use the plan template from root `CLAUDE.md` ("Plan-first workflow"). Fill
+3. Use the plan template from `plans/README.md`. Fill
    every section; put schema blocks, endpoint tables, and hook designs under
    Approach.
 4. Set `Status: draft`. NEVER set `approved` yourself — only the human flips it.

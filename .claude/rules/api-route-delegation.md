@@ -39,7 +39,9 @@ Requirements:
 - Wrap the whole handler in `try/catch`; the catch is always
   `return handleApiError(error, "<verb>ing <thing>")`.
 - Auth first: `getServerSession(authOptions)` → throw `UnauthorizedError` from
-  `@/lib/errors` (never hand-roll a 401 response).
+  `@/lib/errors` (never hand-roll a 401 response). Importing the error class
+  from `@/lib/api-error-handler` is equivalent — it re-exports the same
+  classes for convenience, and most existing routes use that shorter path.
 - Body/query validated with a zod schema from `@/lib/validations/` via
   `safeParse` before touching a service.
 - Pass session-derived values (e.g. `session.user.id`) into the service as
