@@ -25,7 +25,6 @@ Optional deeper passes:
 ```bash
 bash .claude/skills/architecture-auditor/scripts/analyze-dependencies.sh src/   # madge/dep-cruiser if installed
 bash .claude/skills/architecture-auditor/scripts/analyze-git-history.sh src/    # churn × complexity
-bash .claude/skills/architecture-auditor/scripts/validate-adrs.sh docs/adr      # only if ADRs exist
 ```
 
 2. **Check rule compliance.** The 8 hard rules live in `.claude/rules/` and
