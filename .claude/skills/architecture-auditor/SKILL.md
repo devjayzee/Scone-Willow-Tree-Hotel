@@ -89,4 +89,3 @@ and Suspicious-suppressions sections, standard summary block.
 - [references/architecture-metrics.md](references/architecture-metrics.md) — CC, Ca/Ce, LCOM, Instability thresholds
 - [references/nextjs-architecture.md](references/nextjs-architecture.md) — App Router patterns, server/client split
 - [references/eslint-architecture-rules.md](references/eslint-architecture-rules.md) — lint rules to codify findings
-- [references/arc42-report-template.md](references/arc42-report-template.md) — long-form architecture documentation (only when asked for full docs)
