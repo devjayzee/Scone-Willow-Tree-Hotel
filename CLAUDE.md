@@ -146,51 +146,8 @@ structure), a plan document is required before code:
    into sequenced branches at plan time.
 5. After the PR merges, delete the plan — git history is the source of truth.
 
-Plans are gitignored (`plans/*` except `plans/README.md`) — local-only.
-
-### Plan template
-
-```markdown
-# Plan: <short-name>
-
-**Branch:** <git-branch>
-**Type:** feat | fix | chore | refactor
-**Created:** <YYYY-MM-DD>
-**Status:** draft | approved | in-progress | done
-
-## Goal
-
-<1 paragraph — what success looks like and why>
-
-## Approach
-
-<numbered steps; include schema blocks, endpoint tables, hook/component
-designs here when relevant>
-
-## Files
-
-### To create
-- <path> — <one-line purpose>
-
-### To modify
-- <path> — <what changes>
-
-## Open decisions
-
-<bullets the human must decide before code starts>
-
-## Risks / unknowns
-
-<bullets>
-
-## Acceptance criteria
-
-- [ ] <observable outcome>
-
-## Estimated scope
-
-- Lines changed: ~N · Files touched: ~N · Complexity: small | medium | large
-```
+Plans are gitignored (`plans/*` except `plans/README.md`) — local-only. The
+plan template lives in `plans/README.md`.
 
 ## Git workflow
 
