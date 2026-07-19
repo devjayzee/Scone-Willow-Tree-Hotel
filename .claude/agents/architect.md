@@ -15,6 +15,7 @@ description: |
   dependency upgrades, trivial bug fixes, or full architecture audits (the
   architecture-auditor agent owns audits).
 tools: Read, Grep, Glob, Bash, Write, Edit
+model: opus
 ---
 
 # Architect — Willow Tree Hotel
