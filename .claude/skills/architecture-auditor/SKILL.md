@@ -25,7 +25,6 @@ Optional deeper passes:
 ```bash
 bash .claude/skills/architecture-auditor/scripts/analyze-dependencies.sh src/   # madge/dep-cruiser if installed
 bash .claude/skills/architecture-auditor/scripts/analyze-git-history.sh src/    # churn × complexity
-bash .claude/skills/architecture-auditor/scripts/validate-adrs.sh docs/adr      # only if ADRs exist
 ```
 
 2. **Check rule compliance.** The 8 hard rules live in `.claude/rules/` and
@@ -76,8 +75,8 @@ verify against live docs:
 | Prisma | `/prisma/docs` |
 | NextAuth.js | `/nextauthjs/next-auth` |
 
-Workflow: `resolve-library-id("<lib>", "<question>")` →
-`query-docs("<id>", "<specific question>")` → cite in the finding.
+Workflow: `resolve-library-id("<lib>")` → `query-docs("<id>", "<specific
+question>")` → cite in the finding.
 
 ## Report format
 
@@ -90,4 +89,3 @@ and Suspicious-suppressions sections, standard summary block.
 - [references/architecture-metrics.md](references/architecture-metrics.md) — CC, Ca/Ce, LCOM, Instability thresholds
 - [references/nextjs-architecture.md](references/nextjs-architecture.md) — App Router patterns, server/client split
 - [references/eslint-architecture-rules.md](references/eslint-architecture-rules.md) — lint rules to codify findings
-- [references/arc42-report-template.md](references/arc42-report-template.md) — long-form architecture documentation (only when asked for full docs)
