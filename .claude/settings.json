@@ -10,6 +10,7 @@
     ],
     "allow": [
       "Bash(npm run lint:*)",
+      "Bash(npm run typecheck:*)",
       "Bash(npm run test:run:*)",
       "Bash(npm run test:coverage:*)",
       "Bash(npm run build:*)",

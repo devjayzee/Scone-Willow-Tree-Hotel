@@ -22,7 +22,8 @@ staff, calendar, and reports behind a role-gated dashboard.
 ```bash
 npm run dev            # dev server
 npm run build          # prisma generate && next build
-npm run lint           # eslint
+npm run lint           # eslint (enforces architecture rules 1/2/5/6/7)
+npm run typecheck      # tsc --noEmit (fast type check)
 npm run test           # vitest watch mode
 npm run test:run       # vitest single run (use this to verify)
 npm run test:coverage  # coverage report
