@@ -157,9 +157,14 @@ plan template lives in `plans/README.md`.
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
 - Never commit `.env`. Never push directly to `main`.
-- A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) blocks
-  Claude's Edit/Write to `src/` and `prisma/` while on `main` or `development` —
-  structural changes require a `<type>/<name>` branch. `.claude/`, `plans/`,
-  and docs stay editable everywhere.
+- A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) governs
+  Edit/Write to `src/` and `prisma/`:
+  - **Blocks** on `main` / `development` (structural changes require a
+    `<type>/<name>` branch).
+  - **Warns** (non-blocking) on `feat/*` / `refactor/*` / `fix/*` when
+    `plans/<branch>.md` is missing or `Status: draft`.
+  - `.claude/`, `plans/`, and docs stay editable everywhere.
+- A `SessionStart` hook (`.claude/hooks/session-start.sh`) prints the current
+  branch and plan status so the assistant doesn't have to derive it.
 - PR reviews follow `.claude/templates/pr-review.md` (decision matrix,
   vocabulary, suppression-marker handling).
