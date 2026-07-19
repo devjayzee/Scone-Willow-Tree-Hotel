@@ -204,3 +204,5 @@ designs here when relevant>
   Claude's Edit/Write to `src/` and `prisma/` while on `main` or `development` —
   structural changes require a `<type>/<name>` branch. `.claude/`, `plans/`,
   and docs stay editable everywhere.
+- PR reviews follow `.claude/templates/pr-review.md` (decision matrix,
+  vocabulary, suppression-marker handling).
