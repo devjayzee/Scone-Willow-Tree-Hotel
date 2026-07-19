@@ -29,6 +29,15 @@ const eslintConfig = defineConfig([
   {
     rules: {
       "no-restricted-imports": ["error", { paths: rhfPaths }],
+      // Honor the `_` prefix as "intentionally unused" for args, vars, and
+      // destructured names. Standard convention; unblocks the "destructure
+      // to remove a field" pattern used in validation tests.
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      }],
     },
   },
 

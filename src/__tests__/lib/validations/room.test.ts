@@ -41,7 +41,7 @@ describe("Room Validation", () => {
 
     // Required fields
     it("should reject room without roomNumber", () => {
-      const { roomNumber, ...noRoomNumber } = validRoom;
+      const { roomNumber: _roomNumber, ...noRoomNumber } = validRoom;
       const result = createRoomSchema.safeParse(noRoomNumber);
       expect(result.success).toBe(false);
     });
@@ -55,7 +55,7 @@ describe("Room Validation", () => {
     });
 
     it("should reject room without pricePerNight", () => {
-      const { pricePerNight, ...noPrice } = validRoom;
+      const { pricePerNight: _pricePerNight, ...noPrice } = validRoom;
       const result = createRoomSchema.safeParse(noPrice);
       expect(result.success).toBe(false);
     });
@@ -111,7 +111,7 @@ describe("Room Validation", () => {
 
     // Description
     it("should accept room without description", () => {
-      const { description, ...noDesc } = { ...validRoom, description: "test" };
+      const { description: _description, ...noDesc } = { ...validRoom, description: "test" };
       const result = createRoomSchema.safeParse(noDesc);
       expect(result.success).toBe(true);
     });
