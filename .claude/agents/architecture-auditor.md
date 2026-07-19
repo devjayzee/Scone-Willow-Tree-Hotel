@@ -1,7 +1,7 @@
 ---
 name: architecture-auditor
 description: Read-only architecture audit for the Willow Tree Hotel codebase. Use after structural changes, before PRs, or for periodic health checks. Audits against the project's hard rules (.claude/rules/ 1-8) plus quantitative metrics. Do NOT use for designing features (use the architect agent), implementing fixes, or security audits.
-tools: Read, Grep, Glob, LS, Bash, WebFetch, mcp__sequential-thinking__sequentialthinking, mcp__context7__resolve-library-id, mcp__context7__query-docs
+tools: Read, Grep, Glob, Bash, WebFetch, mcp__sequential-thinking__sequentialthinking, mcp__context7__resolve-library-id, mcp__context7__query-docs
 model: opus
 skills:
   - architecture-auditor
