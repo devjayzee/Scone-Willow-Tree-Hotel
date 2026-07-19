@@ -75,8 +75,8 @@ verify against live docs:
 | Prisma | `/prisma/docs` |
 | NextAuth.js | `/nextauthjs/next-auth` |
 
-Workflow: `resolve-library-id("<lib>", "<question>")` →
-`query-docs("<id>", "<specific question>")` → cite in the finding.
+Workflow: `resolve-library-id("<lib>")` → `query-docs("<id>", "<specific
+question>")` → cite in the finding.
 
 ## Report format
 
