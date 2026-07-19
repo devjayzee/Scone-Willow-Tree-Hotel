@@ -10,7 +10,8 @@ staff, calendar, and reports behind a role-gated dashboard.
 - **Auth:** NextAuth 4 (credentials + `@auth/prisma-adapter`), role-based (`GENERAL_MANAGER`, `MANAGER`, `STAFF`)
 - **Validation:** Zod 4 (`src/lib/validations/`)
 - **Forms:** custom form-state hooks (`use-<domain>-form.ts`) — react-hook-form
-  is in package.json but intentionally unused; don't introduce it piecemeal
+  is intentionally NOT a dependency; do not add it. Adopting it is a
+  project-wide decision, not a per-component one.
 - **Server state:** TanStack Query 5 (query-key factories)
 - **UI:** shadcn/ui (Radix + CVA) + Tailwind 4, lucide-react icons, sonner toasts
 - **Rate limiting:** Upstash Redis (login attempts, in middleware)
