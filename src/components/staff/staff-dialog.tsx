@@ -79,6 +79,7 @@ export function StaffDialog({
     if (open) {
       if (staff) {
         // Editing existing staff
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Form hydration on dialog open. `key`-prop remount would work but is a larger API change than the audit budget covers.
         setFormData({
           firstName: staff.firstName,
           lastName: staff.lastName,
