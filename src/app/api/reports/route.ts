@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-error-handler";
-import { UnauthorizedError } from "@/lib/errors";
+import { UnauthorizedError, ValidationError } from "@/lib/errors";
 import {
   getDashboardStats,
   getOccupancyReport,
@@ -56,10 +56,7 @@ export async function GET(request: Request) {
       }
 
       default:
-        return NextResponse.json(
-          { error: "Invalid report type" },
-          { status: 400 }
-        );
+        throw new ValidationError("Invalid report type");
     }
   } catch (error) {
     return handleApiError(error, "fetching reports");
