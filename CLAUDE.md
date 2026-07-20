@@ -156,6 +156,8 @@ plan template lives in `plans/README.md`.
   feature branches off `development`. Feature PRs target `development`;
   only release PRs promote `development` into `main`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test:`, `docs:`.
+- PRs merge as merge commits (squash and rebase disabled at the repo level
+  to preserve per-commit history). Merged branches auto-delete.
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
 - Never commit `.env`. Never push directly to `main`.
