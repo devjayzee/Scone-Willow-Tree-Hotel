@@ -160,7 +160,10 @@ plan template lives in `plans/README.md`.
   to preserve per-commit history). Merged branches auto-delete.
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
-- Never commit `.env`. Never push directly to `main`.
+- Never commit `.env`. Never push directly to `main` — enforced client-side
+  by `.githooks/pre-push`. New checkouts need one-time setup:
+  `git config core.hooksPath .githooks`. Emergency bypass:
+  `git push --no-verify`.
 - A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) governs
   Edit/Write to `src/` and `prisma/`:
   - **Blocks** on `main` / `development` (structural changes require a
