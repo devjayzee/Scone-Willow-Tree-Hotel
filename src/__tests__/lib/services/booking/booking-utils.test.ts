@@ -15,9 +15,11 @@ vi.mock("@/lib/prisma", () => ({
 import {
   generateBookingRef,
   findOverlappingBooking,
+  pickUpdateFields,
   validateStatusTransition,
 } from "@/lib/services/booking/booking-utils";
 import { BusinessRuleError } from "@/lib/errors";
+import type { UpdateBookingSchemaInput } from "@/lib/validations/booking";
 
 describe("booking-utils", () => {
   beforeEach(() => {
@@ -201,5 +203,69 @@ describe("booking-utils", () => {
         );
       }
     );
+  });
+
+  describe("pickUpdateFields", () => {
+    it("returns an empty object when no fields are provided", () => {
+      expect(pickUpdateFields({} as UpdateBookingSchemaInput)).toEqual({});
+    });
+
+    it("includes only the fields present in the input", () => {
+      const input = {
+        guestName: "Jane Doe",
+        guestPhone: "0400000000",
+      } as UpdateBookingSchemaInput;
+
+      expect(pickUpdateFields(input)).toEqual({
+        guestName: "Jane Doe",
+        guestPhone: "0400000000",
+      });
+    });
+
+    it("parses checkIn and checkOut strings into Date objects", () => {
+      const input = {
+        checkIn: "2026-05-01",
+        checkOut: "2026-05-05",
+      } as UpdateBookingSchemaInput;
+
+      const result = pickUpdateFields(input);
+
+      expect(result.checkIn).toBeInstanceOf(Date);
+      expect(result.checkOut).toBeInstanceOf(Date);
+      expect((result.checkIn as Date).toISOString()).toBe(
+        new Date("2026-05-01").toISOString()
+      );
+    });
+
+    it("converts guestDateOfBirth string to Date and preserves explicit null", () => {
+      const withDate = pickUpdateFields({
+        guestDateOfBirth: "1990-06-15",
+      } as UpdateBookingSchemaInput);
+      expect(withDate.guestDateOfBirth).toBeInstanceOf(Date);
+
+      const withNull = pickUpdateFields({
+        guestDateOfBirth: null,
+      } as unknown as UpdateBookingSchemaInput);
+      expect(withNull).toEqual({ guestDateOfBirth: null });
+    });
+
+    it("passes through all supported non-date fields verbatim", () => {
+      const input: UpdateBookingSchemaInput = {
+        roomId: "room-1",
+        guestName: "John",
+        guestAddress: "1 Main St",
+        guestPhone: "0401",
+        guestEmail: "j@example.com",
+        vehicleRego: "ABC123",
+        additionalGuests: "Jane",
+        checkInTime: "14:00",
+        checkOutTime: "10:00",
+        bondDeposit: 100,
+        status: "CONFIRMED",
+        notes: "VIP",
+      } as UpdateBookingSchemaInput;
+
+      expect(pickUpdateFields(input)).toEqual(input);
+    });
   });
 });

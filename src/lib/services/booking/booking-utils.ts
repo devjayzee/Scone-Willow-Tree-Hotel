@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { format } from "date-fns";
 import type { BookingStatus } from "@prisma/client";
+import type { UpdateBookingSchemaInput } from "@/lib/validations/booking";
 import { BusinessRuleError } from "@/lib/errors";
 import { VALID_STATUS_TRANSITIONS } from "./booking-constants";
 
@@ -90,4 +91,37 @@ export function validateStatusTransition(
       `Cannot change status from ${currentStatus} to ${newStatus}`
     );
   }
+}
+
+/**
+ * Build the Prisma update payload from a validated update input.
+ * Only defined fields are included; date strings are parsed to Date objects.
+ */
+export function pickUpdateFields(
+  data: UpdateBookingSchemaInput
+): Record<string, unknown> {
+  const updateData: Record<string, unknown> = {};
+
+  if (data.roomId !== undefined) updateData.roomId = data.roomId;
+  if (data.guestName !== undefined) updateData.guestName = data.guestName;
+  if (data.guestDateOfBirth !== undefined) {
+    updateData.guestDateOfBirth = data.guestDateOfBirth
+      ? new Date(data.guestDateOfBirth)
+      : null;
+  }
+  if (data.guestAddress !== undefined) updateData.guestAddress = data.guestAddress;
+  if (data.guestPhone !== undefined) updateData.guestPhone = data.guestPhone;
+  if (data.guestEmail !== undefined) updateData.guestEmail = data.guestEmail;
+  if (data.vehicleRego !== undefined) updateData.vehicleRego = data.vehicleRego;
+  if (data.additionalGuests !== undefined)
+    updateData.additionalGuests = data.additionalGuests;
+  if (data.checkIn !== undefined) updateData.checkIn = new Date(data.checkIn);
+  if (data.checkInTime !== undefined) updateData.checkInTime = data.checkInTime;
+  if (data.checkOut !== undefined) updateData.checkOut = new Date(data.checkOut);
+  if (data.checkOutTime !== undefined) updateData.checkOutTime = data.checkOutTime;
+  if (data.bondDeposit !== undefined) updateData.bondDeposit = data.bondDeposit;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.notes !== undefined) updateData.notes = data.notes;
+
+  return updateData;
 }
