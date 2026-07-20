@@ -420,7 +420,10 @@ describe("Audit Service", () => {
 
     it("should detect type changes", () => {
       const previous = { count: 5 };
-      const current = { count: "5" };
+      // Deliberately wrong type — the whole point of this test is to prove
+      // getChangedFields catches a runtime type mismatch.
+      // @ts-expect-error - intentional type mismatch for runtime detection
+      const current: Partial<typeof previous> = { count: "5" };
 
       const changed = getChangedFields(previous, current);
 

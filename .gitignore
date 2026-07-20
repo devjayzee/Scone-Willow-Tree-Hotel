@@ -44,4 +44,7 @@ next-env.d.ts
 /plans/*
 !/plans/README.md
 
+# personal Claude Code settings (per-machine, not shared)
+.claude/settings.local.json
+
 /src/generated/prisma
