@@ -10,7 +10,8 @@ staff, calendar, and reports behind a role-gated dashboard.
 - **Auth:** NextAuth 4 (credentials + `@auth/prisma-adapter`), role-based (`GENERAL_MANAGER`, `MANAGER`, `STAFF`)
 - **Validation:** Zod 4 (`src/lib/validations/`)
 - **Forms:** custom form-state hooks (`use-<domain>-form.ts`) — react-hook-form
-  is in package.json but intentionally unused; don't introduce it piecemeal
+  is intentionally NOT a dependency; do not add it. Adopting it is a
+  project-wide decision, not a per-component one.
 - **Server state:** TanStack Query 5 (query-key factories)
 - **UI:** shadcn/ui (Radix + CVA) + Tailwind 4, lucide-react icons, sonner toasts
 - **Rate limiting:** Upstash Redis (login attempts, in middleware)
@@ -21,7 +22,8 @@ staff, calendar, and reports behind a role-gated dashboard.
 ```bash
 npm run dev            # dev server
 npm run build          # prisma generate && next build
-npm run lint           # eslint
+npm run lint           # eslint (enforces architecture rules 1/2/5/6/7)
+npm run typecheck      # tsc --noEmit (fast type check)
 npm run test           # vitest watch mode
 npm run test:run       # vitest single run (use this to verify)
 npm run test:coverage  # coverage report
@@ -144,61 +146,32 @@ structure), a plan document is required before code:
    into sequenced branches at plan time.
 5. After the PR merges, delete the plan — git history is the source of truth.
 
-Plans are gitignored (`plans/*` except `plans/README.md`) — local-only.
-
-### Plan template
-
-```markdown
-# Plan: <short-name>
-
-**Branch:** <git-branch>
-**Type:** feat | fix | chore | refactor
-**Created:** <YYYY-MM-DD>
-**Status:** draft | approved | in-progress | done
-
-## Goal
-
-<1 paragraph — what success looks like and why>
-
-## Approach
-
-<numbered steps; include schema blocks, endpoint tables, hook/component
-designs here when relevant>
-
-## Files
-
-### To create
-- <path> — <one-line purpose>
-
-### To modify
-- <path> — <what changes>
-
-## Open decisions
-
-<bullets the human must decide before code starts>
-
-## Risks / unknowns
-
-<bullets>
-
-## Acceptance criteria
-
-- [ ] <observable outcome>
-
-## Estimated scope
-
-- Lines changed: ~N · Files touched: ~N · Complexity: small | medium | large
-```
+Plans are gitignored (`plans/*` except `plans/README.md`) — local-only. The
+plan template lives in `plans/README.md`.
 
 ## Git workflow
 
-- Branches: `main` (production, PR target), `development` (integration, default
-  working branch), feature branches off `development`.
+- Branches: `main` (production, deploys to Vercel on push), `development`
+  (integration, default working branch and PR target for features),
+  feature branches off `development`. Feature PRs target `development`;
+  only release PRs promote `development` into `main`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test:`, `docs:`.
+- PRs merge as merge commits (squash and rebase disabled at the repo level
+  to preserve per-commit history). Merged branches auto-delete.
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
-- Never commit `.env`. Never push directly to `main`.
-- A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) blocks
-  Claude's Edit/Write to `src/` and `prisma/` while on `main` or `development` —
-  structural changes require a `<type>/<name>` branch. `.claude/`, `plans/`,
-  and docs stay editable everywhere.
+- Never commit `.env`. Never push directly to `main` — enforced client-side
+  by `.githooks/pre-push`. New checkouts need one-time setup:
+  `git config core.hooksPath .githooks`. Emergency bypass:
+  `git push --no-verify`.
+- A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) governs
+  Edit/Write to `src/` and `prisma/`:
+  - **Blocks** on `main` / `development` (structural changes require a
+    `<type>/<name>` branch).
+  - **Warns** (non-blocking) on `feat/*` / `refactor/*` / `fix/*` when
+    `plans/<branch>.md` is missing or `Status: draft`.
+  - `.claude/`, `plans/`, and docs stay editable everywhere.
+- A `SessionStart` hook (`.claude/hooks/session-start.sh`) prints the current
+  branch and plan status so the assistant doesn't have to derive it.
+- PR reviews follow `.claude/templates/pr-review.md` (decision matrix,
+  vocabulary, suppression-marker handling).

@@ -14,6 +14,18 @@ export async function fetchBookings(): Promise<Booking[]> {
 }
 
 /**
+ * Fetch a single booking by id.
+ */
+export async function fetchBookingById(id: string): Promise<Booking> {
+  const response = await fetch(`/api/bookings/${id}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to fetch booking");
+  }
+  return response.json();
+}
+
+/**
  * Create a new booking.
  */
 export async function createBookingApi(data: CreateBookingInput): Promise<Booking> {

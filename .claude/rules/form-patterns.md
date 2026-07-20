@@ -6,9 +6,9 @@ paths:
 
 # Rule 6: Forms = custom form-state hook + presentational steps + server zod
 
-This project does NOT use react-hook-form (it's in `package.json` but has zero
-usages — do not introduce it piecemeal; adopting it is a project-wide decision).
-The working pattern:
+This project does NOT use react-hook-form and it is NOT a dependency — do not
+add it. Adopting it is a project-wide decision, not a per-component one. The
+working pattern:
 
 1. **State hook** — `src/hooks/use-<domain>-form.ts` owns every field as
    `useState`, step progression, edit-mode hydration, and the submit handler.

@@ -1,13 +1,88 @@
+import type { BookingStatus } from "@prisma/client";
+import { startOfDay } from "date-fns";
 import prisma from "@/lib/prisma";
 import { NotFoundError, BusinessRuleError } from "@/lib/errors";
 import {
   createAuditLog,
   AuditAction,
   EntityType,
+  type AuditActionType,
 } from "../audit-service";
 import { bookingSelectFields } from "./booking-constants";
 import { validateStatusTransition } from "./booking-utils";
-import { startOfDay } from "date-fns";
+
+type StatusTransitionBooking = {
+  id: string;
+  status: BookingStatus;
+  checkOut: Date;
+  bookingRef: string;
+  guestName: string;
+};
+
+type TransitionOptions = {
+  performedBy?: string;
+  auditAction: AuditActionType;
+  preUpdate?: (booking: StatusTransitionBooking) => void;
+  auditMeta?: (booking: StatusTransitionBooking) => Record<string, unknown>;
+};
+
+async function transitionBookingStatus(
+  id: string,
+  targetStatus: BookingStatus,
+  opts: TransitionOptions
+) {
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      checkOut: true,
+      bookingRef: true,
+      guestName: true,
+    },
+  });
+
+  if (!booking) {
+    throw new NotFoundError("Booking not found");
+  }
+
+  validateStatusTransition(booking.status, targetStatus);
+
+  opts.preUpdate?.(booking);
+
+  const updatedBooking = await prisma.booking.update({
+    where: { id },
+    data: { status: targetStatus },
+    select: bookingSelectFields,
+  });
+
+  if (opts.performedBy) {
+    await createAuditLog(
+      opts.performedBy,
+      opts.auditAction,
+      EntityType.BOOKING,
+      id,
+      {
+        previous: { status: booking.status },
+        current: { status: targetStatus },
+        ...(opts.auditMeta?.(booking) ?? {}),
+      }
+    );
+  }
+
+  return updatedBooking;
+}
+
+function assertCheckoutNotPassed(
+  checkOut: Date,
+  message: string
+): void {
+  const today = startOfDay(new Date());
+  const checkOutDate = startOfDay(new Date(checkOut));
+  if (today > checkOutDate) {
+    throw new BusinessRuleError(message);
+  }
+}
 
 /**
  * Check in a booking
@@ -15,38 +90,10 @@ import { startOfDay } from "date-fns";
  * @throws BusinessRuleError if booking cannot be checked in
  */
 export async function checkInBooking(id: string, performedBy?: string) {
-  const booking = await prisma.booking.findUnique({
-    where: { id },
-    select: { id: true, status: true, bookingRef: true, guestName: true },
+  return transitionBookingStatus(id, "CHECKED_IN", {
+    performedBy,
+    auditAction: AuditAction.BOOKING_CHECKED_IN,
   });
-
-  if (!booking) {
-    throw new NotFoundError("Booking not found");
-  }
-
-  validateStatusTransition(booking.status, "CHECKED_IN");
-
-  const updatedBooking = await prisma.booking.update({
-    where: { id },
-    data: { status: "CHECKED_IN" },
-    select: bookingSelectFields,
-  });
-
-  // Audit log
-  if (performedBy) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.BOOKING_CHECKED_IN,
-      EntityType.BOOKING,
-      id,
-      {
-        previous: { status: booking.status },
-        current: { status: "CHECKED_IN" },
-      }
-    );
-  }
-
-  return updatedBooking;
 }
 
 /**
@@ -55,38 +102,10 @@ export async function checkInBooking(id: string, performedBy?: string) {
  * @throws BusinessRuleError if booking cannot be checked out
  */
 export async function checkOutBooking(id: string, performedBy?: string) {
-  const booking = await prisma.booking.findUnique({
-    where: { id },
-    select: { id: true, status: true, bookingRef: true, guestName: true },
+  return transitionBookingStatus(id, "CHECKED_OUT", {
+    performedBy,
+    auditAction: AuditAction.BOOKING_CHECKED_OUT,
   });
-
-  if (!booking) {
-    throw new NotFoundError("Booking not found");
-  }
-
-  validateStatusTransition(booking.status, "CHECKED_OUT");
-
-  const updatedBooking = await prisma.booking.update({
-    where: { id },
-    data: { status: "CHECKED_OUT" },
-    select: bookingSelectFields,
-  });
-
-  // Audit log
-  if (performedBy) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.BOOKING_CHECKED_OUT,
-      EntityType.BOOKING,
-      id,
-      {
-        previous: { status: booking.status },
-        current: { status: "CHECKED_OUT" },
-      }
-    );
-  }
-
-  return updatedBooking;
 }
 
 /**
@@ -99,39 +118,11 @@ export async function cancelBooking(
   reason?: string,
   performedBy?: string
 ) {
-  const booking = await prisma.booking.findUnique({
-    where: { id },
-    select: { id: true, status: true, bookingRef: true, guestName: true },
+  return transitionBookingStatus(id, "CANCELLED", {
+    performedBy,
+    auditAction: AuditAction.BOOKING_CANCELLED,
+    auditMeta: () => ({ reason: reason || "Booking cancelled" }),
   });
-
-  if (!booking) {
-    throw new NotFoundError("Booking not found");
-  }
-
-  validateStatusTransition(booking.status, "CANCELLED");
-
-  const updatedBooking = await prisma.booking.update({
-    where: { id },
-    data: { status: "CANCELLED" },
-    select: bookingSelectFields,
-  });
-
-  // Audit log
-  if (performedBy) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.BOOKING_CANCELLED,
-      EntityType.BOOKING,
-      id,
-      {
-        previous: { status: booking.status },
-        current: { status: "CANCELLED" },
-        reason: reason || "Booking cancelled",
-      }
-    );
-  }
-
-  return updatedBooking;
 }
 
 /**
@@ -156,7 +147,6 @@ export async function togglePaymentStatus(id: string, performedBy?: string) {
     select: bookingSelectFields,
   });
 
-  // Audit log
   if (performedBy) {
     await createAuditLog(
       performedBy,
@@ -180,56 +170,16 @@ export async function togglePaymentStatus(id: string, performedBy?: string) {
  * @throws BusinessRuleError if checkout date has passed or status transition is invalid
  */
 export async function undoCheckOutBooking(id: string, performedBy?: string) {
-  const booking = await prisma.booking.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      checkOut: true,
-      bookingRef: true,
-      guestName: true,
-    },
+  return transitionBookingStatus(id, "CHECKED_IN", {
+    performedBy,
+    auditAction: AuditAction.BOOKING_UPDATED,
+    preUpdate: (booking) =>
+      assertCheckoutNotPassed(
+        booking.checkOut,
+        "Cannot undo checkout after the checkout date has passed"
+      ),
+    auditMeta: () => ({ reason: "Undo accidental checkout" }),
   });
-
-  if (!booking) {
-    throw new NotFoundError("Booking not found");
-  }
-
-  // Validate status transition
-  validateStatusTransition(booking.status, "CHECKED_IN");
-
-  // Check if checkout date has passed
-  const today = startOfDay(new Date());
-  const checkOutDate = startOfDay(new Date(booking.checkOut));
-
-  if (today > checkOutDate) {
-    throw new BusinessRuleError(
-      "Cannot undo checkout after the checkout date has passed"
-    );
-  }
-
-  const updatedBooking = await prisma.booking.update({
-    where: { id },
-    data: { status: "CHECKED_IN" },
-    select: bookingSelectFields,
-  });
-
-  // Audit log
-  if (performedBy) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.BOOKING_UPDATED,
-      EntityType.BOOKING,
-      id,
-      {
-        previous: { status: booking.status },
-        current: { status: "CHECKED_IN" },
-        reason: "Undo accidental checkout",
-      }
-    );
-  }
-
-  return updatedBooking;
 }
 
 /**
@@ -239,54 +189,14 @@ export async function undoCheckOutBooking(id: string, performedBy?: string) {
  * @throws BusinessRuleError if checkout date has passed or status transition is invalid
  */
 export async function undoCancelBooking(id: string, performedBy?: string) {
-  const booking = await prisma.booking.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      checkOut: true,
-      bookingRef: true,
-      guestName: true,
-    },
+  return transitionBookingStatus(id, "CONFIRMED", {
+    performedBy,
+    auditAction: AuditAction.BOOKING_UPDATED,
+    preUpdate: (booking) =>
+      assertCheckoutNotPassed(
+        booking.checkOut,
+        "Cannot undo cancellation after the checkout date has passed"
+      ),
+    auditMeta: () => ({ reason: "Undo accidental cancellation" }),
   });
-
-  if (!booking) {
-    throw new NotFoundError("Booking not found");
-  }
-
-  // Validate status transition
-  validateStatusTransition(booking.status, "CONFIRMED");
-
-  // Check if checkout date has passed
-  const today = startOfDay(new Date());
-  const checkOutDate = startOfDay(new Date(booking.checkOut));
-
-  if (today > checkOutDate) {
-    throw new BusinessRuleError(
-      "Cannot undo cancellation after the checkout date has passed"
-    );
-  }
-
-  const updatedBooking = await prisma.booking.update({
-    where: { id },
-    data: { status: "CONFIRMED" },
-    select: bookingSelectFields,
-  });
-
-  // Audit log
-  if (performedBy) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.BOOKING_UPDATED,
-      EntityType.BOOKING,
-      id,
-      {
-        previous: { status: booking.status },
-        current: { status: "CONFIRMED" },
-        reason: "Undo accidental cancellation",
-      }
-    );
-  }
-
-  return updatedBooking;
 }
