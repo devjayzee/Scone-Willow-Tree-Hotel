@@ -15,6 +15,7 @@ import { bookingSelectFields } from "./booking-constants";
 import {
   generateBookingRef,
   findOverlappingBooking,
+  pickUpdateFields,
   validateStatusTransition,
 } from "./booking-utils";
 
@@ -152,33 +153,9 @@ export async function updateBooking(
     }
   }
 
-  // Build update data
-  const updateData: Record<string, unknown> = {};
-
-  if (data.roomId !== undefined) updateData.roomId = data.roomId;
-  if (data.guestName !== undefined) updateData.guestName = data.guestName;
-  if (data.guestDateOfBirth !== undefined) {
-    updateData.guestDateOfBirth = data.guestDateOfBirth
-      ? new Date(data.guestDateOfBirth)
-      : null;
-  }
-  if (data.guestAddress !== undefined) updateData.guestAddress = data.guestAddress;
-  if (data.guestPhone !== undefined) updateData.guestPhone = data.guestPhone;
-  if (data.guestEmail !== undefined) updateData.guestEmail = data.guestEmail;
-  if (data.vehicleRego !== undefined) updateData.vehicleRego = data.vehicleRego;
-  if (data.additionalGuests !== undefined)
-    updateData.additionalGuests = data.additionalGuests;
-  if (data.checkIn !== undefined) updateData.checkIn = checkInDate;
-  if (data.checkInTime !== undefined) updateData.checkInTime = data.checkInTime;
-  if (data.checkOut !== undefined) updateData.checkOut = checkOutDate;
-  if (data.checkOutTime !== undefined) updateData.checkOutTime = data.checkOutTime;
-  if (data.bondDeposit !== undefined) updateData.bondDeposit = data.bondDeposit;
-  if (data.status !== undefined) updateData.status = data.status;
-  if (data.notes !== undefined) updateData.notes = data.notes;
-
   const booking = await prisma.booking.update({
     where: { id },
-    data: updateData,
+    data: pickUpdateFields(data),
     select: bookingSelectFields,
   });
 

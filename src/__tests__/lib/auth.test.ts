@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any --
+   NextAuth callback param types (JWTCallbackArgs, SessionCallbackArgs) are
+   large generic unions that don't add value in test fixtures. Callback args
+   are cast to `any` throughout this file for readability. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
 

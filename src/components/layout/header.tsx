@@ -23,6 +23,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe mount detection: `mounted` starts false on the server, flips to true post-hydration to gate client-only UI without causing hydration mismatch.
     setMounted(true);
   }, []);
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { format, differenceInDays, addDays, parseISO } from "date-fns";
-import { logger } from "@/lib/logger";
+import { useAvailableRooms } from "@/hooks/use-rooms";
 import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 import {
@@ -73,35 +73,13 @@ export function useBookingForm({
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [availableRooms, setAvailableRooms] = useState<RoomSummary[]>([]);
-  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
-  // Fetch available rooms for selected dates
-  const fetchAvailableRooms = useCallback(
-    async (checkInDate: string, checkOutDate: string) => {
-      if (!checkInDate || !checkOutDate) {
-        setAvailableRooms(rooms);
-        return;
-      }
-
-      setIsLoadingRooms(true);
-      try {
-        const response = await fetch(
-          `/api/rooms/available?checkIn=${checkInDate}&checkOut=${checkOutDate}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setAvailableRooms(data);
-        }
-      } catch (err) {
-        logger.error("Failed to fetch available rooms", err);
-        setAvailableRooms(rooms);
-      } finally {
-        setIsLoadingRooms(false);
-      }
-    },
-    [rooms]
-  );
+  // Availability query via TanStack (Rule 5). Fallback to the caller's
+  // rooms prop while the query hasn't loaded, or if it errors — matches
+  // the pre-refactor UX where the form always showed a room list.
+  const availableRoomsQuery = useAvailableRooms(checkIn, checkOut);
+  const availableRooms: RoomSummary[] = availableRoomsQuery.data ?? rooms;
+  const isLoadingRooms = availableRoomsQuery.isLoading;
 
   // Reset form when dialog closes
   const resetForm = useCallback(() => {
@@ -151,13 +129,6 @@ export function useBookingForm({
       }
     }
   }, [open, initialBooking]);
-
-  // Fetch available rooms when dates change
-  useEffect(() => {
-    if (open && checkIn && checkOut) {
-      fetchAvailableRooms(checkIn, checkOut);
-    }
-  }, [checkIn, checkOut, open, fetchAvailableRooms]);
 
   // Reset form when dialog closes
   useEffect(() => {
