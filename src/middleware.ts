@@ -107,7 +107,10 @@ export default async function middleware(req: NextRequest) {
     return rateLimitResponse;
   }
 
-  // Then run auth middleware
+  // Then run auth middleware. withAuth's return type expects
+  // NextRequestWithAuth + NextFetchEvent, but we don't have a real
+  // NextFetchEvent at this call site — {} is treated as a stub by NextAuth.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- NextAuth withAuth types don't line up cleanly with the outer middleware wrapper
   return authMiddleware(req as any, {} as any);
 }
 
