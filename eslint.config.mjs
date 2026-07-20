@@ -29,6 +29,15 @@ const eslintConfig = defineConfig([
   {
     rules: {
       "no-restricted-imports": ["error", { paths: rhfPaths }],
+      // Honor the `_` prefix as "intentionally unused" for args, vars, and
+      // destructured names. Standard convention; unblocks the "destructure
+      // to remove a field" pattern used in validation tests.
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+      }],
     },
   },
 
@@ -107,6 +116,18 @@ const eslintConfig = defineConfig([
         selector: "CallExpression[callee.name='fetch']",
         message: "Rule 5: components never call fetch. Move the call to src/hooks/<domain>/<domain>-api.ts and consume it via a TanStack Query hook (.claude/rules/server-state-tanstack.md).",
       }],
+    },
+  },
+
+  // React 19's react-hooks/purity flags impure calls (e.g. Date.now()) during
+  // render. That's the right rule for client components — but Next.js server
+  // components run once per request, so calling Date.now() at that point is
+  // exactly what's wanted (recording SSR fetch time for TanStack Query
+  // staleness). Turn the rule off for server pages/layouts.
+  {
+    files: ["src/app/**/page.tsx", "src/app/**/layout.tsx"],
+    rules: {
+      "react-hooks/purity": "off",
     },
   },
 

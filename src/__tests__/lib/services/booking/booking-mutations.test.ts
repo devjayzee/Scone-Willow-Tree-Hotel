@@ -37,6 +37,7 @@ describe("Booking Mutations", () => {
     const validInput = {
       roomId: "room-1",
       guestName: "Jane Smith",
+      guestPhone: "0412345678",
       guestEmail: "jane@example.com",
       checkIn: "2024-03-20",
       checkOut: "2024-03-25",

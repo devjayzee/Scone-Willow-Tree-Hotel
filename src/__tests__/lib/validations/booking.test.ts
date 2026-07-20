@@ -42,31 +42,31 @@ describe("Booking Validation", () => {
 
     // Required field validation
     it("should reject booking without roomId", () => {
-      const { roomId, ...noRoomId } = validBooking;
+      const { roomId: _roomId, ...noRoomId } = validBooking;
       const result = createBookingSchema.safeParse(noRoomId);
       expect(result.success).toBe(false);
     });
 
     it("should reject booking without guestName", () => {
-      const { guestName, ...noGuestName } = validBooking;
+      const { guestName: _guestName, ...noGuestName } = validBooking;
       const result = createBookingSchema.safeParse(noGuestName);
       expect(result.success).toBe(false);
     });
 
     it("should reject booking without guestPhone", () => {
-      const { guestPhone, ...noGuestPhone } = validBooking;
+      const { guestPhone: _guestPhone, ...noGuestPhone } = validBooking;
       const result = createBookingSchema.safeParse(noGuestPhone);
       expect(result.success).toBe(false);
     });
 
     it("should reject booking without checkIn", () => {
-      const { checkIn, ...noCheckIn } = validBooking;
+      const { checkIn: _checkIn, ...noCheckIn } = validBooking;
       const result = createBookingSchema.safeParse(noCheckIn);
       expect(result.success).toBe(false);
     });
 
     it("should reject booking without checkOut", () => {
-      const { checkOut, ...noCheckOut } = validBooking;
+      const { checkOut: _checkOut, ...noCheckOut } = validBooking;
       const result = createBookingSchema.safeParse(noCheckOut);
       expect(result.success).toBe(false);
     });
