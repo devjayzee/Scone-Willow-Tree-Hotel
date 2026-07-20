@@ -38,6 +38,7 @@ export function MobileCalendar({
     const prevDate = prevDateRef.current;
     if (prevDate && !isSameMonth(prevDate, date)) {
       const direction = isBefore(date, prevDate) ? "right" : "left";
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Animation trigger derived from `date` prop change plus a timer-based reset. Refactoring to a `key`-prop remount would lose scroll/focus state.
       setSlideDirection(direction);
       setIsAnimating(true);
 

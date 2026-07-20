@@ -119,6 +119,18 @@ const eslintConfig = defineConfig([
     },
   },
 
+  // React 19's react-hooks/purity flags impure calls (e.g. Date.now()) during
+  // render. That's the right rule for client components — but Next.js server
+  // components run once per request, so calling Date.now() at that point is
+  // exactly what's wanted (recording SSR fetch time for TanStack Query
+  // staleness). Turn the rule off for server pages/layouts.
+  {
+    files: ["src/app/**/page.tsx", "src/app/**/layout.tsx"],
+    rules: {
+      "react-hooks/purity": "off",
+    },
+  },
+
   // Rule 2 converse for hooks: Prisma may not be imported from client hooks.
   // Hooks talk to the server via /api routes (through *-api.ts wrappers), not Prisma directly.
   {
