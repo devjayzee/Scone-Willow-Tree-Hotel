@@ -151,8 +151,10 @@ plan template lives in `plans/README.md`.
 
 ## Git workflow
 
-- Branches: `main` (production, PR target), `development` (integration, default
-  working branch), feature branches off `development`.
+- Branches: `main` (production, deploys to Vercel on push), `development`
+  (integration, default working branch and PR target for features),
+  feature branches off `development`. Feature PRs target `development`;
+  only release PRs promote `development` into `main`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test:`, `docs:`.
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
