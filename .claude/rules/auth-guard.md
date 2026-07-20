@@ -35,11 +35,26 @@ if (session.user.role !== "GENERAL_MANAGER") {
 
 Current role gates (keep this list true when adding gates):
 
+**API-level (server-enforced in the handler):**
+
 | Action | Required role |
 |---|---|
 | Staff CRUD (`/api/staffs/**`) | `GENERAL_MANAGER` |
+| Room mutations (`POST /api/rooms`, `PUT`/`DELETE /api/rooms/[id]`) | `GENERAL_MANAGER` |
 | Delete booking (`DELETE /api/bookings/[id]`) | `GENERAL_MANAGER` |
-| Everything else in the dashboard | any authenticated user |
+| Room reads (`GET /api/rooms`, `GET /api/rooms/[id]`) | any authenticated user |
+| Everything else | any authenticated user |
+
+**Page-level (middleware redirect in `src/middleware.ts`):**
+
+| Path | Required role |
+|---|---|
+| `/rooms`, `/reports` | `MANAGER` or `GENERAL_MANAGER` |
+| `/staff` | `GENERAL_MANAGER` |
+| Every other dashboard page | any authenticated user |
+
+Page-level redirects are UX only — the API-level gates above are the real
+security boundary. Keep both layers when adding a new gated area.
 
 Requirements:
 
