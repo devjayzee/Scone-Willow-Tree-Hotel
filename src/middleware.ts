@@ -1,6 +1,6 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextRequest, NextFetchEvent } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { getClientIp } from "@/lib/utils/get-client-ip";
@@ -107,11 +107,12 @@ export default async function middleware(req: NextRequest) {
     return rateLimitResponse;
   }
 
-  // Then run auth middleware. withAuth's return type expects
-  // NextRequestWithAuth + NextFetchEvent, but we don't have a real
-  // NextFetchEvent at this call site — {} is treated as a stub by NextAuth.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- NextAuth withAuth types don't line up cleanly with the outer middleware wrapper
-  return authMiddleware(req as any, {} as any);
+  // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
+  // have a real NextFetchEvent at this call site — NextAuth treats {} as
+  // a stub. @ts-expect-error fails loudly if the upstream typing gap ever
+  // closes, forcing us to revisit this shim.
+  // @ts-expect-error next-auth/middleware withAuth typing gap
+  return authMiddleware(req, {} as NextFetchEvent);
 }
 
 export const config = {
