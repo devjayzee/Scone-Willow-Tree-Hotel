@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { invalidateWithRelated } from "@/lib/query-invalidation";
-import type { Room } from "@/types/room";
+import type { Room, RoomSummary } from "@/types/room";
 
 export interface RoomFormData {
   roomNumber: string;
@@ -19,6 +19,8 @@ export const roomKeys = {
   list: () => [...roomKeys.lists()] as const,
   details: () => [...roomKeys.all, "detail"] as const,
   detail: (id: string) => [...roomKeys.details(), id] as const,
+  available: (checkIn: string, checkOut: string) =>
+    [...roomKeys.all, "available", checkIn, checkOut] as const,
 };
 
 
@@ -89,6 +91,32 @@ export function useRooms(initialData?: Room[], initialDataUpdatedAt?: number) {
     initialData,
     initialDataUpdatedAt,
     staleTime: 1000 * 60 * 5, // 5 minutes - room data rarely changes
+  });
+}
+
+// Fetch rooms available for the given date range
+async function fetchAvailableRooms(
+  checkIn: string,
+  checkOut: string
+): Promise<RoomSummary[]> {
+  const response = await fetch(
+    `/api/rooms/available?checkIn=${checkIn}&checkOut=${checkOut}`
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to fetch available rooms");
+  }
+  return response.json();
+}
+
+// Hook to fetch available rooms for a check-in / check-out window.
+// The query is disabled until both dates are set.
+export function useAvailableRooms(checkIn: string, checkOut: string) {
+  return useQuery({
+    queryKey: roomKeys.available(checkIn, checkOut),
+    queryFn: () => fetchAvailableRooms(checkIn, checkOut),
+    enabled: Boolean(checkIn && checkOut),
+    staleTime: 1000 * 30, // availability shifts as new bookings land
   });
 }
 
