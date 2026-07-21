@@ -1,184 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BookingStatus } from "@prisma/client";
+import {
+  setupMocks,
+  createMockBooking,
+  createMockRoom,
+  resetMocks,
+  mockBookingCount,
+  mockBookingFindMany,
+  mockRoomCount,
+  mockRoomFindMany,
+} from "./test-utils";
 
-// Mock Prisma client
-const mockBookingCount = vi.fn();
-const mockBookingFindMany = vi.fn();
-const mockRoomCount = vi.fn();
-const mockRoomFindMany = vi.fn();
-
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    booking: {
-      count: (...args: unknown[]) => mockBookingCount(...args),
-      findMany: (...args: unknown[]) => mockBookingFindMany(...args),
-    },
-    room: {
-      count: (...args: unknown[]) => mockRoomCount(...args),
-      findMany: (...args: unknown[]) => mockRoomFindMany(...args),
-    },
-  },
-}));
+// Setup mocks before importing services
+setupMocks();
 
 // Import after mocks are set up
 import {
-  getDashboardStats,
   getOccupancyReport,
   getRevenueReport,
   getBookingTrends,
   getRoomPerformance,
 } from "@/lib/services/report-service";
 
-// Helper to create mock booking data
-function createMockBooking(
-  overrides: Partial<{
-    id: string;
-    bookingRef: string;
-    guestName: string;
-    guestEmail: string;
-    checkIn: Date;
-    checkOut: Date;
-    status: BookingStatus;
-    createdAt: Date;
-    roomId: string;
-    room: { roomNumber: string; pricePerNight: number };
-  }> = {}
-) {
-  return {
-    id: overrides.id ?? "booking-1",
-    bookingRef: overrides.bookingRef ?? "BK-001",
-    guestName: overrides.guestName ?? "John Doe",
-    guestEmail: overrides.guestEmail ?? "john@example.com",
-    checkIn: overrides.checkIn ?? new Date("2024-03-01"),
-    checkOut: overrides.checkOut ?? new Date("2024-03-05"),
-    status: overrides.status ?? BookingStatus.CONFIRMED,
-    createdAt: overrides.createdAt ?? new Date("2024-02-15"),
-    roomId: overrides.roomId ?? "room-1",
-    room: overrides.room ?? { roomNumber: "101", pricePerNight: 100 },
-  };
-}
-
-// Helper to create mock room data
-function createMockRoom(
-  overrides: Partial<{
-    id: string;
-    roomNumber: string;
-    capacity: number;
-    pricePerNight: number;
-    description: string | null;
-    bookings: Array<{
-      checkIn: Date;
-      checkOut: Date;
-      status: BookingStatus;
-    }>;
-  }> = {}
-) {
-  return {
-    id: overrides.id ?? "room-1",
-    roomNumber: overrides.roomNumber ?? "101",
-    capacity: overrides.capacity ?? 2,
-    pricePerNight: overrides.pricePerNight ?? 100,
-    description: overrides.description ?? "Standard room",
-    bookings: overrides.bookings ?? [],
-  };
-}
-
-describe("Report Service", () => {
+describe("Report Analytics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  // ============================================================
-  // getDashboardStats
-  // ============================================================
-  describe("getDashboardStats", () => {
-    it("should return correct dashboard statistics", async () => {
-      // Mock all the concurrent queries
-      mockBookingCount
-        .mockResolvedValueOnce(3) // todayCheckIns
-        .mockResolvedValueOnce(2) // todayCheckOuts
-        .mockResolvedValueOnce(5) // currentOccupancy
-        .mockResolvedValueOnce(4); // pendingBookings
-
-      mockBookingFindMany.mockResolvedValue([
-        createMockBooking({
-          id: "booking-1",
-          bookingRef: "BK-001",
-          guestName: "John Doe",
-          guestEmail: "john@example.com",
-        }),
-      ]);
-
-      mockRoomCount.mockResolvedValue(10);
-
-      const result = await getDashboardStats();
-
-      expect(result.todayCheckIns).toBe(3);
-      expect(result.todayCheckOuts).toBe(2);
-      expect(result.currentOccupancy).toBe(5);
-      expect(result.pendingBookings).toBe(4);
-      expect(result.totalRooms).toBe(10);
-      expect(result.occupancyRate).toBe(50); // 5/10 * 100
-      expect(result.recentBookings).toHaveLength(1);
-    });
-
-    it("should calculate 0% occupancy when no rooms exist", async () => {
-      mockBookingCount
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
-      mockBookingFindMany.mockResolvedValue([]);
-      mockRoomCount.mockResolvedValue(0);
-
-      const result = await getDashboardStats();
-
-      expect(result.occupancyRate).toBe(0);
-      expect(result.totalRooms).toBe(0);
-    });
-
-    it("should transform recent bookings to correct format", async () => {
-      mockBookingCount
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0);
-
-      const mockBooking = createMockBooking({
-        checkIn: new Date("2024-03-01T10:00:00Z"),
-        checkOut: new Date("2024-03-05T10:00:00Z"),
-        createdAt: new Date("2024-02-15T10:00:00Z"),
-      });
-      mockBookingFindMany.mockResolvedValue([mockBooking]);
-      mockRoomCount.mockResolvedValue(10);
-
-      const result = await getDashboardStats();
-
-      expect(result.recentBookings[0].checkIn).toBe(
-        mockBooking.checkIn.toISOString()
-      );
-      expect(result.recentBookings[0].checkOut).toBe(
-        mockBooking.checkOut.toISOString()
-      );
-      expect(result.recentBookings[0].createdAt).toBe(
-        mockBooking.createdAt.toISOString()
-      );
-      expect(result.recentBookings[0].room.roomNumber).toBe("101");
-    });
-
-    it("should round occupancy rate to nearest integer", async () => {
-      mockBookingCount
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(0)
-        .mockResolvedValueOnce(3) // currentOccupancy
-        .mockResolvedValueOnce(0);
-      mockBookingFindMany.mockResolvedValue([]);
-      mockRoomCount.mockResolvedValue(7); // 3/7 = 42.857...
-
-      const result = await getDashboardStats();
-
-      expect(result.occupancyRate).toBe(43); // Rounded
-    });
+    resetMocks();
   });
 
   // ============================================================
