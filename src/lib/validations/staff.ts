@@ -27,5 +27,5 @@ export const updateStaffSchema = z.object({
 });
 
 // Inferred types from schemas
-export type CreateStaffInput = z.infer<typeof createStaffSchema>;
-export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;
+export type CreateStaffSchemaInput = z.infer<typeof createStaffSchema>;
+export type UpdateStaffSchemaInput = z.infer<typeof updateStaffSchema>;
