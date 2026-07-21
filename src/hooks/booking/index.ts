@@ -14,6 +14,7 @@ export { bookingKeys } from "./booking-keys";
 
 // Export query hooks
 export { useBookings } from "./booking-queries";
+export { useFetchBooking } from "./use-fetch-booking";
 
 // Export mutation hooks
 export {
