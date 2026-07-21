@@ -12,9 +12,6 @@ import {
   endOfMonth,
 } from "date-fns";
 import { enAU } from "date-fns/locale";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { logger } from "@/lib/logger";
 import { CalendarSkeleton } from "@/components/calendar/calendar-skeleton";
 import { RoomCalendar } from "@/components/calendar/room-calendar";
 import { CalendarToolbar } from "@/components/calendar/calendar-toolbar";
@@ -22,7 +19,7 @@ import { MobileCalendar } from "@/components/calendar/mobile-calendar";
 import { MobileWeekCalendar } from "@/components/calendar/mobile-week-calendar";
 import { BookingDetailsDialog } from "@/components/booking/booking-details-dialog";
 import { useCalendarEvents } from "@/hooks/use-calendar";
-import { bookingKeys, fetchBookingById } from "@/hooks/booking";
+import { useFetchBooking } from "@/hooks/booking";
 import type { RoomSummary } from "@/types/room";
 import type { CalendarEvent } from "@/types/calendar";
 import type { Booking } from "@/types/booking";
@@ -64,7 +61,7 @@ export function CalendarClient({
   initialRooms,
   fetchTime,
 }: CalendarClientProps) {
-  const queryClient = useQueryClient();
+  const fetchBooking = useFetchBooking();
 
   // Calendar state
   const [view, setView] = useState<ViewType>("month");
@@ -135,20 +132,13 @@ export function CalendarClient({
         ? eventId.split("::")[0]
         : eventId;
 
-      try {
-        const booking = await queryClient.fetchQuery({
-          queryKey: bookingKeys.detail(bookingId),
-          queryFn: () => fetchBookingById(bookingId),
-          staleTime: 1000 * 30,
-        });
+      const booking = await fetchBooking(bookingId);
+      if (booking) {
         setSelectedBooking(booking);
         setDetailsDialogOpen(true);
-      } catch (error) {
-        logger.error("Failed to fetch booking details", error, { eventId });
-        toast.error("Failed to fetch booking details");
       }
     },
-    [queryClient],
+    [fetchBooking],
   );
 
   // Event selection handler for monthly view
