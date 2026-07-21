@@ -111,11 +111,6 @@ export async function updateStaff(
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-  // Track what changed for audit logging
-  const passwordChanged = !!data.password;
-  const roleChanged = data.role && data.role !== existingStaff.role;
-  const activeStatusChanged = data.isActive !== undefined && data.isActive !== existingStaff.isActive;
-
   // Hash password if provided and increment tokenVersion to invalidate sessions
   if (data.password) {
     updateData.password = await bcrypt.hash(data.password, 10);
@@ -128,75 +123,7 @@ export async function updateStaff(
     select: staffSelectFieldsMinimal,
   });
 
-  // Audit logging
-  if (performedBy) {
-    const changedFields = getChangedFields(
-      existingStaff as Record<string, unknown>,
-      data as Record<string, unknown>
-    );
-
-    // Log password change specifically
-    if (passwordChanged) {
-      await createAuditLog(
-        performedBy,
-        AuditAction.STAFF_PASSWORD_CHANGED,
-        EntityType.STAFF,
-        id,
-        { reason: "Password updated" }
-      );
-    }
-
-    // Log role change specifically
-    if (roleChanged) {
-      await createAuditLog(
-        performedBy,
-        AuditAction.STAFF_ROLE_CHANGED,
-        EntityType.STAFF,
-        id,
-        {
-          previous: { role: existingStaff.role },
-          current: { role: data.role },
-        }
-      );
-    }
-
-    // Log activation/deactivation specifically
-    if (activeStatusChanged) {
-      await createAuditLog(
-        performedBy,
-        data.isActive ? AuditAction.STAFF_ACTIVATED : AuditAction.STAFF_DEACTIVATED,
-        EntityType.STAFF,
-        id,
-        {
-          previous: { isActive: existingStaff.isActive },
-          current: { isActive: data.isActive },
-        }
-      );
-    }
-
-    // Log general update if there are other changes
-    if (changedFields.length > 0 && !passwordChanged && !roleChanged && !activeStatusChanged) {
-      await createAuditLog(
-        performedBy,
-        AuditAction.STAFF_UPDATED,
-        EntityType.STAFF,
-        id,
-        {
-          previous: sanitizeForAudit(
-            Object.fromEntries(
-              changedFields.map((f) => [f, existingStaff[f as keyof typeof existingStaff]])
-            )
-          ),
-          current: sanitizeForAudit(
-            Object.fromEntries(
-              changedFields.map((f) => [f, data[f as keyof typeof data]])
-            )
-          ),
-          changedFields,
-        }
-      );
-    }
-  }
+  await logStaffUpdateAudits(id, existingStaff, data, performedBy);
 
   return staff;
 }
@@ -292,4 +219,93 @@ export async function deleteStaff(
     deactivated: false,
     message: "Staff deleted successfully",
   };
+}
+
+/**
+ * Classify what changed on a staff update and write the matching audit entries.
+ * Fires nothing when performedBy is undefined. Preserves the four-way branching
+ * originally inlined in updateStaff: password / role / active-status / general.
+ */
+async function logStaffUpdateAudits(
+  id: string,
+  existingStaff: Record<string, unknown>,
+  data: UpdateStaffSchemaInput,
+  performedBy?: string
+): Promise<void> {
+  if (!performedBy) return;
+
+  const passwordChanged = !!data.password;
+  const roleChanged = data.role && data.role !== existingStaff.role;
+  const activeStatusChanged =
+    data.isActive !== undefined && data.isActive !== existingStaff.isActive;
+
+  if (passwordChanged) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.STAFF_PASSWORD_CHANGED,
+      EntityType.STAFF,
+      id,
+      { reason: "Password updated" }
+    );
+  }
+
+  if (roleChanged) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.STAFF_ROLE_CHANGED,
+      EntityType.STAFF,
+      id,
+      {
+        previous: { role: existingStaff.role },
+        current: { role: data.role },
+      }
+    );
+  }
+
+  if (activeStatusChanged) {
+    await createAuditLog(
+      performedBy,
+      data.isActive
+        ? AuditAction.STAFF_ACTIVATED
+        : AuditAction.STAFF_DEACTIVATED,
+      EntityType.STAFF,
+      id,
+      {
+        previous: { isActive: existingStaff.isActive },
+        current: { isActive: data.isActive },
+      }
+    );
+  }
+
+  const changedFields = getChangedFields(
+    existingStaff,
+    data as Record<string, unknown>
+  );
+
+  if (
+    changedFields.length > 0 &&
+    !passwordChanged &&
+    !roleChanged &&
+    !activeStatusChanged
+  ) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.STAFF_UPDATED,
+      EntityType.STAFF,
+      id,
+      {
+        previous: sanitizeForAudit(
+          Object.fromEntries(
+            changedFields.map((f) => [f, existingStaff[f]])
+          )
+        ),
+        current: sanitizeForAudit(
+          Object.fromEntries(
+            changedFields.map((f) => [f, (data as Record<string, unknown>)[f]])
+          )
+        ),
+        changedFields,
+      }
+    );
+  }
 }
