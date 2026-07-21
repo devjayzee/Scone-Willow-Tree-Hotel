@@ -1,6 +1,9 @@
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import type { CreateStaffInput, UpdateStaffInput } from "@/lib/validations/staff";
+import type {
+  CreateStaffSchemaInput,
+  UpdateStaffSchemaInput,
+} from "@/lib/validations/staff";
 import { NotFoundError, ConflictError, BusinessRuleError } from "@/lib/errors";
 import {
   createAuditLog,
@@ -16,7 +19,7 @@ import { staffSelectFieldsMinimal } from "./staff-constants";
  * @throws ConflictError if email already exists
  */
 export async function createStaff(
-  data: CreateStaffInput,
+  data: CreateStaffSchemaInput,
   performedBy?: string
 ) {
   // Check if email already exists
@@ -70,7 +73,7 @@ export async function createStaff(
  */
 export async function updateStaff(
   id: string,
-  data: UpdateStaffInput,
+  data: UpdateStaffSchemaInput,
   performedBy?: string
 ) {
   const existingStaff = await prisma.user.findUnique({
