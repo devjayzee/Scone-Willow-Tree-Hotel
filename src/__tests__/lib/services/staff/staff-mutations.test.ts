@@ -1,73 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+  setupMocks,
+  createMockStaff,
+  resetMocks,
+  mockHash,
+  mockUserFindUnique,
+  mockUserCreate,
+  mockUserUpdate,
+  mockUserDelete,
+} from "./test-utils";
 
-// Mock bcrypt
-const mockHash = vi.fn();
-vi.mock("bcryptjs", () => ({
-  default: {
-    hash: (...args: unknown[]) => mockHash(...args),
-  },
-}));
-
-// Mock Prisma client
-const mockUserFindMany = vi.fn();
-const mockUserFindUnique = vi.fn();
-const mockUserCreate = vi.fn();
-const mockUserUpdate = vi.fn();
-const mockUserDelete = vi.fn();
-
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    user: {
-      findMany: (...args: unknown[]) => mockUserFindMany(...args),
-      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
-      create: (...args: unknown[]) => mockUserCreate(...args),
-      update: (...args: unknown[]) => mockUserUpdate(...args),
-      delete: (...args: unknown[]) => mockUserDelete(...args),
-    },
-  },
-}));
-
-// Mock audit service
-const mockCreateAuditLog = vi.fn();
-vi.mock("@/lib/services/audit-service", () => ({
-  createAuditLog: (...args: unknown[]) => mockCreateAuditLog(...args),
-  AuditAction: {
-    STAFF_CREATED: "STAFF_CREATED",
-    STAFF_UPDATED: "STAFF_UPDATED",
-    STAFF_DELETED: "STAFF_DELETED",
-    STAFF_DEACTIVATED: "STAFF_DEACTIVATED",
-    STAFF_ACTIVATED: "STAFF_ACTIVATED",
-    STAFF_PASSWORD_CHANGED: "STAFF_PASSWORD_CHANGED",
-    STAFF_ROLE_CHANGED: "STAFF_ROLE_CHANGED",
-  },
-  EntityType: {
-    STAFF: "STAFF",
-  },
-  sanitizeForAudit: <T extends Record<string, unknown>>(data: T) => {
-    const sanitized = { ...data };
-    delete sanitized.password;
-    return sanitized;
-  },
-  getChangedFields: <T extends Record<string, unknown>>(
-    previous: T,
-    current: Partial<T>,
-    ignoreFields: string[] = ["updatedAt", "password"]
-  ) => {
-    const changedFields: string[] = [];
-    for (const key of Object.keys(current)) {
-      if (ignoreFields.includes(key)) continue;
-      if (current[key] !== undefined && current[key] !== previous[key]) {
-        changedFields.push(key);
-      }
-    }
-    return changedFields;
-  },
-}));
+// Setup mocks before importing services
+setupMocks();
 
 // Import after mocks are set up
 import {
-  getAllStaff,
-  getStaffById,
   createStaff,
   updateStaff,
   deleteStaff,
@@ -76,113 +23,10 @@ import {
   BusinessRuleError,
 } from "@/lib/services/staff-service";
 
-// Helper to create mock staff data
-function createMockStaff(
-  overrides: Partial<{
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-    role: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
-    isActive: boolean;
-    tokenVersion: number;
-    createdAt: Date;
-    updatedAt: Date;
-    _count: { bookings: number };
-  }> = {}
-) {
-  return {
-    id: overrides.id ?? "staff-1",
-    firstName: overrides.firstName ?? "John",
-    lastName: overrides.lastName ?? "Doe",
-    email: overrides.email ?? "john.doe@sconewillowtree.com",
-    password: overrides.password ?? "hashedpassword",
-    role: overrides.role ?? "STAFF",
-    isActive: overrides.isActive ?? true,
-    tokenVersion: overrides.tokenVersion ?? 0,
-    createdAt: overrides.createdAt ?? new Date("2024-01-01"),
-    updatedAt: overrides.updatedAt ?? new Date("2024-01-01"),
-    _count: overrides._count ?? { bookings: 0 },
-  };
-}
-
-describe("Staff Service", () => {
+describe("Staff Mutations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default bcrypt mock behavior
-    mockHash.mockResolvedValue("hashed_password");
-  });
-
-  // ============================================================
-  // getAllStaff
-  // ============================================================
-  describe("getAllStaff", () => {
-    it("should return all staff members ordered by creation date", async () => {
-      const mockStaffs = [
-        createMockStaff({ id: "staff-2", firstName: "Jane", createdAt: new Date("2024-01-02") }),
-        createMockStaff({ id: "staff-1", firstName: "John", createdAt: new Date("2024-01-01") }),
-      ];
-      mockUserFindMany.mockResolvedValue(mockStaffs);
-
-      const result = await getAllStaff();
-
-      expect(mockUserFindMany).toHaveBeenCalledOnce();
-      expect(mockUserFindMany).toHaveBeenCalledWith({
-        select: expect.objectContaining({
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          role: true,
-          isActive: true,
-          _count: { select: { bookings: true } },
-        }),
-        orderBy: { createdAt: "desc" },
-      });
-      expect(result).toHaveLength(2);
-      expect(result[0].firstName).toBe("Jane");
-    });
-
-    it("should return empty array when no staff members exist", async () => {
-      mockUserFindMany.mockResolvedValue([]);
-
-      const result = await getAllStaff();
-
-      expect(result).toEqual([]);
-    });
-  });
-
-  // ============================================================
-  // getStaffById
-  // ============================================================
-  describe("getStaffById", () => {
-    it("should return staff member when found", async () => {
-      const mockStaff = createMockStaff({ id: "staff-123" });
-      mockUserFindUnique.mockResolvedValue(mockStaff);
-
-      const result = await getStaffById("staff-123");
-
-      expect(mockUserFindUnique).toHaveBeenCalledWith({
-        where: { id: "staff-123" },
-        select: expect.objectContaining({
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          role: true,
-          isActive: true,
-        }),
-      });
-      expect(result.id).toBe("staff-123");
-    });
-
-    it("should throw NotFoundError when staff member does not exist", async () => {
-      mockUserFindUnique.mockResolvedValue(null);
-
-      await expect(getStaffById("non-existent")).rejects.toThrow(NotFoundError);
-      await expect(getStaffById("non-existent")).rejects.toThrow("Staff not found");
-    });
+    resetMocks();
   });
 
   // ============================================================
