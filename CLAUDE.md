@@ -113,9 +113,14 @@ Additional conventions (no rule file yet):
 - **Prisma schema style:** `cuid()` ids, camelCase fields (no `@map`), money as
   `Decimal @db.Decimal(10, 2)`, enums for statuses, explicit relation names for
   multiple relations to the same model (`"CreatedBy"`).
-- **Dashboard pages** export `const dynamic = "force-dynamic"` and serialize
-  Prisma entities (`Date` → ISO string, `Decimal` → string) before passing them
-  to `*-client.tsx` components.
+- **Dashboard pages** opt out of static prerender per data volatility and
+  serialize Prisma entities (`Date` → ISO string, `Decimal` → string) before
+  passing them to `*-client.tsx` components. Two acceptable patterns:
+  - `export const dynamic = "force-dynamic"` for pages whose data changes
+    constantly (bookings, calendar).
+  - `export const revalidate = <seconds>` for pages whose data is
+    slower-moving; pick the window from actual change rate (rooms/staff:
+    300s, reports: 60s).
 
 ## Agents & skills
 
