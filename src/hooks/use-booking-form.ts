@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { format, differenceInDays, addDays, parseISO } from "date-fns";
+import { useCallback, useEffect, useReducer, useState } from "react";
+import { format } from "date-fns";
 import { useAvailableRooms } from "@/hooks/use-rooms";
 import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
@@ -9,28 +9,18 @@ import {
   downloadDraftBookingPDF,
   type BookingPDFData,
 } from "@/lib/utils/pdf/booking-registration";
+import { formatDisplayDate, formatDisplayTime } from "@/lib/utils/format-date";
+import {
+  bookingFormReducer,
+  INITIAL_BOOKING_FORM_STATE,
+  type BookingFormState,
+  type GuestDetails,
+  type StayDetails,
+} from "./use-booking-form-reducer";
+import { computeBookingFormDerived } from "./use-booking-form-derived";
 
 export type BookingStep = "guest" | "stay" | "summary";
-
-export interface GuestDetails {
-  guestName: string;
-  guestDateOfBirth: string;
-  guestAddress: string;
-  guestPhone: string;
-  guestEmail: string;
-  vehicleRego: string;
-  additionalGuests: string;
-}
-
-export interface StayDetails {
-  roomId: string;
-  checkIn: string;
-  checkInTime: string;
-  checkOut: string;
-  checkOutTime: string;
-  bondDeposit: string;
-  notes: string;
-}
+export type { GuestDetails, StayDetails };
 
 interface UseBookingFormOptions {
   open: boolean;
@@ -49,249 +39,140 @@ export function useBookingForm({
 }: UseBookingFormOptions) {
   const isEditMode = Boolean(initialBooking);
 
-  // Step management
   const [step, setStep] = useState<BookingStep>("guest");
-
-  // Guest details
-  const [guestName, setGuestName] = useState("");
-  const [guestDateOfBirth, setGuestDateOfBirth] = useState("");
-  const [guestAddress, setGuestAddress] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
-  const [guestEmail, setGuestEmail] = useState("");
-  const [vehicleRego, setVehicleRego] = useState("");
-  const [additionalGuests, setAdditionalGuests] = useState("");
-
-  // Stay details
-  const [roomId, setRoomId] = useState("");
-  const [checkIn, setCheckIn] = useState("");
-  const [checkInTime, setCheckInTime] = useState("14:00");
-  const [checkOut, setCheckOut] = useState("");
-  const [checkOutTime, setCheckOutTime] = useState("10:00");
-  const [bondDeposit, setBondDeposit] = useState("");
-  const [notes, setNotes] = useState("");
-
-  // UI state
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [state, dispatch] = useReducer(
+    bookingFormReducer,
+    INITIAL_BOOKING_FORM_STATE
+  );
 
-  // Availability query via TanStack (Rule 5). Fallback to the caller's
-  // rooms prop while the query hasn't loaded, or if it errors — matches
-  // the pre-refactor UX where the form always showed a room list.
-  const availableRoomsQuery = useAvailableRooms(checkIn, checkOut);
+  const availableRoomsQuery = useAvailableRooms(state.checkIn, state.checkOut);
   const availableRooms: RoomSummary[] = availableRoomsQuery.data ?? rooms;
   const isLoadingRooms = availableRoomsQuery.isLoading;
 
-  // Reset form when dialog closes
-  const resetForm = useCallback(() => {
-    setStep("guest");
-    setRoomId("");
-    setCheckIn("");
-    setCheckInTime("14:00");
-    setCheckOut("");
-    setCheckOutTime("10:00");
-    setBondDeposit("");
-    setGuestName("");
-    setGuestDateOfBirth("");
-    setGuestAddress("");
-    setGuestPhone("");
-    setGuestEmail("");
-    setVehicleRego("");
-    setAdditionalGuests("");
-    setNotes("");
-    setError("");
-  }, []);
-
-  // Set default dates when dialog opens, or populate from initial booking
   useEffect(() => {
-    if (open) {
-      if (initialBooking) {
-        // Edit mode: populate from existing booking
-        setGuestName(initialBooking.guestName);
-        setGuestDateOfBirth(initialBooking.guestDateOfBirth ? format(new Date(initialBooking.guestDateOfBirth), "yyyy-MM-dd") : "");
-        setGuestAddress(initialBooking.guestAddress || "");
-        setGuestPhone(initialBooking.guestPhone || "");
-        setGuestEmail(initialBooking.guestEmail || "");
-        setVehicleRego(initialBooking.vehicleRego || "");
-        setAdditionalGuests(initialBooking.additionalGuests || "");
-        setRoomId(initialBooking.roomId);
-        setCheckIn(format(new Date(initialBooking.checkIn), "yyyy-MM-dd"));
-        setCheckInTime(initialBooking.checkInTime || "14:00");
-        setCheckOut(format(new Date(initialBooking.checkOut), "yyyy-MM-dd"));
-        setCheckOutTime(initialBooking.checkOutTime || "10:00");
-        setBondDeposit(initialBooking.bondDeposit?.toString() || "");
-        setNotes(initialBooking.notes || "");
-      } else {
-        // Create mode: set default dates
-        const today = format(new Date(), "yyyy-MM-dd");
-        const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
-        setCheckIn(today);
-        setCheckOut(tomorrow);
-      }
+    if (!open) return;
+    if (initialBooking) {
+      dispatch({ type: "HYDRATE", booking: initialBooking });
+    } else {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
+      dispatch({ type: "SEED_DATES", today, tomorrow });
     }
   }, [open, initialBooking]);
 
-  // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
-      resetForm();
+      setStep("guest");
+      dispatch({ type: "RESET" });
     }
-  }, [open, resetForm]);
+  }, [open]);
 
-  // Handle check-in date change
-  const handleCheckInChange = useCallback(
-    (newCheckIn: string) => {
-      setCheckIn(newCheckIn);
-      setRoomId(""); // Clear room when dates change
-
-      // Auto-adjust checkout if it's on or before the new check-in
-      if (newCheckIn && checkOut && newCheckIn >= checkOut) {
-        const nextDay = format(addDays(parseISO(newCheckIn), 1), "yyyy-MM-dd");
-        setCheckOut(nextDay);
-      }
+  // Field setters — thin dispatch wrappers so the public API stays identical.
+  const setField = useCallback(
+    <K extends keyof BookingFormState>(field: K, value: BookingFormState[K]) => {
+      dispatch({ type: "SET_FIELD", field, value });
     },
-    [checkOut]
+    []
   );
 
-  // Handle check-out date change
-  const handleCheckOutChange = useCallback((newCheckOut: string) => {
-    setCheckOut(newCheckOut);
-    setRoomId(""); // Clear room when dates change
-  }, []);
+  const setGuestName = useCallback((v: string) => setField("guestName", v), [setField]);
+  const setGuestDateOfBirth = useCallback((v: string) => setField("guestDateOfBirth", v), [setField]);
+  const setGuestAddress = useCallback((v: string) => setField("guestAddress", v), [setField]);
+  const setGuestPhone = useCallback((v: string) => setField("guestPhone", v), [setField]);
+  const setGuestEmail = useCallback((v: string) => setField("guestEmail", v), [setField]);
+  const setVehicleRego = useCallback((v: string) => setField("vehicleRego", v), [setField]);
+  const setAdditionalGuests = useCallback((v: string) => setField("additionalGuests", v), [setField]);
+  const setRoomId = useCallback((v: string) => setField("roomId", v), [setField]);
+  const setCheckInTime = useCallback((v: string) => setField("checkInTime", v), [setField]);
+  const setCheckOutTime = useCallback((v: string) => setField("checkOutTime", v), [setField]);
+  const setBondDeposit = useCallback((v: string) => setField("bondDeposit", v), [setField]);
+  const setNotes = useCallback((v: string) => setField("notes", v), [setField]);
 
-  // Submit the form
+  const handleCheckInChange = useCallback(
+    (v: string) => dispatch({ type: "CHANGE_CHECK_IN", value: v }),
+    []
+  );
+  const handleCheckOutChange = useCallback(
+    (v: string) => dispatch({ type: "CHANGE_CHECK_OUT", value: v }),
+    []
+  );
+
   const handleSubmit = useCallback(async () => {
-    setError("");
+    dispatch({ type: "SET_FIELD", field: "error", value: "" });
     setIsLoading(true);
 
     try {
       await onSubmit({
-        roomId,
-        guestName,
-        guestDateOfBirth: guestDateOfBirth || undefined,
-        guestAddress: guestAddress || undefined,
-        guestPhone,
-        guestEmail: guestEmail || undefined,
-        vehicleRego: vehicleRego || undefined,
-        additionalGuests: additionalGuests || undefined,
-        checkIn,
-        checkInTime: checkInTime || undefined,
-        checkOut,
-        checkOutTime: checkOutTime || undefined,
-        bondDeposit: bondDeposit ? parseFloat(bondDeposit) : undefined,
-        notes: notes || undefined,
+        roomId: state.roomId,
+        guestName: state.guestName,
+        guestDateOfBirth: state.guestDateOfBirth || undefined,
+        guestAddress: state.guestAddress || undefined,
+        guestPhone: state.guestPhone,
+        guestEmail: state.guestEmail || undefined,
+        vehicleRego: state.vehicleRego || undefined,
+        additionalGuests: state.additionalGuests || undefined,
+        checkIn: state.checkIn,
+        checkInTime: state.checkInTime || undefined,
+        checkOut: state.checkOut,
+        checkOutTime: state.checkOutTime || undefined,
+        bondDeposit: state.bondDeposit ? parseFloat(state.bondDeposit) : undefined,
+        notes: state.notes || undefined,
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      dispatch({
+        type: "SET_FIELD",
+        field: "error",
+        value: err instanceof Error ? err.message : "An error occurred",
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [
-    onSubmit,
-    onClose,
-    roomId,
-    guestName,
-    guestDateOfBirth,
-    guestAddress,
-    guestPhone,
-    guestEmail,
-    vehicleRego,
-    additionalGuests,
-    checkIn,
-    checkInTime,
-    checkOut,
-    checkOutTime,
-    bondDeposit,
-    notes,
-  ]);
+  }, [onSubmit, onClose, state]);
 
-  // Computed values
-  const selectedRoom = availableRooms.find((r) => r.id === roomId);
-  const pricePerNight = selectedRoom
-    ? typeof selectedRoom.pricePerNight === "string"
-      ? parseFloat(selectedRoom.pricePerNight)
-      : selectedRoom.pricePerNight
-    : 0;
+  const derived = computeBookingFormDerived({
+    availableRooms,
+    roomId: state.roomId,
+    checkIn: state.checkIn,
+    checkOut: state.checkOut,
+    bondDeposit: state.bondDeposit,
+    guestName: state.guestName,
+    guestPhone: state.guestPhone,
+  });
 
-  const nights =
-    checkIn && checkOut
-      ? differenceInDays(new Date(checkOut), new Date(checkIn))
-      : 0;
-
-  const totalPrice = nights * pricePerNight;
-  const bondAmount = bondDeposit ? parseFloat(bondDeposit) : 0;
-
-  const canProceedToStay = Boolean(guestName && guestPhone);
-  const canProceedToSummary = Boolean(roomId && checkIn && checkOut && nights > 0);
-
-  // Generate PDF
   const generatePDF = useCallback(() => {
     const pdfData: BookingPDFData = {
-      guestName,
-      guestDateOfBirth: guestDateOfBirth || null,
-      guestAddress: guestAddress || null,
-      guestEmail: guestEmail || null,
-      guestPhone,
-      vehicleRego: vehicleRego || null,
-      additionalGuests: additionalGuests || null,
-      checkIn,
-      checkInTime: checkInTime || null,
-      checkOut,
-      checkOutTime: checkOutTime || null,
-      bondDeposit: bondDeposit || null,
-      roomNumber: selectedRoom?.roomNumber || "",
-      pricePerNight,
+      guestName: state.guestName,
+      guestDateOfBirth: state.guestDateOfBirth || null,
+      guestAddress: state.guestAddress || null,
+      guestEmail: state.guestEmail || null,
+      guestPhone: state.guestPhone,
+      vehicleRego: state.vehicleRego || null,
+      additionalGuests: state.additionalGuests || null,
+      checkIn: state.checkIn,
+      checkInTime: state.checkInTime || null,
+      checkOut: state.checkOut,
+      checkOutTime: state.checkOutTime || null,
+      bondDeposit: state.bondDeposit || null,
+      roomNumber: derived.selectedRoom?.roomNumber || "",
+      pricePerNight: derived.pricePerNight,
     };
-    downloadDraftBookingPDF(pdfData, guestName || "form");
-  }, [
-    guestName,
-    guestDateOfBirth,
-    guestAddress,
-    guestEmail,
-    guestPhone,
-    vehicleRego,
-    additionalGuests,
-    checkIn,
-    checkInTime,
-    checkOut,
-    checkOutTime,
-    bondDeposit,
-    selectedRoom,
-    pricePerNight,
-  ]);
-
-  // Format helpers
-  const formatDisplayDate = useCallback((dateStr: string) => {
-    if (!dateStr) return "___/___/______";
-    return format(parseISO(dateStr), "dd/MM/yyyy");
-  }, []);
-
-  const formatDisplayTime = useCallback((timeStr: string) => {
-    if (!timeStr) return "______";
-    const [hours, minutes] = timeStr.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const hour12 = hour % 12 || 12;
-    return `${hour12}:${minutes} ${ampm}`;
-  }, []);
+    downloadDraftBookingPDF(pdfData, state.guestName || "form");
+  }, [state, derived.selectedRoom, derived.pricePerNight]);
 
   return {
-    // Mode
     isEditMode,
-
-    // Step
     step,
     setStep,
-
-    // Guest details
     guest: {
-      guestName,
-      guestDateOfBirth,
-      guestAddress,
-      guestPhone,
-      guestEmail,
-      vehicleRego,
-      additionalGuests,
+      guestName: state.guestName,
+      guestDateOfBirth: state.guestDateOfBirth,
+      guestAddress: state.guestAddress,
+      guestPhone: state.guestPhone,
+      guestEmail: state.guestEmail,
+      vehicleRego: state.vehicleRego,
+      additionalGuests: state.additionalGuests,
     },
     setGuestName,
     setGuestDateOfBirth,
@@ -300,16 +181,14 @@ export function useBookingForm({
     setGuestEmail,
     setVehicleRego,
     setAdditionalGuests,
-
-    // Stay details
     stay: {
-      roomId,
-      checkIn,
-      checkInTime,
-      checkOut,
-      checkOutTime,
-      bondDeposit,
-      notes,
+      roomId: state.roomId,
+      checkIn: state.checkIn,
+      checkInTime: state.checkInTime,
+      checkOut: state.checkOut,
+      checkOutTime: state.checkOutTime,
+      bondDeposit: state.bondDeposit,
+      notes: state.notes,
     },
     setRoomId,
     handleCheckInChange,
@@ -318,29 +197,19 @@ export function useBookingForm({
     setCheckOutTime,
     setBondDeposit,
     setNotes,
-
-    // Room data
     availableRooms,
-    selectedRoom,
+    selectedRoom: derived.selectedRoom,
     isLoadingRooms,
-
-    // Computed values
-    pricePerNight,
-    nights,
-    totalPrice,
-    bondAmount,
-    canProceedToStay,
-    canProceedToSummary,
-
-    // UI state
+    pricePerNight: derived.pricePerNight,
+    nights: derived.nights,
+    totalPrice: derived.totalPrice,
+    bondAmount: derived.bondAmount,
+    canProceedToStay: derived.canProceedToStay,
+    canProceedToSummary: derived.canProceedToSummary,
     isLoading,
-    error,
-
-    // Actions
+    error: state.error,
     handleSubmit,
     generatePDF,
-
-    // Formatters
     formatDisplayDate,
     formatDisplayTime,
   };
