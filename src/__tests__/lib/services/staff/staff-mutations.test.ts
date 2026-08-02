@@ -143,7 +143,7 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue(updatedStaff);
 
-      const result = await updateStaff("staff-1", updateData);
+      const result = await updateStaff("staff-1", updateData, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
@@ -159,12 +159,12 @@ describe("Staff Mutations", () => {
     it("should throw NotFoundError when staff member does not exist", async () => {
       mockUserFindUnique.mockResolvedValue(null);
 
-      await expect(updateStaff("non-existent", { firstName: "Test" })).rejects.toThrow(
-        NotFoundError
-      );
-      await expect(updateStaff("non-existent", { firstName: "Test" })).rejects.toThrow(
-        "Staff not found"
-      );
+      await expect(
+        updateStaff("non-existent", { firstName: "Test" }, "current-user-id")
+      ).rejects.toThrow(NotFoundError);
+      await expect(
+        updateStaff("non-existent", { firstName: "Test" }, "current-user-id")
+      ).rejects.toThrow("Staff not found");
       expect(mockUserUpdate).not.toHaveBeenCalled();
     });
 
@@ -175,7 +175,7 @@ describe("Staff Mutations", () => {
         .mockResolvedValueOnce(null); // Second call: check for email conflict
       mockUserUpdate.mockResolvedValue({ ...existingStaff, ...updateData });
 
-      const result = await updateStaff("staff-1", updateData);
+      const result = await updateStaff("staff-1", updateData, "current-user-id");
 
       expect(mockUserFindUnique).toHaveBeenCalledTimes(2);
       expect(result.email).toBe("new.email@sconewillowtree.com");
@@ -191,7 +191,11 @@ describe("Staff Mutations", () => {
         .mockResolvedValueOnce(anotherStaff); // Second call: email exists
 
       await expect(
-        updateStaff("staff-1", { email: "taken@sconewillowtree.com" })
+        updateStaff(
+          "staff-1",
+          { email: "taken@sconewillowtree.com" },
+          "current-user-id"
+        )
       ).rejects.toThrow(ConflictError);
 
       // Reset and test error message
@@ -199,7 +203,11 @@ describe("Staff Mutations", () => {
         .mockResolvedValueOnce(existingStaff)
         .mockResolvedValueOnce(anotherStaff);
       await expect(
-        updateStaff("staff-1", { email: "taken@sconewillowtree.com" })
+        updateStaff(
+          "staff-1",
+          { email: "taken@sconewillowtree.com" },
+          "current-user-id"
+        )
       ).rejects.toThrow("Email already exists");
       expect(mockUserUpdate).not.toHaveBeenCalled();
     });
@@ -208,7 +216,11 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue(existingStaff);
 
-      await updateStaff("staff-1", { email: existingStaff.email, firstName: "Updated" });
+      await updateStaff(
+        "staff-1",
+        { email: existingStaff.email, firstName: "Updated" },
+        "current-user-id"
+      );
 
       // Should only call findUnique once (to get existing staff)
       expect(mockUserFindUnique).toHaveBeenCalledTimes(1);
@@ -219,7 +231,7 @@ describe("Staff Mutations", () => {
       mockUserUpdate.mockResolvedValue({ ...existingStaff, tokenVersion: 1 });
       mockHash.mockResolvedValue("new_hashed_password");
 
-      await updateStaff("staff-1", { password: "newpassword123" });
+      await updateStaff("staff-1", { password: "newpassword123" }, "current-user-id");
 
       expect(mockHash).toHaveBeenCalledWith("newpassword123", 10);
       expect(mockUserUpdate).toHaveBeenCalledWith({
@@ -236,7 +248,7 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue(existingStaff);
 
-      await updateStaff("staff-1", { firstName: "Updated" });
+      await updateStaff("staff-1", { firstName: "Updated" }, "current-user-id");
 
       expect(mockHash).not.toHaveBeenCalled();
       expect(mockUserUpdate).toHaveBeenCalledWith({
@@ -252,7 +264,7 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue({ ...existingStaff, isActive: false });
 
-      await updateStaff("staff-1", { isActive: false });
+      await updateStaff("staff-1", { isActive: false }, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
@@ -267,7 +279,7 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue({ ...existingStaff, role: "GENERAL_MANAGER" });
 
-      await updateStaff("staff-1", { role: "GENERAL_MANAGER" });
+      await updateStaff("staff-1", { role: "GENERAL_MANAGER" }, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
@@ -276,6 +288,56 @@ describe("Staff Mutations", () => {
         },
         select: expect.any(Object),
       });
+    });
+
+    it("should throw BusinessRuleError when caller changes their own role", async () => {
+      const selfGmStaff = createMockStaff({
+        id: "gm-1",
+        role: "GENERAL_MANAGER",
+      });
+      mockUserFindUnique.mockResolvedValue(selfGmStaff);
+
+      await expect(
+        updateStaff("gm-1", { role: "STAFF" }, "gm-1")
+      ).rejects.toThrow(BusinessRuleError);
+      await expect(
+        updateStaff("gm-1", { role: "STAFF" }, "gm-1")
+      ).rejects.toThrow("Cannot change your own role");
+      expect(mockUserUpdate).not.toHaveBeenCalled();
+    });
+
+    it("should allow caller to update their own record when role is unchanged", async () => {
+      const selfGmStaff = createMockStaff({
+        id: "gm-1",
+        role: "GENERAL_MANAGER",
+      });
+      mockUserFindUnique.mockResolvedValue(selfGmStaff);
+      mockUserUpdate.mockResolvedValue({ ...selfGmStaff, firstName: "New" });
+
+      await updateStaff(
+        "gm-1",
+        { firstName: "New", role: "GENERAL_MANAGER" },
+        "gm-1"
+      );
+
+      expect(mockUserUpdate).toHaveBeenCalled();
+    });
+
+    it("should throw BusinessRuleError when caller deactivates themselves", async () => {
+      const selfGmStaff = createMockStaff({
+        id: "gm-1",
+        role: "GENERAL_MANAGER",
+        isActive: true,
+      });
+      mockUserFindUnique.mockResolvedValue(selfGmStaff);
+
+      await expect(
+        updateStaff("gm-1", { isActive: false }, "gm-1")
+      ).rejects.toThrow(BusinessRuleError);
+      await expect(
+        updateStaff("gm-1", { isActive: false }, "gm-1")
+      ).rejects.toThrow("Cannot deactivate your own account");
+      expect(mockUserUpdate).not.toHaveBeenCalled();
     });
   });
 

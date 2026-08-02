@@ -70,11 +70,12 @@ export async function createStaff(
  * Update an existing staff member
  * @throws NotFoundError if staff member not found
  * @throws ConflictError if new email already exists
+ * @throws BusinessRuleError if the caller tries to change their own role or deactivate themselves
  */
 export async function updateStaff(
   id: string,
   data: UpdateStaffSchemaInput,
-  performedBy?: string
+  currentUserId: string
 ) {
   const existingStaff = await prisma.user.findUnique({
     where: { id },
@@ -82,6 +83,15 @@ export async function updateStaff(
 
   if (!existingStaff) {
     throw new NotFoundError("Staff not found");
+  }
+
+  if (id === currentUserId) {
+    if (data.role !== undefined && data.role !== existingStaff.role) {
+      throw new BusinessRuleError("Cannot change your own role");
+    }
+    if (data.isActive === false) {
+      throw new BusinessRuleError("Cannot deactivate your own account");
+    }
   }
 
   // Check if updating email conflicts with another user
@@ -123,7 +133,7 @@ export async function updateStaff(
     select: staffSelectFieldsMinimal,
   });
 
-  await logStaffUpdateAudits(id, existingStaff, data, performedBy);
+  await logStaffUpdateAudits(id, existingStaff, data, currentUserId);
 
   return staff;
 }
