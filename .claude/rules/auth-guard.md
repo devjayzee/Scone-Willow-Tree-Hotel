@@ -42,6 +42,7 @@ Current role gates (keep this list true when adding gates):
 | Staff CRUD (`/api/staffs/**`) | `GENERAL_MANAGER` |
 | Room mutations (`POST /api/rooms`, `PUT`/`DELETE /api/rooms/[id]`) | `GENERAL_MANAGER` |
 | Delete booking (`DELETE /api/bookings/[id]`) | `GENERAL_MANAGER` |
+| Reports (`GET /api/reports`) | `MANAGER` or `GENERAL_MANAGER` |
 | Room reads (`GET /api/rooms`, `GET /api/rooms/[id]`) | any authenticated user |
 | Everything else | any authenticated user |
 
