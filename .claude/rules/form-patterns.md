@@ -13,6 +13,11 @@ working pattern:
 1. **State hook** — `src/hooks/use-<domain>-form.ts` owns every field as
    `useState`, step progression, edit-mode hydration, and the submit handler.
    See `src/hooks/use-booking-form.ts` (`"guest" | "stay" | "summary"` steps).
+   `useState`-per-field is the default; `useReducer` is acceptable when the
+   form has more than ~10 fields (the collapsed reset/hydrate logic and the
+   single state object pay for the extra boilerplate). The public return shape
+   still reads as individual setters — see `use-booking-form.ts` for the
+   canonical `useReducer` example.
 2. **Presentational components** — step components under
    `src/components/<domain>/steps/` receive values + setters as props and render
    shadcn inputs. No fetching, no business rules.
