@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-error-handler";
-import { UnauthorizedError, ValidationError } from "@/lib/errors";
+import { ForbiddenError, UnauthorizedError, ValidationError } from "@/lib/errors";
 import {
   getDashboardStats,
   getOccupancyReport,
@@ -18,6 +18,13 @@ export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       throw new UnauthorizedError();
+    }
+
+    if (
+      session.user.role !== "GENERAL_MANAGER" &&
+      session.user.role !== "MANAGER"
+    ) {
+      throw new ForbiddenError("Only managers can view reports");
     }
 
     const { searchParams } = new URL(request.url);
