@@ -1,7 +1,34 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+
+// Per-email login rate limiter. Complements the IP-keyed limiter in
+// middleware.ts so that distributed brute-force attempts (many IPs, one
+// account) still hit a per-account cap.
+let emailRateLimiter: Ratelimit | null = null;
+
+function getEmailRateLimiter(): Ratelimit | null {
+  if (
+    !emailRateLimiter &&
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    emailRateLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "15 m"),
+      analytics: true,
+      prefix: "ratelimit:login-email",
+    });
+  }
+  return emailRateLimiter;
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -17,6 +44,18 @@ export const authOptions: NextAuthOptions = {
 
         if (!credentials?.email || !credentials?.password) {
           throw new Error(invalidCredentialsError);
+        }
+
+        // Per-email rate limit — normalize so casing/whitespace variants
+        // share one bucket. Blocked attempts return the same generic error
+        // as bad credentials so the limit isn't distinguishable via response.
+        const limiter = getEmailRateLimiter();
+        if (limiter) {
+          const emailKey = credentials.email.toLowerCase().trim();
+          const { success } = await limiter.limit(emailKey);
+          if (!success) {
+            throw new Error(invalidCredentialsError);
+          }
         }
 
         const user = await prisma.user.findUnique({
