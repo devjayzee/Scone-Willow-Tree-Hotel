@@ -377,8 +377,12 @@ describe("Auth - Configuration", () => {
     expect(authOptions.session?.strategy).toBe("jwt");
   });
 
-  it("should have 24 hour session max age", () => {
-    expect(authOptions.session?.maxAge).toBe(24 * 60 * 60);
+  it("caps session lifetime at 12 hours (hotel shift-aware, #67)", () => {
+    expect(authOptions.session?.maxAge).toBe(12 * 60 * 60);
+  });
+
+  it("rotates the JWT every hour of activity (#67)", () => {
+    expect(authOptions.session?.updateAge).toBe(60 * 60);
   });
 
   it("should redirect to /login for sign in", () => {
