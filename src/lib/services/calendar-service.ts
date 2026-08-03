@@ -5,14 +5,14 @@ import type { CalendarEvent } from "@/types/calendar";
 /**
  * Get calendar events (bookings) with optional filtering
  *
- * @param startDate - Optional start date for filtering (ISO string)
- * @param endDate - Optional end date for filtering (ISO string)
+ * @param startDate - Optional start date for filtering
+ * @param endDate - Optional end date for filtering
  * @param roomId - Optional room ID to filter by (use "all" or undefined for all rooms)
  * @returns Array of calendar events formatted for display
  */
 export async function getCalendarEvents(
-  startDate?: string,
-  endDate?: string,
+  startDate?: Date,
+  endDate?: Date,
   roomId?: string
 ): Promise<CalendarEvent[]> {
   // Build where clause for active bookings
@@ -26,10 +26,10 @@ export async function getCalendarEvents(
   };
 
   if (startDate) {
-    where.checkIn = { gte: new Date(startDate) };
+    where.checkIn = { gte: startDate };
   }
   if (endDate) {
-    where.checkOut = { lte: new Date(endDate) };
+    where.checkOut = { lte: endDate };
   }
   if (roomId && roomId !== "all") {
     where.roomId = roomId;
