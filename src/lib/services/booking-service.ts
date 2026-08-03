@@ -24,6 +24,7 @@ export {
   createBooking,
   updateBooking,
   deleteBooking,
+  applyBookingAction,
   // Status operations
   checkInBooking,
   checkOutBooking,
