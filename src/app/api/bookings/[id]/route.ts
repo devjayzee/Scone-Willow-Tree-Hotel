@@ -9,12 +9,7 @@ import {
   getBookingById,
   updateBooking,
   deleteBooking,
-  checkInBooking,
-  checkOutBooking,
-  cancelBooking,
-  togglePaymentStatus,
-  undoCheckOutBooking,
-  undoCancelBooking,
+  applyBookingAction,
 } from "@/lib/services/booking-service";
 import {
   handleApiError,
@@ -90,29 +85,11 @@ export async function PATCH(
       if (!actionParsed.success) {
         return handleApiError(actionParsed.error, "updating booking");
       }
-      const action = actionParsed.data;
-
-      let booking;
-      switch (action.action) {
-        case "check-in":
-          booking = await checkInBooking(id, session.user.id);
-          break;
-        case "check-out":
-          booking = await checkOutBooking(id, session.user.id);
-          break;
-        case "undo-checkout":
-          booking = await undoCheckOutBooking(id, session.user.id);
-          break;
-        case "undo-cancel":
-          booking = await undoCancelBooking(id, session.user.id);
-          break;
-        case "cancel":
-          booking = await cancelBooking(id, action.reason, session.user.id);
-          break;
-        case "toggle-payment":
-          booking = await togglePaymentStatus(id, session.user.id);
-          break;
-      }
+      const booking = await applyBookingAction(
+        id,
+        actionParsed.data,
+        session.user.id,
+      );
       return NextResponse.json(booking);
     }
 
