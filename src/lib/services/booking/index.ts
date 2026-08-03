@@ -28,6 +28,7 @@ export {
   createBooking,
   updateBooking,
   deleteBooking,
+  applyBookingAction,
 } from "./booking-mutations";
 
 // Export status operations
