@@ -221,7 +221,7 @@ describe("Bookings [id] API", () => {
       );
     });
 
-    it("falls through to updateBooking for unknown/absent action (partial update)", async () => {
+    it("falls through to updateBooking when body has no action key (partial update)", async () => {
       mockGetServerSession.mockResolvedValue(staffSession);
       mockUpdateBooking.mockResolvedValue({ id: "booking-1", guestName: "Renamed" });
 
@@ -233,6 +233,36 @@ describe("Bookings [id] API", () => {
       expect(mockUpdateBooking).toHaveBeenCalledWith(
         "booking-1",
         expect.objectContaining({ guestName: "Renamed" }),
+        staffSession.user.id,
+      );
+    });
+
+    it("returns 400 for unknown action value", async () => {
+      mockGetServerSession.mockResolvedValue(staffSession);
+
+      const response = await PATCH(buildRequest({ action: "bogus" }), {
+        params,
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(mockCheckInBooking).not.toHaveBeenCalled();
+      expect(mockUpdateBooking).not.toHaveBeenCalled();
+    });
+
+    it("passes undefined reason to cancelBooking when reason is omitted", async () => {
+      mockGetServerSession.mockResolvedValue(staffSession);
+      mockCancelBooking.mockResolvedValue({ id: "booking-1", status: "CANCELLED" });
+
+      const response = await PATCH(buildRequest({ action: "cancel" }), {
+        params,
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockCancelBooking).toHaveBeenCalledWith(
+        "booking-1",
+        undefined,
         staffSession.user.id,
       );
     });

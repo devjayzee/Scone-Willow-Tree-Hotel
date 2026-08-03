@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 // Booking status enum for validation
-const bookingStatusEnum = z.enum([
+export const bookingStatusEnum = z.enum([
   "CONFIRMED",
   "CHECKED_IN",
   "CHECKED_OUT",
@@ -130,6 +130,36 @@ export const updateBookingSchema = z
 export const updateBookingStatusSchema = z.object({
   status: bookingStatusEnum,
 });
+
+// Query params for GET /api/bookings — status, roomId, and date window filters.
+// Date fields accept any string parseable by Date.parse (YYYY-MM-DD or full ISO),
+// matching the lenient pattern used by dateStringSchema above.
+const queryDateStringSchema = z
+  .string()
+  .refine((val) => !isNaN(Date.parse(val)), "Please enter a valid date");
+
+export const listBookingsQuerySchema = z.object({
+  status: bookingStatusEnum.optional(),
+  roomId: z.string().min(1).optional(),
+  startDate: queryDateStringSchema.optional(),
+  endDate: queryDateStringSchema.optional(),
+});
+export type ListBookingsQueryInput = z.infer<typeof listBookingsQuerySchema>;
+
+// PATCH /api/bookings/[id] action dispatcher. Discriminated union so `reason`
+// is only accepted alongside `action: "cancel"`.
+export const bookingActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("check-in") }),
+  z.object({ action: z.literal("check-out") }),
+  z.object({ action: z.literal("undo-checkout") }),
+  z.object({ action: z.literal("undo-cancel") }),
+  z.object({ action: z.literal("toggle-payment") }),
+  z.object({
+    action: z.literal("cancel"),
+    reason: z.string().max(500, "Reason is too long").optional(),
+  }),
+]);
+export type BookingActionInput = z.infer<typeof bookingActionSchema>;
 
 // Inferred types from schemas
 export type CreateBookingSchemaInput = z.infer<typeof createBookingSchema>;

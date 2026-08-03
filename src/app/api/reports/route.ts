@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-error-handler";
-import { ForbiddenError, UnauthorizedError, ValidationError } from "@/lib/errors";
+import { ForbiddenError, UnauthorizedError } from "@/lib/errors";
 import {
   getDashboardStats,
   getOccupancyReport,
@@ -10,7 +10,7 @@ import {
   getBookingTrends,
   getRoomPerformance,
 } from "@/lib/services/report-service";
-import type { ReportType } from "@/types/report";
+import { reportsQuerySchema } from "@/lib/validations/report";
 
 // GET /api/reports - Get reports data
 export async function GET(request: Request) {
@@ -28,42 +28,38 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const type = (searchParams.get("type") || "dashboard") as ReportType;
+    const parsed = reportsQuerySchema.safeParse(
+      Object.fromEntries(searchParams),
+    );
+    if (!parsed.success) {
+      return handleApiError(parsed.error, "fetching reports");
+    }
 
-    switch (type) {
+    switch (parsed.data.type) {
       case "dashboard": {
         const stats = await getDashboardStats();
         return NextResponse.json(stats);
       }
-
       case "occupancy": {
         const data = await getOccupancyReport();
         return NextResponse.json(data);
       }
-
       case "revenue": {
         const data = await getRevenueReport();
         return NextResponse.json(data);
       }
-
       case "bookings": {
         const data = await getBookingTrends();
         return NextResponse.json(data);
       }
-
       case "rooms": {
-        const startDateParam = searchParams.get("startDate");
-        const endDateParam = searchParams.get("endDate");
-
-        const startDate = startDateParam ? new Date(startDateParam) : undefined;
-        const endDate = endDateParam ? new Date(endDateParam) : undefined;
-
-        const data = await getRoomPerformance(startDate, endDate);
+        const { startDate, endDate } = parsed.data;
+        const data = await getRoomPerformance(
+          startDate ? new Date(startDate) : undefined,
+          endDate ? new Date(endDate) : undefined,
+        );
         return NextResponse.json(data);
       }
-
-      default:
-        throw new ValidationError("Invalid report type");
     }
   } catch (error) {
     return handleApiError(error, "fetching reports");

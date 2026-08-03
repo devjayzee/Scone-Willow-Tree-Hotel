@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { updateBookingSchema } from "@/lib/validations/booking";
+import {
+  bookingActionSchema,
+  updateBookingSchema,
+} from "@/lib/validations/booking";
 import {
   getBookingById,
   updateBooking,
@@ -79,38 +82,45 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, reason } = body as { action?: string; reason?: string };
 
-    let booking;
+    // Action dispatch: body has an `action` key → validate as a status
+    // transition; anything else falls through to a partial update.
+    if (body && typeof body === "object" && "action" in body) {
+      const actionParsed = bookingActionSchema.safeParse(body);
+      if (!actionParsed.success) {
+        return handleApiError(actionParsed.error, "updating booking");
+      }
+      const action = actionParsed.data;
 
-    switch (action) {
-      case "check-in":
-        booking = await checkInBooking(id, session.user.id);
-        break;
-      case "check-out":
-        booking = await checkOutBooking(id, session.user.id);
-        break;
-      case "undo-checkout":
-        booking = await undoCheckOutBooking(id, session.user.id);
-        break;
-      case "undo-cancel":
-        booking = await undoCancelBooking(id, session.user.id);
-        break;
-      case "cancel":
-        booking = await cancelBooking(id, reason, session.user.id);
-        break;
-      case "toggle-payment":
-        booking = await togglePaymentStatus(id, session.user.id);
-        break;
-      default:
-        // Regular partial update
-        const validation = updateBookingSchema.safeParse(body);
-        if (!validation.success) {
-          return handleApiError(validation.error, "updating booking");
-        }
-        booking = await updateBooking(id, validation.data, session.user.id);
+      let booking;
+      switch (action.action) {
+        case "check-in":
+          booking = await checkInBooking(id, session.user.id);
+          break;
+        case "check-out":
+          booking = await checkOutBooking(id, session.user.id);
+          break;
+        case "undo-checkout":
+          booking = await undoCheckOutBooking(id, session.user.id);
+          break;
+        case "undo-cancel":
+          booking = await undoCancelBooking(id, session.user.id);
+          break;
+        case "cancel":
+          booking = await cancelBooking(id, action.reason, session.user.id);
+          break;
+        case "toggle-payment":
+          booking = await togglePaymentStatus(id, session.user.id);
+          break;
+      }
+      return NextResponse.json(booking);
     }
 
+    const validation = updateBookingSchema.safeParse(body);
+    if (!validation.success) {
+      return handleApiError(validation.error, "updating booking");
+    }
+    const booking = await updateBooking(id, validation.data, session.user.id);
     return NextResponse.json(booking);
   } catch (error) {
     return handleApiError(error, "updating booking");
