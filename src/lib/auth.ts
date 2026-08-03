@@ -149,7 +149,12 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
+    // 12h accommodates hotel double/overnight shifts while halving the
+    // leaked-token window vs. the previous 24h. updateAge re-signs the
+    // JWT once per hour of activity so an active user's session extends
+    // through their shift without a mid-shift re-login.
+    maxAge: 12 * 60 * 60,
+    updateAge: 60 * 60,
   },
   secret: process.env.NEXTAUTH_SECRET,
 };
