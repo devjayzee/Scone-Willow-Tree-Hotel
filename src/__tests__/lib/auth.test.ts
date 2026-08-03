@@ -132,6 +132,43 @@ describe("Auth - authorize function", () => {
     ).rejects.toThrow("Invalid email or password");
   });
 
+  // Regression guard for #66 (timing-based user enumeration): the short-circuit
+  // branches must still invoke bcrypt.compare so their wall time matches the
+  // wrong-password branch. Assert both the invocation and the exact args, so
+  // a future refactor can't skip the compare or pass the wrong password
+  // through and re-open the side channel.
+  it("runs bcrypt.compare on the non-existent-user branch to equalize timing", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(null);
+    vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
+
+    await expect(
+      authorize({ email: "nonexistent@example.com", password: "attempted-pw" }),
+    ).rejects.toThrow("Invalid email or password");
+
+    expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+    expect(bcrypt.compare).toHaveBeenCalledWith(
+      "attempted-pw",
+      expect.stringMatching(/^\$2[aby]\$10\$/),
+    );
+  });
+
+  it("runs bcrypt.compare on the deactivated-account branch to equalize timing", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue({ ...mockUser, isActive: false });
+    vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
+
+    await expect(
+      authorize({ email: "test@example.com", password: "attempted-pw" }),
+    ).rejects.toThrow("Invalid email or password");
+
+    expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+    expect(bcrypt.compare).toHaveBeenCalledWith(
+      "attempted-pw",
+      expect.stringMatching(/^\$2[aby]\$10\$/),
+    );
+  });
+
   it("should throw generic error for invalid password", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
