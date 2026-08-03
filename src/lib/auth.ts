@@ -5,6 +5,14 @@ import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+// Pre-generated bcrypt hash (cost 10 — matches every real user hash written
+// by staff-mutations and the seed script) of a discarded random string.
+// Used to equalize `authorize()` wall-clock time between the unknown-email /
+// deactivated-account branches and the wrong-password branch, so response
+// timing can't be used for user enumeration (#66).
+const DUMMY_PASSWORD_HASH =
+  "$2b$10$fJECZx/mAPJHVEsoquUk/eGrjUF164mUKp4Pjf1eRkirCMVdFe6Xa";
+
 // Per-email login rate limiter. Complements the IP-keyed limiter in
 // middleware.ts so that distributed brute-force attempts (many IPs, one
 // account) still hit a per-account cap.
@@ -62,13 +70,11 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email },
         });
 
-        if (!user) {
-          throw new Error(invalidCredentialsError);
-        }
-
-        // Deactivated accounts get the same error as invalid credentials
-        // to prevent attackers from discovering valid email addresses
-        if (!user.isActive) {
+        // Run a dummy compare against the same-cost hash on the two
+        // short-circuit branches so the failure paths cost the same wall
+        // time as the wrong-password path (#66).
+        if (!user || !user.isActive) {
+          await bcrypt.compare(credentials.password, DUMMY_PASSWORD_HASH);
           throw new Error(invalidCredentialsError);
         }
 
