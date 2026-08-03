@@ -148,13 +148,13 @@ describe("Calendar Service", () => {
     it("should filter by start date when provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
-      const startDate = "2024-03-01T00:00:00Z";
+      const startDate = new Date("2024-03-01T00:00:00Z");
       await getCalendarEvents(startDate);
 
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkIn: { gte: new Date(startDate) },
+            checkIn: { gte: startDate },
           }),
         })
       );
@@ -163,13 +163,13 @@ describe("Calendar Service", () => {
     it("should filter by end date when provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
-      const endDate = "2024-03-31T23:59:59Z";
+      const endDate = new Date("2024-03-31T23:59:59Z");
       await getCalendarEvents(undefined, endDate);
 
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkOut: { lte: new Date(endDate) },
+            checkOut: { lte: endDate },
           }),
         })
       );
@@ -178,15 +178,15 @@ describe("Calendar Service", () => {
     it("should filter by date range when both dates provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
-      const startDate = "2024-03-01T00:00:00Z";
-      const endDate = "2024-03-31T23:59:59Z";
+      const startDate = new Date("2024-03-01T00:00:00Z");
+      const endDate = new Date("2024-03-31T23:59:59Z");
       await getCalendarEvents(startDate, endDate);
 
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkIn: { gte: new Date(startDate) },
-            checkOut: { lte: new Date(endDate) },
+            checkIn: { gte: startDate },
+            checkOut: { lte: endDate },
           }),
         })
       );
@@ -318,8 +318,8 @@ describe("Calendar Service", () => {
     it("should apply all filters together", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
-      const startDate = "2024-03-01T00:00:00Z";
-      const endDate = "2024-03-31T23:59:59Z";
+      const startDate = new Date("2024-03-01T00:00:00Z");
+      const endDate = new Date("2024-03-31T23:59:59Z");
       const roomId = "room-specific";
 
       await getCalendarEvents(startDate, endDate, roomId);
@@ -329,8 +329,8 @@ describe("Calendar Service", () => {
           status: {
             in: [BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN],
           },
-          checkIn: { gte: new Date(startDate) },
-          checkOut: { lte: new Date(endDate) },
+          checkIn: { gte: startDate },
+          checkOut: { lte: endDate },
           roomId: "room-specific",
         },
         include: {
