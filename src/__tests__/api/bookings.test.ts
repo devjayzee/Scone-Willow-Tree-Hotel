@@ -116,6 +116,34 @@ describe("Bookings API", () => {
       );
     });
 
+    it("returns 400 when status is not a known BookingStatus", async () => {
+      mockGetServerSession.mockResolvedValue(mockSession);
+
+      const request = new NextRequest(
+        "http://localhost/api/bookings?status=BOGUS",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(mockGetAllBookings).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 when startDate is not a parseable date", async () => {
+      mockGetServerSession.mockResolvedValue(mockSession);
+
+      const request = new NextRequest(
+        "http://localhost/api/bookings?startDate=not-a-date",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(mockGetAllBookings).not.toHaveBeenCalled();
+    });
+
     it("should handle service errors", async () => {
       mockGetServerSession.mockResolvedValue(mockSession);
       mockGetAllBookings.mockRejectedValue(new Error("Database error"));
