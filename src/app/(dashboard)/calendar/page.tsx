@@ -16,7 +16,7 @@ export default async function CalendarPage() {
   const end = endOfMonth(addMonths(today, 6));
 
   const [events, rooms] = await Promise.all([
-    getCalendarEvents(start.toISOString(), end.toISOString()),
+    getCalendarEvents(start, end),
     getAllRooms(),
   ]);
 
