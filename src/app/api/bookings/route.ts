@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createBookingSchema } from "@/lib/validations/booking";
+import {
+  createBookingSchema,
+  listBookingsQuerySchema,
+} from "@/lib/validations/booking";
 import { getAllBookings, createBooking } from "@/lib/services/booking-service";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
-import type { BookingStatus } from "@prisma/client";
 
 // GET /api/bookings - Get all bookings
 export async function GET(request: Request) {
@@ -15,11 +17,14 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status") as BookingStatus | null;
-    const roomId = searchParams.get("roomId");
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
+    const parsed = listBookingsQuerySchema.safeParse(
+      Object.fromEntries(searchParams),
+    );
+    if (!parsed.success) {
+      return handleApiError(parsed.error, "fetching bookings");
+    }
 
+    const { status, roomId, startDate, endDate } = parsed.data;
     const bookings = await getAllBookings({
       ...(status && { status }),
       ...(roomId && { roomId }),
