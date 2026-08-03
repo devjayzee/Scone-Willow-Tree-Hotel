@@ -146,6 +146,29 @@ describe("Reports API", () => {
       expect(data.code).toBe("VALIDATION_ERROR");
     });
 
+    it("returns 400 when rooms report is given an unparseable startDate", async () => {
+      mockGetServerSession.mockResolvedValue(mockManagerSession);
+
+      const response = await GET(
+        buildRequest("?type=rooms&startDate=not-a-date"),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(mockGetRoomPerformance).not.toHaveBeenCalled();
+    });
+
+    it("calls room performance with undefined dates when omitted", async () => {
+      mockGetServerSession.mockResolvedValue(mockManagerSession);
+      mockGetRoomPerformance.mockResolvedValue([]);
+
+      const response = await GET(buildRequest("?type=rooms"));
+
+      expect(response.status).toBe(200);
+      expect(mockGetRoomPerformance).toHaveBeenCalledWith(undefined, undefined);
+    });
+
     it("handles service errors", async () => {
       mockGetServerSession.mockResolvedValue(mockManagerSession);
       mockGetDashboardStats.mockRejectedValue(new Error("Database error"));
