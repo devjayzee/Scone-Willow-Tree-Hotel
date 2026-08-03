@@ -22,6 +22,32 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
+// Mock Upstash — the per-email limiter in auth.ts constructs a Ratelimit at
+// module scope when env vars are present. Providing a controllable mock keeps
+// tests deterministic regardless of local env, and lets us assert the key.
+// Arrow-function impls can't be used with `new`, so both mocks use classes.
+const mockRateLimit = vi.fn();
+vi.mock("@upstash/ratelimit", () => {
+  class Ratelimit {
+    limit(...args: unknown[]) {
+      return mockRateLimit(...args);
+    }
+    static slidingWindow() {
+      return "sliding-window-config";
+    }
+  }
+  return { Ratelimit };
+});
+
+vi.mock("@upstash/redis", () => {
+  class Redis {}
+  return { Redis };
+});
+
+// Force the lazy limiter to initialize inside auth.ts on first import.
+process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
+process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+
 // Import after mocks are set up
 import { authOptions } from "@/lib/auth";
 
@@ -36,6 +62,9 @@ const getAuthorize = () => {
 describe("Auth - authorize function", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: rate limit is available. Individual tests override to simulate
+    // exhaustion.
+    mockRateLimit.mockResolvedValue({ success: true });
   });
 
   const mockUser = {
@@ -135,6 +164,54 @@ describe("Auth - authorize function", () => {
     await expect(
       authorize({ email: "c@example.com", password: "wrong" })
     ).rejects.toThrow(expectedError);
+  });
+});
+
+describe("Auth - per-email rate limit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("throws generic error when the per-email limit is exhausted", async () => {
+    const authorize = getAuthorize();
+    mockRateLimit.mockResolvedValue({ success: false });
+
+    await expect(
+      authorize({ email: "victim@example.com", password: "pw" }),
+    ).rejects.toThrow("Invalid email or password");
+
+    // Short-circuits before touching the DB or bcrypt
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(vi.mocked(bcrypt.compare)).not.toHaveBeenCalled();
+  });
+
+  it("keys the limit on the normalized (lowercased, trimmed) email", async () => {
+    const authorize = getAuthorize();
+    mockRateLimit.mockResolvedValue({ success: true });
+    mockFindUnique.mockResolvedValue({
+      id: "u",
+      email: "  USER@Example.com  ",
+      password: "hashed",
+      firstName: "U",
+      lastName: "L",
+      role: "STAFF",
+      isActive: true,
+      tokenVersion: 0,
+    });
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+    await authorize({ email: "  USER@Example.com  ", password: "pw" });
+
+    expect(mockRateLimit).toHaveBeenCalledWith("user@example.com");
+  });
+
+  it("does not touch the limiter when credentials shape is missing", async () => {
+    const authorize = getAuthorize();
+
+    await expect(
+      authorize({ email: "", password: "pw" }),
+    ).rejects.toThrow("Invalid email or password");
+    expect(mockRateLimit).not.toHaveBeenCalled();
   });
 });
 
