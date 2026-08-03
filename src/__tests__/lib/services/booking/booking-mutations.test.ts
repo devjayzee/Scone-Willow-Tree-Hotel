@@ -19,10 +19,12 @@ import {
   createBooking,
   updateBooking,
   deleteBooking,
+  applyBookingAction,
   NotFoundError,
   ConflictError,
   BusinessRuleError,
 } from "@/lib/services/booking-service";
+import type { BookingActionInput } from "@/lib/validations/booking";
 
 describe("Booking Mutations", () => {
   beforeEach(() => {
@@ -300,6 +302,167 @@ describe("Booking Mutations", () => {
         /Cancel or check out first/
       );
       expect(mockBookingDelete).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================
+  // applyBookingAction — dispatcher, per action variant
+  // ============================================================
+  describe("applyBookingAction", () => {
+    // Far-future checkout so undo-checkout / undo-cancel pass their date guard.
+    const futureCheckOut = new Date("2099-12-31");
+
+    const seedTransitionBooking = (status: string) =>
+      mockBookingFindUnique.mockResolvedValue({
+        id: "booking-1",
+        status,
+        checkOut: futureCheckOut,
+        bookingRef: "BK-001",
+        guestName: "John",
+      });
+
+    it("dispatches check-in and updates status to CHECKED_IN", async () => {
+      seedTransitionBooking("CONFIRMED");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CHECKED_IN" })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "check-in" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "booking-1" },
+          data: { status: "CHECKED_IN" },
+        })
+      );
+    });
+
+    it("dispatches check-out and updates status to CHECKED_OUT", async () => {
+      seedTransitionBooking("CHECKED_IN");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CHECKED_OUT" })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "check-out" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: "CHECKED_OUT" },
+        })
+      );
+    });
+
+    it("dispatches undo-checkout back to CHECKED_IN", async () => {
+      seedTransitionBooking("CHECKED_OUT");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CHECKED_IN" })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "undo-checkout" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: "CHECKED_IN" },
+        })
+      );
+    });
+
+    it("dispatches undo-cancel back to CONFIRMED", async () => {
+      seedTransitionBooking("CANCELLED");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CONFIRMED" })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "undo-cancel" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: "CONFIRMED" },
+        })
+      );
+    });
+
+    it("dispatches cancel and updates status to CANCELLED", async () => {
+      seedTransitionBooking("CONFIRMED");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CANCELLED" })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "cancel", reason: "guest no-show" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: "CANCELLED" },
+        })
+      );
+    });
+
+    it("dispatches toggle-payment and flips isPaid", async () => {
+      // togglePaymentStatus reads a different select shape (id, isPaid, ...)
+      mockBookingFindUnique.mockResolvedValue({
+        id: "booking-1",
+        isPaid: false,
+        bookingRef: "BK-001",
+        guestName: "John",
+      });
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ isPaid: true })
+      );
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "toggle-payment" } as BookingActionInput,
+        "user-x"
+      );
+
+      expect(mockBookingUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "booking-1" },
+          data: { isPaid: true },
+        })
+      );
+    });
+
+    it("threads performedBy through to the transition function", async () => {
+      seedTransitionBooking("CONFIRMED");
+      mockBookingUpdate.mockResolvedValue(
+        createMockBooking({ status: "CHECKED_IN" })
+      );
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await applyBookingAction(
+        "booking-1",
+        { action: "check-in" } as BookingActionInput,
+        "user-42"
+      );
+
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "user-42",
+        expect.anything(),
+        expect.anything(),
+        "booking-1",
+        expect.anything()
+      );
     });
   });
 });
