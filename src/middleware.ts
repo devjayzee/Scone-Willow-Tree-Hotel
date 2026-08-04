@@ -1,28 +1,8 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest, NextFetchEvent } from "next/server";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import { getClientIp } from "@/lib/utils/get-client-ip";
-
-// Initialize rate limiter (lazy to handle missing env vars gracefully)
-let loginRateLimiter: Ratelimit | null = null;
-
-function getRateLimiter() {
-  if (!loginRateLimiter && process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    loginRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(5, "15 m"), // 5 attempts per 15 minutes
-      analytics: true,
-      prefix: "ratelimit:login",
-    });
-  }
-  return loginRateLimiter;
-}
+import { getLoginRateLimiter } from "@/lib/services/rate-limit-service";
 
 // Rate limiting middleware for auth endpoints
 async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | null> {
@@ -30,7 +10,7 @@ async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | nul
 
   // Only rate limit POST to credentials callback
   if (path === "/api/auth/callback/credentials" && req.method === "POST") {
-    const rateLimiter = getRateLimiter();
+    const rateLimiter = getLoginRateLimiter();
 
     if (rateLimiter) {
       const ip = getClientIp(req);
