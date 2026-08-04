@@ -3,6 +3,7 @@ import { PrismaClient, Role, BookingStatus } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { addDays, format } from "date-fns";
+import { BCRYPT_COST } from "../src/lib/constants/auth";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL,
@@ -17,7 +18,7 @@ async function main() {
   console.log("Cleared existing bookings");
 
   // Create General Manager
-  const hashedPassword = await bcrypt.hash("admin123", 10);
+  const hashedPassword = await bcrypt.hash("admin123", BCRYPT_COST);
   const manager = await prisma.user.upsert({
     where: { email: "manager@hotel.com" },
     update: {},
@@ -32,7 +33,7 @@ async function main() {
   console.log("Created manager:", manager.email);
 
   // Create Staff
-  const staffPassword = await bcrypt.hash("staff123", 10);
+  const staffPassword = await bcrypt.hash("staff123", BCRYPT_COST);
   const staff = await prisma.user.upsert({
     where: { email: "staff@hotel.com" },
     update: {},

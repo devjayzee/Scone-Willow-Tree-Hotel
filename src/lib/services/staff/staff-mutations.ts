@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { BCRYPT_COST } from "@/lib/constants/auth";
 import type {
   CreateStaffSchemaInput,
   UpdateStaffSchemaInput,
@@ -32,7 +33,7 @@ export async function createStaff(
   }
 
   // Hash password
-  const hashedPassword = await bcrypt.hash(data.password, 10);
+  const hashedPassword = await bcrypt.hash(data.password, BCRYPT_COST);
 
   const staff = await prisma.user.create({
     data: {
@@ -123,7 +124,7 @@ export async function updateStaff(
 
   // Hash password if provided and increment tokenVersion to invalidate sessions
   if (data.password) {
-    updateData.password = await bcrypt.hash(data.password, 10);
+    updateData.password = await bcrypt.hash(data.password, BCRYPT_COST);
     updateData.tokenVersion = { increment: 1 };
   }
 
