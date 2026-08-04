@@ -4,19 +4,12 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { BCRYPT_COST, DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
 
 // Fail loud at server boot instead of on the first sign-in attempt (#70).
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required — set it in .env");
 }
-
-// Pre-generated bcrypt hash (cost 10 — matches every real user hash written
-// by staff-mutations and the seed script) of a discarded random string.
-// Used to equalize `authorize()` wall-clock time between the unknown-email /
-// deactivated-account branches and the wrong-password branch, so response
-// timing can't be used for user enumeration (#66).
-const DUMMY_PASSWORD_HASH =
-  "$2b$10$fJECZx/mAPJHVEsoquUk/eGrjUF164mUKp4Pjf1eRkirCMVdFe6Xa";
 
 // Per-email login rate limiter. Complements the IP-keyed limiter in
 // middleware.ts so that distributed brute-force attempts (many IPs, one
@@ -90,6 +83,19 @@ export const authOptions: NextAuthOptions = {
 
         if (!isValidPassword) {
           throw new Error(invalidCredentialsError);
+        }
+
+        // Transparent bcrypt-cost upgrade (#71): if the stored hash was made
+        // at a lower cost than the current baseline, re-hash on successful
+        // login and write back. Keeps the #66 timing equalization tight for
+        // old users too. Do NOT increment tokenVersion — this is an
+        // algorithm upgrade, not a credential change; existing JWTs stay valid.
+        if (bcrypt.getRounds(user.password) < BCRYPT_COST) {
+          const rehashed = await bcrypt.hash(credentials.password, BCRYPT_COST);
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { password: rehashed },
+          });
         }
 
         return {
