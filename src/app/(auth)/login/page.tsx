@@ -1,60 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import { useLoginForm } from "@/hooks/use-login-form";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError("");
-
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-
-    try {
-      // Check rate limit status before attempting login
-      const rateLimitRes = await fetch("/api/auth/rate-limit-status");
-      const rateLimitData = await rateLimitRes.json();
-
-      if (rateLimitData.limited) {
-        setError("Too many login attempts. Please try again in 15 minutes.");
-        setIsLoading(false);
-        return;
-      }
-
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError(result.error);
-        setIsLoading(false);
-        return;
-      }
-
-      router.push("/bookings");
-      router.refresh();
-    } catch {
-      setError("An unexpected error occurred");
-      setIsLoading(false);
-    }
-  };
+  const {
+    email,
+    setEmail,
+    password,
+    setPassword,
+    isLoading,
+    error,
+    handleSubmit,
+  } = useLoginForm();
 
   return (
     <Card className="w-full max-w-md shadow-xl border-0 bg-white">
@@ -93,6 +58,8 @@ export default function LoginPage() {
               type="email"
               placeholder="you@example.com"
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="bg-cream-light/50 border-border focus:border-gold focus:ring-gold"
             />
           </div>
@@ -106,6 +73,8 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter your password"
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="bg-cream-light/50 border-border focus:border-gold focus:ring-gold pr-10"
               />
               <button
