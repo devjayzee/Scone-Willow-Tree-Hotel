@@ -7,18 +7,23 @@ import bcrypt from "bcryptjs";
 
 // Mock Prisma
 const mockFindUnique = vi.fn();
+const mockUpdate = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   default: {
     user: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
     },
   },
 }));
 
-// Mock bcrypt
+// Mock bcrypt. Default `getRounds` returns the current cost so tests that
+// don't care about rehash-on-login (#71) don't accidentally trigger it.
 vi.mock("bcryptjs", () => ({
   default: {
     compare: vi.fn(),
+    hash: vi.fn(),
+    getRounds: vi.fn(() => 12),
   },
 }));
 
@@ -149,7 +154,7 @@ describe("Auth - authorize function", () => {
     expect(bcrypt.compare).toHaveBeenCalledTimes(1);
     expect(bcrypt.compare).toHaveBeenCalledWith(
       "attempted-pw",
-      expect.stringMatching(/^\$2[aby]\$10\$/),
+      expect.stringMatching(/^\$2[aby]\$12\$/),
     );
   });
 
@@ -165,7 +170,7 @@ describe("Auth - authorize function", () => {
     expect(bcrypt.compare).toHaveBeenCalledTimes(1);
     expect(bcrypt.compare).toHaveBeenCalledWith(
       "attempted-pw",
-      expect.stringMatching(/^\$2[aby]\$10\$/),
+      expect.stringMatching(/^\$2[aby]\$12\$/),
     );
   });
 
@@ -201,6 +206,40 @@ describe("Auth - authorize function", () => {
     await expect(
       authorize({ email: "c@example.com", password: "wrong" })
     ).rejects.toThrow(expectedError);
+  });
+
+  // Transparent bcrypt-cost migration (#71): a successful login with a
+  // cost < BCRYPT_COST hash should trigger a re-hash + prisma.user.update,
+  // so old users get upgraded on their next visit without changing their
+  // password.
+  it("rehashes the password to cost 12 on successful login when stored hash is cost 10 (#71)", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(mockUser);
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    vi.mocked(bcrypt.getRounds).mockReturnValue(10);
+    vi.mocked(bcrypt.hash).mockResolvedValue(
+      "$2b$12$freshlyRehashed" as never,
+    );
+
+    await authorize({ email: "test@example.com", password: "correct" });
+
+    expect(bcrypt.hash).toHaveBeenCalledWith("correct", 12);
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "user-123" },
+      data: { password: "$2b$12$freshlyRehashed" },
+    });
+  });
+
+  it("does NOT rehash when the stored hash is already at cost 12 (#71)", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(mockUser);
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    vi.mocked(bcrypt.getRounds).mockReturnValue(12);
+
+    await authorize({ email: "test@example.com", password: "correct" });
+
+    expect(bcrypt.hash).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
