@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import type {
+  BookingActionInput,
   CreateBookingSchemaInput,
   UpdateBookingSchemaInput,
 } from "@/lib/validations/booking";
@@ -18,6 +19,14 @@ import {
   pickUpdateFields,
   validateStatusTransition,
 } from "./booking-utils";
+import {
+  checkInBooking,
+  checkOutBooking,
+  cancelBooking,
+  togglePaymentStatus,
+  undoCheckOutBooking,
+  undoCancelBooking,
+} from "./booking-status";
 
 /**
  * Create a new booking
@@ -260,4 +269,30 @@ export async function deleteBooking(
     deleted: true,
     message: "Booking deleted successfully",
   };
+}
+
+/**
+ * Dispatch a booking action to the appropriate status transition function.
+ * Single service-layer entry point for the PATCH route (and any future CLI
+ * or background caller) so route handlers stay Rule-1 compliant.
+ */
+export async function applyBookingAction(
+  id: string,
+  action: BookingActionInput,
+  performedBy: string,
+) {
+  switch (action.action) {
+    case "check-in":
+      return checkInBooking(id, performedBy);
+    case "check-out":
+      return checkOutBooking(id, performedBy);
+    case "undo-checkout":
+      return undoCheckOutBooking(id, performedBy);
+    case "undo-cancel":
+      return undoCancelBooking(id, performedBy);
+    case "cancel":
+      return cancelBooking(id, action.reason, performedBy);
+    case "toggle-payment":
+      return togglePaymentStatus(id, performedBy);
+  }
 }
