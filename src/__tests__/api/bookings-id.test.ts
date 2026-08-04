@@ -5,12 +5,7 @@ const mockGetServerSession = vi.fn();
 const mockGetBookingById = vi.fn();
 const mockUpdateBooking = vi.fn();
 const mockDeleteBooking = vi.fn();
-const mockCheckInBooking = vi.fn();
-const mockCheckOutBooking = vi.fn();
-const mockCancelBooking = vi.fn();
-const mockTogglePaymentStatus = vi.fn();
-const mockUndoCheckOutBooking = vi.fn();
-const mockUndoCancelBooking = vi.fn();
+const mockApplyBookingAction = vi.fn();
 
 vi.mock("next-auth", () => ({
   getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
@@ -20,12 +15,7 @@ vi.mock("@/lib/services/booking-service", () => ({
   getBookingById: (...args: unknown[]) => mockGetBookingById(...args),
   updateBooking: (...args: unknown[]) => mockUpdateBooking(...args),
   deleteBooking: (...args: unknown[]) => mockDeleteBooking(...args),
-  checkInBooking: (...args: unknown[]) => mockCheckInBooking(...args),
-  checkOutBooking: (...args: unknown[]) => mockCheckOutBooking(...args),
-  cancelBooking: (...args: unknown[]) => mockCancelBooking(...args),
-  togglePaymentStatus: (...args: unknown[]) => mockTogglePaymentStatus(...args),
-  undoCheckOutBooking: (...args: unknown[]) => mockUndoCheckOutBooking(...args),
-  undoCancelBooking: (...args: unknown[]) => mockUndoCancelBooking(...args),
+  applyBookingAction: (...args: unknown[]) => mockApplyBookingAction(...args),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -132,96 +122,51 @@ describe("Bookings [id] API", () => {
       });
 
       expect(response.status).toBe(401);
-      expect(mockCheckInBooking).not.toHaveBeenCalled();
+      expect(mockApplyBookingAction).not.toHaveBeenCalled();
     });
 
-    it("dispatches action=check-in to checkInBooking", async () => {
+    // Per-variant dispatch semantics are proven in the service-level test
+    // (`booking-mutations.test.ts::applyBookingAction`). Here we just
+    // verify the handler forwards the parsed action to the dispatcher
+    // for each of the six variants — that's all the route owns now.
+    it.each([
+      ["check-in", { action: "check-in" }],
+      ["check-out", { action: "check-out" }],
+      ["undo-checkout", { action: "undo-checkout" }],
+      ["undo-cancel", { action: "undo-cancel" }],
+      ["toggle-payment", { action: "toggle-payment" }],
+      ["cancel with reason", { action: "cancel", reason: "guest no-show" }],
+    ])("forwards %s to applyBookingAction", async (_label, body) => {
       mockGetServerSession.mockResolvedValue(staffSession);
-      mockCheckInBooking.mockResolvedValue({ id: "booking-1", status: "CHECKED_IN" });
+      mockApplyBookingAction.mockResolvedValue({ id: "booking-1" });
 
-      const response = await PATCH(buildRequest({ action: "check-in" }), {
-        params,
-      });
+      const response = await PATCH(buildRequest(body), { params });
 
       expect(response.status).toBe(200);
-      expect(mockCheckInBooking).toHaveBeenCalledWith("booking-1", staffSession.user.id);
-    });
-
-    it("dispatches action=check-out to checkOutBooking", async () => {
-      mockGetServerSession.mockResolvedValue(staffSession);
-      mockCheckOutBooking.mockResolvedValue({ id: "booking-1", status: "CHECKED_OUT" });
-
-      const response = await PATCH(buildRequest({ action: "check-out" }), {
-        params,
-      });
-
-      expect(response.status).toBe(200);
-      expect(mockCheckOutBooking).toHaveBeenCalledWith("booking-1", staffSession.user.id);
-    });
-
-    it("dispatches action=undo-checkout to undoCheckOutBooking", async () => {
-      mockGetServerSession.mockResolvedValue(staffSession);
-      mockUndoCheckOutBooking.mockResolvedValue({ id: "booking-1", status: "CHECKED_IN" });
-
-      const response = await PATCH(buildRequest({ action: "undo-checkout" }), {
-        params,
-      });
-
-      expect(response.status).toBe(200);
-      expect(mockUndoCheckOutBooking).toHaveBeenCalledWith(
+      expect(mockApplyBookingAction).toHaveBeenCalledWith(
         "booking-1",
+        body,
         staffSession.user.id,
       );
     });
 
-    it("dispatches action=undo-cancel to undoCancelBooking", async () => {
+    it("forwards cancel without reason as { action: 'cancel' } (no reason key)", async () => {
       mockGetServerSession.mockResolvedValue(staffSession);
-      mockUndoCancelBooking.mockResolvedValue({ id: "booking-1", status: "CONFIRMED" });
+      mockApplyBookingAction.mockResolvedValue({ id: "booking-1", status: "CANCELLED" });
 
-      const response = await PATCH(buildRequest({ action: "undo-cancel" }), {
+      const response = await PATCH(buildRequest({ action: "cancel" }), {
         params,
       });
 
       expect(response.status).toBe(200);
-      expect(mockUndoCancelBooking).toHaveBeenCalledWith(
+      expect(mockApplyBookingAction).toHaveBeenCalledWith(
         "booking-1",
+        { action: "cancel" },
         staffSession.user.id,
       );
     });
 
-    it("dispatches action=cancel to cancelBooking with reason", async () => {
-      mockGetServerSession.mockResolvedValue(staffSession);
-      mockCancelBooking.mockResolvedValue({ id: "booking-1", status: "CANCELLED" });
-
-      const response = await PATCH(
-        buildRequest({ action: "cancel", reason: "guest no-show" }),
-        { params },
-      );
-
-      expect(response.status).toBe(200);
-      expect(mockCancelBooking).toHaveBeenCalledWith(
-        "booking-1",
-        "guest no-show",
-        staffSession.user.id,
-      );
-    });
-
-    it("dispatches action=toggle-payment to togglePaymentStatus", async () => {
-      mockGetServerSession.mockResolvedValue(staffSession);
-      mockTogglePaymentStatus.mockResolvedValue({ id: "booking-1", paidInFull: true });
-
-      const response = await PATCH(buildRequest({ action: "toggle-payment" }), {
-        params,
-      });
-
-      expect(response.status).toBe(200);
-      expect(mockTogglePaymentStatus).toHaveBeenCalledWith(
-        "booking-1",
-        staffSession.user.id,
-      );
-    });
-
-    it("falls through to updateBooking for unknown/absent action (partial update)", async () => {
+    it("falls through to updateBooking when body has no action key (partial update)", async () => {
       mockGetServerSession.mockResolvedValue(staffSession);
       mockUpdateBooking.mockResolvedValue({ id: "booking-1", guestName: "Renamed" });
 
@@ -235,6 +180,21 @@ describe("Bookings [id] API", () => {
         expect.objectContaining({ guestName: "Renamed" }),
         staffSession.user.id,
       );
+      expect(mockApplyBookingAction).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 for unknown action value", async () => {
+      mockGetServerSession.mockResolvedValue(staffSession);
+
+      const response = await PATCH(buildRequest({ action: "bogus" }), {
+        params,
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(mockApplyBookingAction).not.toHaveBeenCalled();
+      expect(mockUpdateBooking).not.toHaveBeenCalled();
     });
   });
 

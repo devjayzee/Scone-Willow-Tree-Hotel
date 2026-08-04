@@ -16,6 +16,22 @@ export const updateRoomSchema = z.object({
   description: z.string().optional(),
 });
 
+// Query params for GET /api/rooms/available — accepts YYYY-MM-DD or full ISO.
+const dateStringSchema = z
+  .string()
+  .refine((val) => !isNaN(Date.parse(val)), "Please enter a valid date");
+
+export const availableRoomsQuerySchema = z
+  .object({
+    checkIn: dateStringSchema,
+    checkOut: dateStringSchema,
+  })
+  .refine((d) => new Date(d.checkOut) > new Date(d.checkIn), {
+    message: "checkOut must be after checkIn",
+    path: ["checkOut"],
+  });
+
 // Inferred types from schemas
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
+export type AvailableRoomsQueryInput = z.infer<typeof availableRoomsQuerySchema>;
