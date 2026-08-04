@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
 
+// auth.ts asserts NEXTAUTH_SECRET at module scope (#70). Any test that
+// imports `authOptions` directly or transitively needs a truthy value; the
+// content doesn't matter — unit tests don't verify real JWTs.
+process.env.NEXTAUTH_SECRET =
+  process.env.NEXTAUTH_SECRET || "test-nextauth-secret-not-used-in-real-crypto";
+
 // Mock next-auth
 vi.mock("next-auth/react", () => ({
   signIn: vi.fn(),

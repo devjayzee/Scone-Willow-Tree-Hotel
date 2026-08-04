@@ -388,4 +388,15 @@ describe("Auth - Configuration", () => {
   it("should redirect to /login for sign in", () => {
     expect(authOptions.pages?.signIn).toBe("/login");
   });
+
+  it("throws at module load when NEXTAUTH_SECRET is missing (#70)", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXTAUTH_SECRET", "");
+
+    await expect(import("@/lib/auth")).rejects.toThrow(
+      /NEXTAUTH_SECRET is required/,
+    );
+
+    vi.unstubAllEnvs();
+  });
 });
