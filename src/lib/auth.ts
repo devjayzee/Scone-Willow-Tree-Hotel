@@ -5,6 +5,11 @@ import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+// Fail loud at server boot instead of on the first sign-in attempt (#70).
+if (!process.env.NEXTAUTH_SECRET) {
+  throw new Error("NEXTAUTH_SECRET is required — set it in .env");
+}
+
 // Pre-generated bcrypt hash (cost 10 — matches every real user hash written
 // by staff-mutations and the seed script) of a discarded random string.
 // Used to equalize `authorize()` wall-clock time between the unknown-email /
