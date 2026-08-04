@@ -35,6 +35,11 @@ export async function GET(request: Request) {
       return handleApiError(parsed.error, "fetching reports");
     }
 
+    // claude-allow: rule-1 — 5-case type router where each branch is a single
+    // service-call delegation. Extracting to a service `getReport(type, ...)`
+    // would relocate the same switch across a module boundary with no
+    // consolidation (no shared surface, no per-case parameter shaping worth
+    // centralizing, no CLI/background caller). See #65 sub-item 2.
     switch (parsed.data.type) {
       case "dashboard": {
         const stats = await getDashboardStats();
