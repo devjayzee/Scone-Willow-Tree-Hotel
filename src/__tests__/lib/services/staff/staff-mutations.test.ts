@@ -54,7 +54,7 @@ describe("Staff Mutations", () => {
 
       const result = await createStaff(validInput);
 
-      expect(mockHash).toHaveBeenCalledWith("password123", 10);
+      expect(mockHash).toHaveBeenCalledWith("password123", 12);
       expect(mockUserCreate).toHaveBeenCalledWith({
         data: {
           firstName: "Jane",
@@ -233,7 +233,7 @@ describe("Staff Mutations", () => {
 
       await updateStaff("staff-1", { password: "newpassword123" }, "current-user-id");
 
-      expect(mockHash).toHaveBeenCalledWith("newpassword123", 10);
+      expect(mockHash).toHaveBeenCalledWith("newpassword123", 12);
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
         data: {
