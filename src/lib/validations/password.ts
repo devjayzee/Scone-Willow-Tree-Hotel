@@ -67,23 +67,11 @@ export const strongPasswordSchema = z
 /**
  * Optional strong password schema for update operations.
  * When provided, the password must meet strength requirements.
+ *
+ * Derived from strongPasswordSchema via `.optional()` so a rule change
+ * in one propagates automatically — zod preserves upstream refinements.
  */
-export const optionalStrongPasswordSchema = z
-  .string()
-  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
-  .refine((password) => PASSWORD_REGEX.uppercase.test(password), {
-    message: "Password must contain at least one uppercase letter",
-  })
-  .refine((password) => PASSWORD_REGEX.lowercase.test(password), {
-    message: "Password must contain at least one lowercase letter",
-  })
-  .refine((password) => PASSWORD_REGEX.number.test(password), {
-    message: "Password must contain at least one number",
-  })
-  .refine((password) => PASSWORD_REGEX.special.test(password), {
-    message: "Password must contain at least one special character",
-  })
-  .optional();
+export const optionalStrongPasswordSchema = strongPasswordSchema.optional();
 
 /**
  * Get password requirements as a list for display in UI.
