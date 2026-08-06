@@ -21,14 +21,14 @@ import {
   Undo2,
 } from "lucide-react";
 import { startOfDay } from "date-fns";
-import type { BookingSummary } from "@/types/booking";
+import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration";
+import type { Booking, BookingSummary } from "@/types/booking";
 
 export interface BookingTableActionsProps<T extends BookingSummary> {
   booking: T;
   onView: (booking: T) => void;
   onEdit: (booking: T) => void;
   onDelete: (booking: T) => void;
-  onDownloadPDF: (booking: T) => void | Promise<void>;
   onTogglePayment: (booking: T) => void;
   onCheckIn: (booking: T) => void;
   onCheckOut: (booking: T) => void;
@@ -65,7 +65,6 @@ export function BookingTableActions<T extends BookingSummary>({
   onView,
   onEdit,
   onDelete,
-  onDownloadPDF,
   onTogglePayment,
   onCheckIn,
   onCheckOut,
@@ -96,7 +95,13 @@ export function BookingTableActions<T extends BookingSummary>({
             Edit Booking
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => onDownloadPDF(booking)}>
+        <DropdownMenuItem
+          // The BookingTable generic constraint is `T extends BookingSummary`
+          // but the only caller today (bookings-client) instantiates T as the
+          // richer `Booking`. Cast is safe at runtime; tighten the constraint
+          // to `Booking` if a summary-only caller ever appears.
+          onClick={() => downloadBookingPDF(booking as unknown as Booking)}
+        >
           <FileDown className="mr-2 h-4 w-4" />
           Download PDF
         </DropdownMenuItem>
