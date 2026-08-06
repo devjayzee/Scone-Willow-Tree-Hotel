@@ -10,7 +10,7 @@ vi.mock("next-auth", () => ({
   getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
 }));
 
-vi.mock("@/lib/services/staff-service", () => ({
+vi.mock("@/lib/services/staff", () => ({
   getStaffById: (...args: unknown[]) => mockGetStaffById(...args),
   updateStaff: (...args: unknown[]) => mockUpdateStaff(...args),
   deleteStaff: (...args: unknown[]) => mockDeleteStaff(...args),

@@ -21,7 +21,7 @@ import {
   NotFoundError,
   ConflictError,
   BusinessRuleError,
-} from "@/lib/services/staff-service";
+} from "@/lib/services/staff";
 
 describe("Staff Mutations", () => {
   beforeEach(() => {
