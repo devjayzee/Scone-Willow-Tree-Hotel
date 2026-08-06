@@ -20,7 +20,7 @@ import {
   getRevenueReport,
   getBookingTrends,
   getRoomPerformance,
-} from "@/lib/services/report-service";
+} from "@/lib/services/report";
 
 describe("Report Analytics", () => {
   beforeEach(() => {

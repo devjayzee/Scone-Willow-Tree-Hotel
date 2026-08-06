@@ -18,7 +18,7 @@ import {
   updateBooking,
   NotFoundError,
   BusinessRuleError,
-} from "@/lib/services/booking-service";
+} from "@/lib/services/booking";
 
 describe("Booking Status Operations", () => {
   beforeEach(() => {
