@@ -23,7 +23,7 @@ import {
   NotFoundError,
   ConflictError,
   BusinessRuleError,
-} from "@/lib/services/booking-service";
+} from "@/lib/services/booking";
 import type { BookingActionInput } from "@/lib/validations/booking";
 
 describe("Booking Mutations", () => {
