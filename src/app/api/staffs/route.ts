@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createStaffSchema } from "@/lib/validations/staff";
-import { getAllStaff, createStaff } from "@/lib/services/staff-service";
+import { getAllStaff, createStaff } from "@/lib/services/staff";
 import {
   handleApiError,
   UnauthorizedError,

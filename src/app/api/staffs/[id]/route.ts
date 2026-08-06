@@ -6,7 +6,7 @@ import {
   getStaffById,
   updateStaff,
   deleteStaff,
-} from "@/lib/services/staff-service";
+} from "@/lib/services/staff";
 import {
   handleApiError,
   UnauthorizedError,
