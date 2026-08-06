@@ -1,15 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { RefreshCw, Download, TrendingUp, Calendar, DollarSign } from "lucide-react";
 import { format } from "date-fns";
-import { DateRange } from "react-day-picker";
-import { DateRangePicker } from "@/components/ui/date-range-picker";
+import type { DateRange } from "react-day-picker";
 import { useRoomPerformance } from "@/hooks/use-reports";
-import { exportToCSV } from "@/lib/utils/csv-export";
-import { ReportTableSkeleton } from "@/components/report/report-table-skeleton";
+import { ReportsToolbar } from "@/components/report/reports-toolbar";
+import { ReportsSummaryCards } from "@/components/report/reports-summary-cards";
+import { RoomPerformanceCard } from "@/components/report/room-performance-card";
 import type { RoomPerformanceData } from "@/types/report";
 
 interface ReportsClientProps {
@@ -33,11 +30,16 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
 
   // Use TanStack Query for data fetching
   // Only use initialData when there's no date filter (showing all-time data)
-  const { data: roomPerformance = initialData, isLoading, isFetching, refetch } = useRoomPerformance(
+  const {
+    data: roomPerformance = initialData,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useRoomPerformance(
     hasDateFilter ? undefined : initialData,
     startDate,
     endDate,
-    hasDateFilter ? undefined : fetchTime
+    hasDateFilter ? undefined : fetchTime,
   );
 
   // Calculate totals
@@ -49,9 +51,9 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
           totalNights: acc.totalNights + room.totalNights,
           totalRevenue: acc.totalRevenue + room.totalRevenue,
         }),
-        { totalBookings: 0, totalNights: 0, totalRevenue: 0 }
+        { totalBookings: 0, totalNights: 0, totalRevenue: 0 },
       ),
-    [roomPerformance]
+    [roomPerformance],
   );
 
   return (
@@ -64,166 +66,26 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2">
-        <div className="flex-1 max-w-sm">
-          <DateRangePicker
-            value={dateRange}
-            onChange={setDateRange}
-            className="w-full"
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          title="Refresh reports"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
+      <ReportsToolbar
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        onRefresh={refetch}
+        isFetching={isFetching}
+      />
 
-      {/* Summary Cards - Mobile */}
-      <div className="grid grid-cols-3 gap-3 md:hidden">
-        <div className="bg-white rounded-lg border p-3 text-center">
-          <div className="flex justify-center mb-1">
-            <Calendar className="h-4 w-4 text-blue-500" />
-          </div>
-          <div className="text-lg font-bold text-navy">{totals.totalBookings}</div>
-          <div className="text-xs text-gray-500">Bookings</div>
-        </div>
-        <div className="bg-white rounded-lg border p-3 text-center">
-          <div className="flex justify-center mb-1">
-            <TrendingUp className="h-4 w-4 text-purple-500" />
-          </div>
-          <div className="text-lg font-bold text-navy">{totals.totalNights}</div>
-          <div className="text-xs text-gray-500">Nights</div>
-        </div>
-        <div className="bg-white rounded-lg border p-3 text-center">
-          <div className="flex justify-center mb-1">
-            <DollarSign className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div className="text-lg font-bold text-emerald-600">
-            ${totals.totalRevenue.toLocaleString()}
-          </div>
-          <div className="text-xs text-gray-500">Revenue</div>
-        </div>
-      </div>
+      <ReportsSummaryCards
+        totalBookings={totals.totalBookings}
+        totalNights={totals.totalNights}
+        totalRevenue={totals.totalRevenue}
+      />
 
-      {/* Room Performance */}
-      <Card className="bg-white">
-        <CardHeader className="flex flex-row items-center justify-between pb-2 sm:pb-6">
-          <CardTitle className="text-navy text-base sm:text-lg">Room Performance</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportToCSV(roomPerformance, "room-performance")}
-            disabled={roomPerformance.length === 0}
-            className="h-8 text-xs sm:text-sm"
-          >
-            <Download className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Export CSV</span>
-          </Button>
-        </CardHeader>
-        <CardContent className="px-0 sm:px-6">
-          {isLoading ? (
-            <div className="px-4 sm:px-0">
-              <ReportTableSkeleton />
-            </div>
-          ) : (
-            <>
-              {/* Mobile Card View */}
-              <div className="md:hidden divide-y">
-                {roomPerformance.map((room) => (
-                  <div key={room.id} className="px-4 py-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-navy text-lg">
-                        Room {room.roomNumber}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        ${room.pricePerNight}/night
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-gray-50 rounded-lg py-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                          {room.totalBookings}
-                        </div>
-                        <div className="text-xs text-gray-500">Bookings</div>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg py-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                          {room.totalNights}
-                        </div>
-                        <div className="text-xs text-gray-500">Nights</div>
-                      </div>
-                      <div className="bg-emerald-50 rounded-lg py-2">
-                        <div className="text-sm font-semibold text-emerald-600">
-                          ${room.totalRevenue.toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500">Revenue</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b text-sm font-medium text-gray-500">
-                      <th className="text-left py-3 px-4">Room</th>
-                      <th className="text-right py-3 px-4">Rate/Night</th>
-                      <th className="text-right py-3 px-4">Total Bookings</th>
-                      <th className="text-right py-3 px-4">Total Nights</th>
-                      <th className="text-right py-3 px-4">Total Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {roomPerformance.map((room) => (
-                      <tr key={room.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4 font-medium">
-                          Room {room.roomNumber}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          ${room.pricePerNight}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          {room.totalBookings}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          {room.totalNights}
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-emerald-600">
-                          ${room.totalRevenue.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t bg-gray-50 font-semibold">
-                      <td colSpan={2} className="py-3 px-4">
-                        Total
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {totals.totalBookings}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {totals.totalNights}
-                      </td>
-                      <td className="py-3 px-4 text-right text-emerald-600">
-                        ${totals.totalRevenue.toLocaleString()}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <RoomPerformanceCard
+        roomPerformance={roomPerformance}
+        isLoading={isLoading}
+        totalBookings={totals.totalBookings}
+        totalNights={totals.totalNights}
+        totalRevenue={totals.totalRevenue}
+      />
     </div>
   );
 }
