@@ -16,7 +16,7 @@ import {
   getBookingById,
   getBookingByRef,
   NotFoundError,
-} from "@/lib/services/booking-service";
+} from "@/lib/services/booking";
 
 describe("Booking Queries", () => {
   beforeEach(() => {
