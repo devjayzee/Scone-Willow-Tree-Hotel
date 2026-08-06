@@ -10,7 +10,7 @@ import {
   updateBooking,
   deleteBooking,
   applyBookingAction,
-} from "@/lib/services/booking-service";
+} from "@/lib/services/booking";
 import {
   handleApiError,
   UnauthorizedError,
