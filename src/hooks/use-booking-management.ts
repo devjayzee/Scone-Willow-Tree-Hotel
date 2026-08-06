@@ -12,7 +12,7 @@ import {
   useCancelBooking,
   useUndoCancelBooking,
   useTogglePayment,
-} from "@/hooks/use-bookings";
+} from "@/hooks/booking";
 import type { Booking, CreateBookingInput } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 
