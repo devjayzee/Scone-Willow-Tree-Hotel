@@ -129,6 +129,11 @@ export function checkPasswordStrength(password: string): {
  * Generate a strong password that meets all requirements:
  * - At least 12 characters
  * - Uppercase, lowercase, numbers, special characters
+ *
+ * Uses `crypto.getRandomValues` (Web Crypto — available in Node 20+ and
+ * edge) for both character selection and shuffling. `Math.random` is
+ * not cryptographically secure and its outputs are predictable given
+ * seed state (#119).
  */
 export function generatePassword(): string {
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -137,23 +142,34 @@ export function generatePassword(): string {
   const special = "!@#$%^&*";
   const all = uppercase + lowercase + numbers + special;
 
+  const pickRandom = (alphabet: string): string => {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return alphabet[buf[0] % alphabet.length];
+  };
+
   // Ensure at least one of each required type
-  let password = "";
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-  password += special[Math.floor(Math.random() * special.length)];
+  const chars = [
+    pickRandom(uppercase),
+    pickRandom(lowercase),
+    pickRandom(numbers),
+    pickRandom(special),
+  ];
 
   // Fill remaining characters (total 12 characters)
   for (let i = 0; i < 8; i++) {
-    password += all[Math.floor(Math.random() * all.length)];
+    chars.push(pickRandom(all));
   }
 
-  // Shuffle the password
-  return password
-    .split("")
-    .sort(() => Math.random() - 0.5)
-    .join("");
+  // Fisher-Yates shuffle (unbiased, in-place).
+  for (let i = chars.length - 1; i > 0; i--) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    const j = buf[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join("");
 }
 
 export { validatePasswordStrength, PASSWORD_MIN_LENGTH };

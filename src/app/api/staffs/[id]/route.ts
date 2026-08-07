@@ -12,6 +12,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
 
 // GET /api/staffs/[id] - Get a single staff member
 export async function GET(
@@ -42,55 +43,59 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only managers can update staff");
+      }
+
+      const { id } = await params;
+      const body = await request.json();
+      const validation = updateStaffSchema.safeParse(body);
+
+      if (!validation.success) {
+        return handleApiError(validation.error, "updating staff");
+      }
+
+      const staff = await updateStaff(id, validation.data, session.user.id);
+
+      return NextResponse.json(staff);
+    } catch (error) {
+      return handleApiError(error, "updating staff");
     }
-
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can update staff");
-    }
-
-    const { id } = await params;
-    const body = await request.json();
-    const validation = updateStaffSchema.safeParse(body);
-
-    if (!validation.success) {
-      return handleApiError(validation.error, "updating staff");
-    }
-
-    const staff = await updateStaff(id, validation.data, session.user.id);
-
-    return NextResponse.json(staff);
-  } catch (error) {
-    return handleApiError(error, "updating staff");
-  }
+  });
 }
 
 // DELETE /api/staffs/[id] - Delete a staff member
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only managers can delete staff");
+      }
+
+      const { id } = await params;
+      const result = await deleteStaff(id, session.user.id);
+
+      return NextResponse.json({
+        message: result.message,
+        deactivated: result.deactivated,
+      });
+    } catch (error) {
+      return handleApiError(error, "deleting staff");
     }
-
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can delete staff");
-    }
-
-    const { id } = await params;
-    const result = await deleteStaff(id, session.user.id);
-
-    return NextResponse.json({
-      message: result.message,
-      deactivated: result.deactivated,
-    });
-  } catch (error) {
-    return handleApiError(error, "deleting staff");
-  }
+  });
 }
