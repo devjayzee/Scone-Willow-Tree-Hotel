@@ -56,6 +56,22 @@
   --color-cream: #f5e6c8;
   --color-cream-light: #faf4e8;
   --color-terracotta: #b8543f;
+  --color-navy-deepest: #10203a;
+  --color-sage: #6b7c4c;
+
+  /* Auth panel surfaces (dark side of the split screen) */
+  --color-auth-panel-from: #1e3a5f;
+  --color-auth-panel-via: #152a45;
+  --color-auth-panel-to: #10203a;
+
+  /* Display face (wired in layout.tsx) */
+  --font-display: var(--font-cormorant);
+
+  /* Semantic pairs exposed to Tailwind */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-surface-raised: var(--surface-raised);
+  --color-auth-surface: var(--auth-surface);
 }
 
 :root {
@@ -92,6 +108,11 @@
   --sidebar-accent-foreground: #f5e6c8;
   --sidebar-border: #2a4a73;
   --sidebar-ring: #c9a227;
+  --success: #6b7c4c;
+  --success-foreground: #ffffff;
+  --surface-raised: #ffffff;
+  --auth-surface: #faf4e8;
+  --ring-shadow: 0 0 0 3px rgb(201 162 39 / 0.25);
 }
 
 .dark {
@@ -126,6 +147,11 @@
   --sidebar-accent-foreground: #f5e6c8;
   --sidebar-border: #2a4a73;
   --sidebar-ring: #c9a227;
+  --success: #7d9159;
+  --success-foreground: #12233b;
+  --surface-raised: rgb(255 255 255 / 0.06);
+  --auth-surface: #12233b;
+  --ring-shadow: 0 0 0 3px rgb(201 162 39 / 0.25);
 }
 
 @layer base {
