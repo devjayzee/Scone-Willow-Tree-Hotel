@@ -33,6 +33,41 @@ export function getLoginRateLimiter(): Ratelimit | null {
   return loginRateLimiter;
 }
 
+let apiRateLimiter: Ratelimit | null = null;
+
+/**
+ * Per-user (or per-IP fallback) API rate limiter for non-auth /api/*
+ * routes (#116). Prevents a compromised or malicious authenticated token
+ * from enumerating or exhausting server resources at will.
+ *
+ * Bucket: 120 requests per 1-minute sliding window. Bursty operator
+ * usage (loading a dashboard page kicks off ~5 parallel API calls) fits
+ * comfortably under this ceiling; sustained abuse gets throttled. Adjust
+ * if real traffic patterns push against it.
+ *
+ * Returns null when Upstash env vars are missing — caller treats that
+ * as "rate limiting disabled".
+ */
+export function getApiRateLimiter(): Ratelimit | null {
+  if (
+    !apiRateLimiter &&
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    apiRateLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(120, "1 m"),
+      analytics: true,
+      prefix: "ratelimit:api",
+    });
+  }
+  return apiRateLimiter;
+}
+
 export interface LoginRateLimitStatus {
   limited: boolean;
   remaining: number;
