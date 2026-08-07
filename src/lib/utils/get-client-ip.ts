@@ -1,8 +1,8 @@
-import type { NextRequest } from "next/server";
-
 /**
  * Extracts the client IP address from a Next.js request in a way that is
- * safe against `x-forwarded-for` spoofing.
+ * safe against `x-forwarded-for` spoofing. Accepts the base `Request` type
+ * (NextRequest extends Request; we only read headers here) so plain route-
+ * handler `request` arguments work directly.
  *
  * Deployment assumptions:
  * - **Vercel (production):** the platform injects `x-real-ip` from the
@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
  *   further (drop N rightmost entries).
  * - **Local dev:** neither header is present, so fall back to `127.0.0.1`.
  */
-export function getClientIp(req: NextRequest): string {
+export function getClientIp(req: Request): string {
   const realIp = req.headers.get("x-real-ip");
   if (realIp) {
     return realIp.trim();
