@@ -1,12 +1,10 @@
 /**
  * Booking Hooks Module
  *
- * This module provides React hooks for booking operations organized by concern:
- * - booking-keys: Query key factory for cache management
- * - booking-api: API fetch functions
- * - booking-queries: Read hooks (useBookings)
- * - booking-mutations: Write hooks (useCreateBooking, useUpdateBooking, etc.)
- * - use-optimistic-booking: Shared optimistic update utilities
+ * Public surface — the query keys, query hooks, and mutation hooks that
+ * components consume. Optimistic-update helpers and raw `booking-api`
+ * fetchers are internal to this folder and imported via relative paths
+ * where needed; they are NOT re-exported to keep the module boundary tight.
  */
 
 // Export query keys
@@ -28,26 +26,3 @@ export {
   useUndoCheckOutBooking,
   useUndoCancelBooking,
 } from "./booking-mutations";
-
-// Export optimistic update utilities (for advanced use cases)
-export {
-  prepareOptimisticUpdate,
-  updateBookingInCache,
-  removeBookingFromCache,
-  addBookingToCache,
-  rollbackBookings,
-  useOptimisticBookingMutation,
-  type OptimisticContext,
-  type CreateOptimisticMutationOptions,
-} from "./use-optimistic-booking";
-
-// Export API functions (for direct use if needed)
-export {
-  fetchBookings,
-  fetchBookingById,
-  createBookingApi,
-  updateBookingApi,
-  deleteBookingApi,
-  performBookingAction,
-  type BookingAction,
-} from "./booking-api";

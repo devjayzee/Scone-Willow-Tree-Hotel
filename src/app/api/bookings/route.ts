@@ -5,7 +5,7 @@ import {
   createBookingSchema,
   listBookingsQuerySchema,
 } from "@/lib/validations/booking";
-import { getAllBookings, createBooking } from "@/lib/services/booking-service";
+import { getAllBookings, createBooking } from "@/lib/services/booking";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
 
 // GET /api/bookings - Get all bookings

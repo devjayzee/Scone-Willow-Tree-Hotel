@@ -17,7 +17,6 @@ interface BookingTableProps<T extends BookingSummary> {
   onView: (booking: T) => void;
   onEdit: (booking: T) => void;
   onDelete: (booking: T) => void;
-  onDownloadPDF: (booking: T) => void | Promise<void>;
   onTogglePayment: (booking: T) => void;
   onCheckIn: (booking: T) => void;
   onCheckOut: (booking: T) => void;
@@ -31,7 +30,6 @@ export function BookingTable<T extends BookingSummary>({
   onView,
   onEdit,
   onDelete,
-  onDownloadPDF,
   onTogglePayment,
   onCheckIn,
   onCheckOut,
@@ -59,7 +57,6 @@ export function BookingTable<T extends BookingSummary>({
     onView,
     onEdit,
     onDelete,
-    onDownloadPDF,
     onTogglePayment,
     onCheckIn,
     onCheckOut,
