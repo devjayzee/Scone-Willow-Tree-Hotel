@@ -11,6 +11,27 @@ export interface GetAllBookingsOptions {
 }
 
 /**
+ * Access model — read this before adding per-resource ownership checks.
+ *
+ * Bookings in this app are shared across the front-desk team by design:
+ * any authenticated staff member can read, edit, or transition any
+ * booking's status (checkIn / checkOut / cancel / undo / toggle-payment).
+ * A guest arriving at reception may be handled by whichever staff
+ * happens to be on shift; owner-scoped access would block that flow.
+ *
+ * The only per-role restriction is:
+ * - `deleteBooking` → GENERAL_MANAGER only (enforced at the route layer).
+ *
+ * Every mutation still records `performedBy` in the audit log so the
+ * "who did this" question is answerable via `AuditLog` rather than
+ * enforced via row-level ACL.
+ *
+ * If per-user tenancy is ever adopted, add `assertCanAccessBooking(session,
+ * booking)` here and to `updateBooking` / status-transition functions in
+ * `booking-mutations.ts` / `booking-status.ts`.
+ */
+
+/**
  * Get all bookings with optional filtering
  */
 export async function getAllBookings(options?: GetAllBookingsOptions) {
