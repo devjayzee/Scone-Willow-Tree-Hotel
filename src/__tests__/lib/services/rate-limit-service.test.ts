@@ -31,6 +31,7 @@ process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
 import {
+  getApiRateLimiter,
   getLoginRateLimiter,
   getLoginRateLimitStatus,
 } from "@/lib/services/rate-limit-service";
@@ -102,6 +103,32 @@ describe("rate-limit-service", () => {
 
       expect(mockGetRemaining).toHaveBeenCalledTimes(1);
       expect(mockLimit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getApiRateLimiter (#116)", () => {
+    it("returns a singleton across calls", () => {
+      const a = getApiRateLimiter();
+      const b = getApiRateLimiter();
+      expect(a).toBe(b);
+      expect(a).not.toBeNull();
+    });
+
+    it("returns null when Upstash env vars are missing", async () => {
+      vi.resetModules();
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+
+      const mod = await import("@/lib/services/rate-limit-service");
+      expect(mod.getApiRateLimiter()).toBeNull();
+
+      vi.unstubAllEnvs();
+    });
+
+    it("is a distinct instance from the login limiter (different prefixes)", () => {
+      const login = getLoginRateLimiter();
+      const api = getApiRateLimiter();
+      expect(api).not.toBe(login);
     });
   });
 });
