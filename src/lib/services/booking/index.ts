@@ -1,12 +1,11 @@
 /**
  * Booking Service Module
  *
- * This module provides all booking-related operations organized by concern:
- * - booking-queries: Read operations (getAllBookings, getBookingById, getBookingByRef)
- * - booking-mutations: Write operations (createBooking, updateBooking, deleteBooking)
- * - booking-status: Status transitions (checkIn, checkOut, cancel, togglePayment)
- * - booking-utils: Shared utilities (generateBookingRef, findOverlappingBooking)
- * - booking-constants: Shared constants (select fields, status transitions)
+ * Public surface — queries, mutations, and status operations that route
+ * handlers consume. Utility functions (`booking-utils`) and constants
+ * (`booking-constants`) are internal to this folder and imported via
+ * relative paths where needed; they are NOT re-exported to keep the
+ * module boundary tight.
  */
 
 // Re-export error types for convenience
@@ -40,16 +39,3 @@ export {
   undoCheckOutBooking,
   undoCancelBooking,
 } from "./booking-status";
-
-// Export utilities (for advanced use cases)
-export {
-  generateBookingRef,
-  findOverlappingBooking,
-  validateStatusTransition,
-} from "./booking-utils";
-
-// Export constants (for testing or extension)
-export {
-  bookingSelectFields,
-  VALID_STATUS_TRANSITIONS,
-} from "./booking-constants";

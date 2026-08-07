@@ -12,7 +12,7 @@ import {
 setupMocks();
 
 // Import after mocks are set up
-import { getDashboardStats } from "@/lib/services/report-service";
+import { getDashboardStats } from "@/lib/services/report";
 
 describe("Report Dashboard", () => {
   beforeEach(() => {
