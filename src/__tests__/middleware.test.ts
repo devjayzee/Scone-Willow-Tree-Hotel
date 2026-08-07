@@ -10,6 +10,14 @@ vi.mock("next-auth/middleware", () => ({
   },
 }));
 
+// Mock next-auth/jwt — apiRateLimitMiddleware reads the token to key the
+// per-user API limit (#116). Individual tests override to simulate presence
+// or absence of a session.
+const mockGetToken = vi.fn();
+vi.mock("next-auth/jwt", () => ({
+  getToken: (...args: unknown[]) => mockGetToken(...args),
+}));
+
 // Mock Upstash — class-based, since `new Ratelimit(...)` / `new Redis(...)`
 // don't work with arrow-function vi.fn implementations.
 const mockLimit = vi.fn();
@@ -74,6 +82,8 @@ describe("middleware", () => {
       remaining: 5,
       reset: Date.now() + 60_000,
     });
+    // Default: no session token — tests that need one override.
+    mockGetToken.mockResolvedValue(null);
   });
 
   describe("page role-gate redirects", () => {
@@ -223,6 +233,127 @@ describe("middleware", () => {
       await middleware(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("body-size cap (#117)", () => {
+    it("returns 413 when POST content-length exceeds the cap", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "POST",
+        headers: { "content-length": "200000" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(data.error).toMatch(/too large/i);
+      // Rate limiter should not fire — cap runs first
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("passes a normal-sized POST through", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "POST",
+        headers: { "content-length": "1024" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).not.toBe(413);
+    });
+
+    it("ignores content-length on GET (never carries a body)", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "GET",
+        headers: { "content-length": "999999" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).not.toBe(413);
+    });
+  });
+
+  describe("per-user API rate limit (#116)", () => {
+    it("returns 429 when the api limiter says the caller is over quota", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: false,
+        limit: 120,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/bookings", method: "GET" });
+      const response = (await middleware(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.error).toMatch(/too many requests/i);
+      // Key should be the userId, not the IP fallback
+      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+    });
+
+    it("keys on IP when the request is unauthenticated", async () => {
+      mockGetToken.mockResolvedValue(null);
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 120,
+        remaining: 119,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/bookings", method: "GET" });
+      await middleware(req);
+
+      // Falls back to `ip:<clientIp>` when no token — clientIp mocked to 203.0.113.7
+      expect(mockLimit).toHaveBeenCalledWith("ip:203.0.113.7");
+    });
+
+    it("does not touch the api limiter for /api/auth/*", async () => {
+      const req = buildReq({
+        path: "/api/auth/session",
+        method: "GET",
+      });
+      await middleware(req);
+
+      // /api/auth/* skips the api limiter branch entirely
+      expect(mockGetToken).not.toHaveBeenCalled();
+    });
+
+    it("does not touch the api limiter for non-API routes", async () => {
+      const req = buildReq({
+        path: "/bookings",
+        method: "GET",
+        token: { role: "STAFF" },
+      });
+      await middleware(req);
+
+      expect(mockGetToken).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("non-auth API paths skip withAuth (#117 companion)", () => {
+    // Non-auth API routes handle their own session check in the handler
+    // (Rule 4). Middleware must NOT 302 unauthenticated API calls to /login.
+    it("does not redirect unauthenticated /api/bookings", async () => {
+      const req = buildReq({ path: "/api/bookings", token: null });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+    });
+
+    it("does not redirect unauthenticated /api/reports", async () => {
+      const req = buildReq({ path: "/api/reports", token: null });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
     });
   });
 });
