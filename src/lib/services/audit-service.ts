@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { getAuditContext } from "./audit-context";
 
 /**
  * Audit action types for staff management.
@@ -75,6 +76,20 @@ export async function createAuditLog(
   entityId: string,
   details?: AuditDetails
 ): Promise<void> {
+  // Merge request-scoped forensics from AsyncLocalStorage (#118). Route
+  // handlers wrap their body in `runWithAuditContext` to make ipAddress /
+  // userAgent implicitly available without threading them through every
+  // service function.
+  const requestCtx = getAuditContext();
+  const mergedDetails: AuditDetails | undefined =
+    requestCtx && (requestCtx.ipAddress || requestCtx.userAgent)
+      ? {
+          ...(details ?? {}),
+          ...(requestCtx.ipAddress && { ipAddress: requestCtx.ipAddress }),
+          ...(requestCtx.userAgent && { userAgent: requestCtx.userAgent }),
+        }
+      : details;
+
   try {
     await prisma.auditLog.create({
       data: {
@@ -82,7 +97,7 @@ export async function createAuditLog(
         action,
         entityType,
         entityId,
-        details: details ? JSON.parse(JSON.stringify(details)) : null,
+        details: mergedDetails ? JSON.parse(JSON.stringify(mergedDetails)) : null,
       },
     });
   } catch (error) {
