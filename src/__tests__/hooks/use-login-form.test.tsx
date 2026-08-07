@@ -48,11 +48,12 @@ describe("useLoginForm", () => {
     expect(result.current.error).toBe("");
   });
 
-  it("sets a friendly error and skips signIn when rate-limited", async () => {
+  it("sets lockedUntil from resetAt and skips signIn when rate-limited", async () => {
+    const resetAt = Date.now() + 60_000;
     mockFetchStatus.mockResolvedValue({
       limited: true,
       remaining: 0,
-      resetAt: 0,
+      resetAt,
     });
 
     const { result } = renderHook(() => useLoginForm());
@@ -62,10 +63,98 @@ describe("useLoginForm", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.error).toMatch(/Too many login attempts/);
+      expect(result.current.lockedUntil).toBe(resetAt);
     });
+    expect(result.current.remaining).toBe(0);
+    expect(result.current.error).toBe("");
     expect(mockSignIn).not.toHaveBeenCalled();
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("computes remaining from the follow-up status call after a failed signIn", async () => {
+    mockFetchStatus
+      .mockResolvedValueOnce({ limited: false, remaining: 4, resetAt: 0 })
+      .mockResolvedValueOnce({ limited: false, remaining: 3, resetAt: 0 });
+    mockSignIn.mockResolvedValue({ error: "Invalid email or password" });
+
+    const { result } = renderHook(() => useLoginForm());
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(result.current.remaining).toBe(3);
+    });
+    expect(result.current.error).toBe("Invalid email or password");
+    expect(result.current.lockedUntil).toBeNull();
+    expect(mockFetchStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("flips to lockout when the failed attempt consumed the last token", async () => {
+    const resetAt = Date.now() + 60_000;
+    mockFetchStatus
+      .mockResolvedValueOnce({ limited: false, remaining: 1, resetAt: 0 })
+      .mockResolvedValueOnce({ limited: true, remaining: 0, resetAt });
+    mockSignIn.mockResolvedValue({ error: "Invalid email or password" });
+
+    const { result } = renderHook(() => useLoginForm());
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(result.current.lockedUntil).toBe(resetAt);
+    });
+    expect(result.current.remaining).toBe(0);
+    expect(result.current.error).toBe("");
+  });
+
+  it("maps the limiter-disabled sentinel (remaining >= 999) to null", async () => {
+    mockFetchStatus.mockResolvedValue({
+      limited: false,
+      remaining: 999,
+      resetAt: 0,
+    });
+    mockSignIn.mockResolvedValue({ error: "Invalid email or password" });
+
+    const { result } = renderHook(() => useLoginForm());
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("Invalid email or password");
+    });
+    expect(result.current.remaining).toBeNull();
+  });
+
+  it("clearLockout resets lockedUntil and remaining to null", async () => {
+    const resetAt = Date.now() + 60_000;
+    mockFetchStatus.mockResolvedValue({
+      limited: true,
+      remaining: 0,
+      resetAt,
+    });
+
+    const { result } = renderHook(() => useLoginForm());
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    await waitFor(() => {
+      expect(result.current.lockedUntil).toBe(resetAt);
+    });
+
+    act(() => {
+      result.current.clearLockout();
+    });
+
+    expect(result.current.lockedUntil).toBeNull();
+    expect(result.current.remaining).toBeNull();
   });
 
   it("surfaces the signIn error message when credentials are wrong", async () => {
