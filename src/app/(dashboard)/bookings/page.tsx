@@ -1,4 +1,4 @@
-import { getAllBookings } from "@/lib/services/booking-service";
+import { getAllBookings } from "@/lib/services/booking";
 import { getAllRooms } from "@/lib/services/room-service";
 import { BookingsClient } from "@/components/booking/bookings-client";
 import type { Booking } from "@/types/booking";

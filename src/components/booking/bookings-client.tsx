@@ -1,15 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { BookingTable } from "@/components/booking/booking-table";
-import { BookingDialog } from "@/components/booking/booking-dialog";
-import { BookingDetailsDialog } from "@/components/booking/booking-details-dialog";
-import { DeleteBookingDialog } from "@/components/booking/delete-booking-dialog";
-import { Plus, Search, RefreshCw } from "lucide-react";
-import { useBookingManagement } from "@/hooks/use-booking-management";
 import { BookingTableSkeleton } from "@/components/booking/booking-table-skeleton";
-import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration";
+import { BookingsHeader } from "@/components/booking/bookings-header";
+import { BookingsToolbar } from "@/components/booking/bookings-toolbar";
+import { BookingsDialogs } from "@/components/booking/bookings-dialogs";
+import { useBookingManagement } from "@/hooks/use-booking-management";
 import type { RoomSummary } from "@/types/room";
 import type { Booking } from "@/types/booking";
 
@@ -57,42 +53,14 @@ export function BookingsClient({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-navy">Bookings</h1>
-          <p className="text-muted-foreground">Manage guest reservations</p>
-        </div>
-        <Button
-          onClick={openCreateDialog}
-          className="bg-navy hover:bg-navy-dark text-cream"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Booking
-        </Button>
-      </div>
+      <BookingsHeader onCreateClick={openCreateDialog} />
 
-      {/* Search and Refresh */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search bookings..."
-            value={searchQuery}
-            onChange={(e) => updateSearch(e.target.value)}
-            className="pl-9 bg-white"
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => fetchBookings()}
-          disabled={isFetching}
-          title="Refresh bookings"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
+      <BookingsToolbar
+        searchQuery={searchQuery}
+        onSearchChange={updateSearch}
+        onRefresh={fetchBookings}
+        isFetching={isFetching}
+      />
 
       {error && (
         <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
@@ -108,7 +76,6 @@ export function BookingsClient({
           onView={openDetailsDialog}
           onEdit={openEditDialog}
           onDelete={openDeleteDialog}
-          onDownloadPDF={downloadBookingPDF}
           onTogglePayment={togglePayment}
           onCheckIn={(booking) => checkInBooking(booking.id)}
           onCheckOut={(booking) => checkOutBooking(booking.id)}
@@ -118,27 +85,18 @@ export function BookingsClient({
         />
       )}
 
-      <BookingDialog
-        open={bookingDialogOpen}
-        onOpenChange={setBookingDialogOpen}
+      <BookingsDialogs
         rooms={rooms}
+        selectedBooking={selectedBooking}
+        bookingDialogOpen={bookingDialogOpen}
+        detailsDialogOpen={detailsDialogOpen}
+        deleteDialogOpen={deleteDialogOpen}
+        isDeleting={isDeleting}
+        onBookingDialogOpenChange={setBookingDialogOpen}
+        onDetailsDialogOpenChange={setDetailsDialogOpen}
+        onDeleteDialogOpenChange={setDeleteDialogOpen}
         onSubmit={submitBooking}
-        booking={selectedBooking}
-      />
-
-      <BookingDetailsDialog
-        open={detailsDialogOpen}
-        onOpenChange={setDetailsDialogOpen}
-        booking={selectedBooking}
-      />
-
-      <DeleteBookingDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        bookingRef={selectedBooking?.bookingRef || ""}
-        guestName={selectedBooking?.guestName || ""}
-        onConfirm={confirmDelete}
-        isLoading={isDeleting}
+        onConfirmDelete={confirmDelete}
       />
     </div>
   );

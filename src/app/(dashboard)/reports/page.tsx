@@ -1,4 +1,4 @@
-import { getRoomPerformance } from "@/lib/services/report-service";
+import { getRoomPerformance } from "@/lib/services/report";
 import { ReportsClient } from "@/components/report/reports-client";
 import type { RoomPerformanceData } from "@/types/report";
 
