@@ -7,6 +7,7 @@ import {
 } from "@/lib/validations/booking";
 import { getAllBookings, createBooking } from "@/lib/services/booking";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
+import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
 
 // GET /api/bookings - Get all bookings
 export async function GET(request: Request) {
@@ -40,27 +41,29 @@ export async function GET(request: Request) {
 
 // POST /api/bookings - Create a new booking
 export async function POST(request: Request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      const body = await request.json();
+      const validation = createBookingSchema.safeParse(body);
+
+      if (!validation.success) {
+        return handleApiError(validation.error, "creating booking");
+      }
+
+      const booking = await createBooking(
+        validation.data,
+        session.user.id,
+        session.user.id
+      );
+
+      return NextResponse.json(booking, { status: 201 });
+    } catch (error) {
+      return handleApiError(error, "creating booking");
     }
-
-    const body = await request.json();
-    const validation = createBookingSchema.safeParse(body);
-
-    if (!validation.success) {
-      return handleApiError(validation.error, "creating booking");
-    }
-
-    const booking = await createBooking(
-      validation.data,
-      session.user.id,
-      session.user.id
-    );
-
-    return NextResponse.json(booking, { status: 201 });
-  } catch (error) {
-    return handleApiError(error, "creating booking");
-  }
+  });
 }
