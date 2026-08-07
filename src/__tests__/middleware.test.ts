@@ -225,4 +225,66 @@ describe("middleware", () => {
       expect(mockLimit).not.toHaveBeenCalled();
     });
   });
+
+  describe("body-size cap (#117)", () => {
+    it("returns 413 when POST content-length exceeds the cap", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "POST",
+        headers: { "content-length": "200000" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(data.error).toMatch(/too large/i);
+      // Rate limiter should not fire — cap runs first
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("passes a normal-sized POST through", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "POST",
+        headers: { "content-length": "1024" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).not.toBe(413);
+    });
+
+    it("ignores content-length on GET (never carries a body)", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "GET",
+        headers: { "content-length": "999999" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).not.toBe(413);
+    });
+  });
+
+  describe("non-auth API paths skip withAuth (#117 companion)", () => {
+    // Non-auth API routes handle their own session check in the handler
+    // (Rule 4). Middleware must NOT 302 unauthenticated API calls to /login.
+    it("does not redirect unauthenticated /api/bookings", async () => {
+      const req = buildReq({ path: "/api/bookings", token: null });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+    });
+
+    it("does not redirect unauthenticated /api/reports", async () => {
+      const req = buildReq({ path: "/api/reports", token: null });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+    });
+  });
 });

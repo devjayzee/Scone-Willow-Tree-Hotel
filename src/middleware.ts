@@ -4,6 +4,25 @@ import type { NextRequest, NextFetchEvent } from "next/server";
 import { getClientIp } from "@/lib/utils/get-client-ip";
 import { getLoginRateLimiter } from "@/lib/services/rate-limit-service";
 
+// Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
+// 3), but a 100 MB payload still hits `request.json()` before validation
+// fires — an attacker-controlled memory-pressure surface on the event loop.
+// Vercel enforces 4.5 MB out of the box; this is defence-in-depth for
+// self-hosted deployments (#117).
+const MAX_BODY_BYTES = 100_000;
+
+function enforceBodySizeCap(req: NextRequest): NextResponse | null {
+  if (req.method === "GET" || req.method === "HEAD") return null;
+  const contentLength = req.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
+    return NextResponse.json(
+      { error: "Request body too large" },
+      { status: 413 },
+    );
+  }
+  return null;
+}
+
 // Rate limiting middleware for auth endpoints
 async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
@@ -81,10 +100,23 @@ const authMiddleware = withAuth(
 
 // Combined middleware
 export default async function middleware(req: NextRequest) {
+  // Body-size cap runs before anything else so an oversized payload never
+  // touches auth, rate limiting, or the route handler.
+  const oversized = enforceBodySizeCap(req);
+  if (oversized) return oversized;
+
   // Check rate limiting first for auth endpoints
   const rateLimitResponse = await rateLimitMiddleware(req);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  // Non-auth API routes handle their own session check in the route handler
+  // (Rule 4). Running withAuth here would 302-redirect unauthenticated API
+  // calls to /login instead of returning a JSON 401.
+  const path = req.nextUrl.pathname;
+  if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
+    return NextResponse.next();
   }
 
   // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
@@ -98,7 +130,10 @@ export default async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/login",
-    "/api/auth/:path*",
+    // Match all API routes (not just /api/auth/*) so the body-size cap
+    // above fires for /api/bookings, /api/staffs, etc. Non-auth API paths
+    // skip withAuth via the branch in `middleware()` above.
+    "/api/:path*",
     "/bookings/:path*",
     "/rooms/:path*",
     "/calendar/:path*",
