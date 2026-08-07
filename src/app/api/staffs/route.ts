@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
 
 // GET /api/staffs - Get all staff members
 export async function GET() {
@@ -30,26 +31,28 @@ export async function GET() {
 
 // POST /api/staffs - Create a new staff member
 export async function POST(request: Request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only managers can create staff");
+      }
+
+      const body = await request.json();
+      const validation = createStaffSchema.safeParse(body);
+
+      if (!validation.success) {
+        return handleApiError(validation.error, "creating staff");
+      }
+
+      const staff = await createStaff(validation.data, session.user.id);
+      return NextResponse.json(staff, { status: 201 });
+    } catch (error) {
+      return handleApiError(error, "creating staff");
     }
-
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can create staff");
-    }
-
-    const body = await request.json();
-    const validation = createStaffSchema.safeParse(body);
-
-    if (!validation.success) {
-      return handleApiError(validation.error, "creating staff");
-    }
-
-    const staff = await createStaff(validation.data, session.user.id);
-    return NextResponse.json(staff, { status: 201 });
-  } catch (error) {
-    return handleApiError(error, "creating staff");
-  }
+  });
 }
