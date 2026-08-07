@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getAllStaff } from "@/lib/services/staff-service";
+import { getAllStaff } from "@/lib/services/staff";
 import { StaffsClient } from "@/components/staff/staffs-client";
 import type { Staff } from "@/types/staff";
 

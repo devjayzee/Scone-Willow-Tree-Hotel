@@ -15,7 +15,7 @@ import {
   getAllStaff,
   getStaffById,
   NotFoundError,
-} from "@/lib/services/staff-service";
+} from "@/lib/services/staff";
 
 describe("Staff Queries", () => {
   beforeEach(() => {

@@ -9,7 +9,7 @@ import {
   getRevenueReport,
   getBookingTrends,
   getRoomPerformance,
-} from "@/lib/services/report-service";
+} from "@/lib/services/report";
 import { reportsQuerySchema } from "@/lib/validations/report";
 
 // GET /api/reports - Get reports data
