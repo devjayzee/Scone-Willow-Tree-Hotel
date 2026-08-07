@@ -136,6 +136,79 @@ describe("Audit Service", () => {
         createAuditLog("user-1", AuditAction.ROOM_CREATED, EntityType.ROOM, "room-1")
       ).resolves.toBeUndefined();
     });
+
+    // #118 — createAuditLog reads request forensics from AsyncLocalStorage
+    // set by `runWithAuditContext` at the route handler.
+    it("merges ipAddress and userAgent from the ambient audit context", async () => {
+      const { runWithAuditContext } = await import(
+        "@/lib/services/audit-context"
+      );
+      mockAuditLogCreate.mockResolvedValue({ id: "audit-ctx" });
+
+      await runWithAuditContext(
+        { ipAddress: "203.0.113.7", userAgent: "Mozilla/5.0 test" },
+        async () => {
+          await createAuditLog(
+            "user-1",
+            AuditAction.BOOKING_UPDATED,
+            EntityType.BOOKING,
+            "booking-1",
+            { current: { guestName: "Jane" } },
+          );
+        },
+      );
+
+      expect(mockAuditLogCreate).toHaveBeenCalledWith({
+        data: {
+          userId: "user-1",
+          action: "BOOKING_UPDATED",
+          entityType: "BOOKING",
+          entityId: "booking-1",
+          details: {
+            current: { guestName: "Jane" },
+            ipAddress: "203.0.113.7",
+            userAgent: "Mozilla/5.0 test",
+          },
+        },
+      });
+    });
+
+    it("still works with no ambient context (writes null forensics)", async () => {
+      mockAuditLogCreate.mockResolvedValue({ id: "audit-nc" });
+
+      await createAuditLog(
+        "user-1",
+        AuditAction.STAFF_UPDATED,
+        EntityType.STAFF,
+        "staff-1",
+      );
+
+      const call = mockAuditLogCreate.mock.calls[0][0];
+      expect(call.data.details).toBeNull();
+    });
+
+    it("attaches only the fields the context actually has (undefined UA)", async () => {
+      const { runWithAuditContext } = await import(
+        "@/lib/services/audit-context"
+      );
+      mockAuditLogCreate.mockResolvedValue({ id: "audit-partial" });
+
+      await runWithAuditContext(
+        { ipAddress: "198.51.100.1" },
+        async () => {
+          await createAuditLog(
+            "user-1",
+            AuditAction.STAFF_ACTIVATED,
+            EntityType.STAFF,
+            "staff-1",
+          );
+        },
+      );
+
+      const call = mockAuditLogCreate.mock.calls[0][0];
+      expect(call.data.details).toEqual({ ipAddress: "198.51.100.1" });
+      expect(call.data.details).not.toHaveProperty("userAgent");
+    });
   });
 
   // ============================================================
