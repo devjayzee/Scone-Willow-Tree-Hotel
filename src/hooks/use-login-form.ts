@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { fetchLoginRateLimitStatus } from "@/hooks/use-auth";
+
+/** remaining >= this sentinel means the limiter is disabled (see rate-limit-service). */
+const LIMITER_DISABLED_REMAINING = 999;
 
 /**
  * Login form state + submit orchestration. Page becomes presentational.
@@ -14,6 +17,20 @@ export function useLoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+
+  const clearLockout = useCallback(() => {
+    setLockedUntil(null);
+    setRemaining(null);
+  }, []);
+
+  const applyLockout = (resetAt: number) => {
+    setLockedUntil(resetAt);
+    setRemaining(0);
+    // The locked-out screen replaces the form; a stale banner would double up.
+    setError("");
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,7 +40,7 @@ export function useLoginForm() {
     try {
       const rateLimit = await fetchLoginRateLimitStatus();
       if (rateLimit.limited) {
-        setError("Too many login attempts. Please try again in 15 minutes.");
+        applyLockout(rateLimit.resetAt);
         setIsLoading(false);
         return;
       }
@@ -35,7 +52,17 @@ export function useLoginForm() {
       });
 
       if (result?.error) {
-        setError(result.error);
+        const status = await fetchLoginRateLimitStatus();
+        if (status.limited) {
+          applyLockout(status.resetAt);
+        } else {
+          setRemaining(
+            status.remaining >= LIMITER_DISABLED_REMAINING
+              ? null
+              : status.remaining
+          );
+          setError(result.error);
+        }
         setIsLoading(false);
         return;
       }
@@ -55,6 +82,9 @@ export function useLoginForm() {
     setPassword,
     isLoading,
     error,
+    remaining,
+    lockedUntil,
+    clearLockout,
     handleSubmit,
   };
 }
