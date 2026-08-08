@@ -68,6 +68,38 @@ export function getApiRateLimiter(): Ratelimit | null {
   return apiRateLimiter;
 }
 
+let forgotPasswordRateLimiter: Ratelimit | null = null;
+
+/**
+ * Limiter for the public forgot-password endpoint. Unlike the login
+ * limiter's read-only status check, callers consume with `.limit()` on
+ * TWO keys per request — `ip:<clientIp>` and `email:<lowercased>` — and
+ * treat failure on either as a throttle. Keying by both stops one IP
+ * from spraying many emails and many IPs from hammering one email.
+ *
+ * Bucket: 3 requests / 15 min per key. Returns null when Upstash env
+ * vars are missing — caller treats that as "rate limiting disabled".
+ */
+export function getForgotPasswordRateLimiter(): Ratelimit | null {
+  if (
+    !forgotPasswordRateLimiter &&
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    forgotPasswordRateLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(3, "15 m"),
+      analytics: true,
+      prefix: "ratelimit:forgot-password",
+    });
+  }
+  return forgotPasswordRateLimiter;
+}
+
 export interface LoginRateLimitStatus {
   limited: boolean;
   remaining: number;

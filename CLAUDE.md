@@ -34,7 +34,9 @@ npx prisma db seed     # runs prisma/seed.ts via tsx
 
 Environment lives in `.env` (never read or print it); `.env.example` documents
 the shape. Required: `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`,
-`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`. Optional:
+`RESEND_API_KEY` + `EMAIL_FROM` (transactional email; unset → emails are
+logged to console instead of sent).
 
 ## Architecture
 
