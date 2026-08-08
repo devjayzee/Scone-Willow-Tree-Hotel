@@ -73,7 +73,9 @@ grep -rln "@/lib/services" src/components --include="*.tsx" \
 
 ## Allowed exceptions
 
-- `src/app/(auth)/login/page.tsx` may be a client page (credential form UX) —
-  keep it the only one.
+- The four auth pages may be client pages (form-first, token from the URL,
+  no server data to seed): `src/app/(auth)/login/page.tsx`,
+  `forgot-password/page.tsx`, `reset-password/page.tsx`,
+  `setup-password/page.tsx`. Keep the exception limited to `(auth)`.
 - `not-found.tsx` / `error.tsx` follow Next.js requirements (`error.tsx` must
   be a client component).
