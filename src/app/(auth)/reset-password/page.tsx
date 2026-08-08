@@ -112,6 +112,7 @@ function ResetPasswordContent() {
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
               placeholder="Enter a new password"
               required
               value={password}
@@ -141,6 +142,7 @@ function ResetPasswordContent() {
             id="confirm"
             name="confirm"
             type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
             placeholder="Re-enter the password"
             required
             value={confirm}
