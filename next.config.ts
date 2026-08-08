@@ -3,13 +3,22 @@ import type { NextConfig } from "next";
 // Content-Security-Policy — restrictive baseline for a first-party dashboard
 // with no third-party scripts. `'unsafe-inline'` on style-src is required by
 // shadcn/Radix primitives and react-big-calendar (both inject inline styles).
-// Script sources stay `'self'` only; no CDN or third-party analytics.
-// Tighten further with hashes/nonces if the CSS story ever changes.
+// `'unsafe-inline'` on script-src is required by the Next.js App Router: it
+// bootstraps hydration via inline scripts, so `script-src 'self'` alone
+// breaks every interactive page (native form submits, dead buttons — took
+// prod login down on 2026-08-08). The real tightening is a per-request
+// nonce + 'strict-dynamic' generated in middleware — tracked as a follow-up.
+// Dev additionally needs 'unsafe-eval' for React Refresh.
+const SCRIPT_SRC =
+  process.env.NODE_ENV === "development"
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    : "script-src 'self' 'unsafe-inline'";
+
 const CSP_DIRECTIVES = [
   "default-src 'self'",
   "img-src 'self' data: blob:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self'",
+  SCRIPT_SRC,
   "font-src 'self' data:",
   "connect-src 'self' https://*.upstash.io",
   "frame-ancestors 'none'",
