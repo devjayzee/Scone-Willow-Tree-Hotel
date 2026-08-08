@@ -28,8 +28,7 @@ export default function AuthLayout({
           />
           <div className="hidden h-px w-11 bg-gold lg:block" aria-hidden />
           <p className="hidden max-w-80 font-display text-[22px] leading-normal italic text-cream/90 lg:block">
-            Hotel &middot; Restaurant &middot; Bar &middot; Gelato — booking
-            management for the Willow Tree team.
+            Booking management for the Willow Tree team.
           </p>
         </div>
         <p className="hidden text-xs text-cream/50 lg:block">
