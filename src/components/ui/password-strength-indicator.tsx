@@ -57,7 +57,10 @@ export function PasswordStrengthIndicator({
     [password]
   );
 
-  if (!password) return null;
+  // List variant renders unmet dots for an empty password (live checklist
+  // is visible before typing); the grid variant keeps its hide-when-empty
+  // behaviour for existing call sites.
+  if (!password && variant === "grid") return null;
 
   if (variant === "list") {
     return (
