@@ -15,6 +15,15 @@ import {
 // self-hosted deployments (#117).
 const MAX_BODY_BYTES = 100_000;
 
+// Auth pages reachable without a session; signed-in users get bounced to
+// the dashboard from all of them.
+const PUBLIC_AUTH_PATHS = new Set([
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/setup-password",
+]);
+
 function enforceBodySizeCap(req: NextRequest): NextResponse | null {
   if (req.method === "GET" || req.method === "HEAD") return null;
   const contentLength = req.headers.get("content-length");
@@ -100,8 +109,8 @@ const authMiddleware = withAuth(
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
 
-    // Redirect authenticated users away from login page
-    if (path === "/login" && token) {
+    // Redirect authenticated users away from the public auth pages
+    if (PUBLIC_AUTH_PATHS.has(path) && token) {
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
 
@@ -127,8 +136,8 @@ const authMiddleware = withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const path = req.nextUrl.pathname;
-        // Allow access to login page and auth API without token
-        if (path === "/login" || path.startsWith("/api/auth/")) {
+        // Allow access to public auth pages and auth API without token
+        if (PUBLIC_AUTH_PATHS.has(path) || path.startsWith("/api/auth/")) {
           return true;
         }
         // Require token for all other matched routes
@@ -176,6 +185,9 @@ export default async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/login",
+    "/forgot-password",
+    "/reset-password",
+    "/setup-password",
     // Match all API routes (not just /api/auth/*) so the body-size cap
     // above fires for /api/bookings, /api/staffs, etc. Non-auth API paths
     // skip withAuth via the branch in `middleware()` above.
