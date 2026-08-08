@@ -170,6 +170,33 @@ describe("middleware", () => {
         "http://localhost/bookings",
       );
     });
+
+    const recoveryPaths = [
+      "/forgot-password",
+      "/reset-password",
+      "/setup-password",
+    ];
+
+    for (const path of recoveryPaths) {
+      it(`redirects authenticated user from ${path} to /bookings`, async () => {
+        const req = buildReq({ path, token: { role: "STAFF" } });
+
+        const response = (await middleware(req)) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(
+          "http://localhost/bookings",
+        );
+      });
+
+      it(`lets an unauthenticated visitor through to ${path}`, async () => {
+        const req = buildReq({ path, token: null });
+
+        const response = (await middleware(req)) as NextResponse;
+
+        expect(response.headers.get("location")).toBeNull();
+      });
+    }
   });
 
   describe("credentials rate limit", () => {

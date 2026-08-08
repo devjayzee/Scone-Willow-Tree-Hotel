@@ -22,19 +22,39 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum PasswordResetTokenPurpose {
+  RESET
+  SETUP
+}
+
 // Models
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  password     String
-  firstName    String
-  lastName     String
-  role         Role      @default(STAFF)
-  isActive     Boolean   @default(true)
-  tokenVersion Int       @default(0) // Incremented on password change to invalidate sessions
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  bookings     Booking[] @relation("CreatedBy")
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  firstName           String
+  lastName            String
+  role                Role                 @default(STAFF)
+  isActive            Boolean              @default(true)
+  tokenVersion        Int                  @default(0) // Incremented on password change to invalidate sessions
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  bookings            Booking[]            @relation("CreatedBy")
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String                    @id @default(cuid())
+  tokenHash String                    @unique // SHA-256 hex of the raw token — raw tokens never touch the database
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  purpose   PasswordResetTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime                  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Room {
@@ -49,34 +69,34 @@ model Room {
 }
 
 model Booking {
-  id                 String        @id @default(cuid())
-  bookingRef         String        @unique
-  room               Room          @relation(fields: [roomId], references: [id])
-  roomId             String
+  id         String @id @default(cuid())
+  bookingRef String @unique
+  room       Room   @relation(fields: [roomId], references: [id])
+  roomId     String
 
   // Guest Details
-  guestName          String
-  guestDateOfBirth   DateTime?
-  guestAddress       String?
-  guestPhone         String
-  guestEmail         String?
-  vehicleRego        String?
-  additionalGuests   String?
+  guestName        String
+  guestDateOfBirth DateTime?
+  guestAddress     String?
+  guestPhone       String
+  guestEmail       String?
+  vehicleRego      String?
+  additionalGuests String?
 
   // Stay Details
-  checkIn            DateTime
-  checkInTime        String?       // e.g., "14:00"
-  checkOut           DateTime
-  checkOutTime       String?       // e.g., "10:00"
-  bondDeposit        Decimal?      @db.Decimal(10, 2)
+  checkIn      DateTime
+  checkInTime  String? // e.g., "14:00"
+  checkOut     DateTime
+  checkOutTime String? // e.g., "10:00"
+  bondDeposit  Decimal? @db.Decimal(10, 2)
 
-  status             BookingStatus @default(CONFIRMED)
-  isPaid             Boolean       @default(false)
-  notes              String?
-  createdBy          User          @relation("CreatedBy", fields: [createdById], references: [id])
-  createdById        String
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  status      BookingStatus @default(CONFIRMED)
+  isPaid      Boolean       @default(false)
+  notes       String?
+  createdBy   User          @relation("CreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([roomId])
   @@index([checkIn, checkOut])
