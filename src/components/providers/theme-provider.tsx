@@ -1,28 +1,17 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 
-const DARK_ENABLED_PATHS = [
-  "/login",
-  "/forgot-password",
-  "/reset-password",
-  "/setup-password",
-];
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const darkEnabled = DARK_ENABLED_PATHS.some((path) =>
-    pathname.startsWith(path)
-  );
-
   return (
     <NextThemesProvider
       attribute="class"
-      defaultTheme="system"
-      enableSystem
-      // Dashboard has no dark design yet — force light outside the auth pages.
-      forcedTheme={darkEnabled ? undefined : "light"}
+      defaultTheme="light"
+      // Light-only for now — the dashboard has no dark design and the user
+      // chose to hold dark auth pages back until a real toggle ships with
+      // it. The .dark token values stay in globals.css; drop forcedTheme
+      // (and add a toggle) to activate them.
+      forcedTheme="light"
     >
       {children}
     </NextThemesProvider>
