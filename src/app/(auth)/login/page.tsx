@@ -121,6 +121,7 @@ export default function LoginPage() {
             id="email"
             name="email"
             type="email"
+            autoComplete="email"
             placeholder="you@sconewillowtree.com.au"
             required
             value={email}
@@ -146,6 +147,7 @@ export default function LoginPage() {
               id="password"
               name="password"
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               placeholder="Enter your password"
               required
               value={password}
