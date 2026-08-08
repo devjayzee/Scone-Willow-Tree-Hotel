@@ -5,34 +5,78 @@ import { Check, X } from "lucide-react";
 import { checkPasswordStrength } from "@/lib/validations/password";
 import { cn } from "@/lib/utils";
 
+const REQUIREMENTS = [
+  { key: "minLength", label: "8+ characters" },
+  { key: "hasUppercase", label: "Uppercase (A-Z)" },
+  { key: "hasLowercase", label: "Lowercase (a-z)" },
+  { key: "hasNumber", label: "Number (0-9)" },
+  { key: "hasSpecial", label: "Special (!@#$%)" },
+] as const;
+
 function RequirementCheck({ met, label }: { met: boolean; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       {met ? (
-        <Check className="h-3 w-3 text-green-600" />
+        <Check className="h-3 w-3 text-success" />
       ) : (
-        <X className="h-3 w-3 text-gray-400" />
+        <X className="h-3 w-3 text-muted-foreground" />
       )}
-      <span className={cn(met ? "text-green-700" : "text-gray-500")}>
+      <span className={cn(met ? "text-foreground" : "text-muted-foreground")}>
         {label}
       </span>
     </div>
   );
 }
 
-export function PasswordStrengthIndicator({ password }: { password: string }) {
+function RequirementRow({ met, label }: { met: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-2.5 text-[13px]">
+      <span
+        aria-hidden
+        className={cn(
+          "h-[7px] w-[7px] rounded-full",
+          met ? "bg-success" : "bg-[#c9baa0] dark:bg-[#4a5d78]"
+        )}
+      />
+      <span className={cn(met ? "text-foreground" : "text-muted-foreground")}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+export function PasswordStrengthIndicator({
+  password,
+  variant = "grid",
+}: {
+  password: string;
+  variant?: "grid" | "list";
+}) {
   const { checks, strength } = useMemo(
     () => checkPasswordStrength(password),
     [password]
   );
 
-  if (!password) return null;
+  // List variant renders unmet dots for an empty password (live checklist
+  // is visible before typing); the grid variant keeps its hide-when-empty
+  // behaviour for existing call sites.
+  if (!password && variant === "grid") return null;
+
+  if (variant === "list") {
+    return (
+      <div className="flex flex-col gap-2">
+        {REQUIREMENTS.map(({ key, label }) => (
+          <RequirementRow key={key} met={checks[key]} label={label} />
+        ))}
+      </div>
+    );
+  }
 
   const strengthColors = {
-    weak: "bg-red-500",
+    weak: "bg-destructive",
     fair: "bg-orange-500",
-    good: "bg-yellow-500",
-    strong: "bg-green-500",
+    good: "bg-gold",
+    strong: "bg-success",
   };
 
   const strengthWidths = {
@@ -46,7 +90,7 @@ export function PasswordStrengthIndicator({ password }: { password: string }) {
     <div className="space-y-2 mt-2">
       {/* Strength bar */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
           <div
             className={cn(
               "h-full transition-all duration-300",
@@ -58,10 +102,10 @@ export function PasswordStrengthIndicator({ password }: { password: string }) {
         <span
           className={cn(
             "text-xs font-medium capitalize",
-            strength === "weak" && "text-red-600",
+            strength === "weak" && "text-destructive",
             strength === "fair" && "text-orange-600",
-            strength === "good" && "text-yellow-600",
-            strength === "strong" && "text-green-600"
+            strength === "good" && "text-gold-dark",
+            strength === "strong" && "text-success"
           )}
         >
           {strength}
@@ -70,11 +114,9 @@ export function PasswordStrengthIndicator({ password }: { password: string }) {
 
       {/* Requirements checklist */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-        <RequirementCheck met={checks.minLength} label="8+ characters" />
-        <RequirementCheck met={checks.hasUppercase} label="Uppercase (A-Z)" />
-        <RequirementCheck met={checks.hasLowercase} label="Lowercase (a-z)" />
-        <RequirementCheck met={checks.hasNumber} label="Number (0-9)" />
-        <RequirementCheck met={checks.hasSpecial} label="Special (!@#$%)" />
+        {REQUIREMENTS.map(({ key, label }) => (
+          <RequirementCheck key={key} met={checks[key]} label={label} />
+        ))}
       </div>
     </div>
   );
