@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { forgotPasswordSchema } from "@/lib/validations/auth-token";
 import { issueResetTokenForEmail } from "@/lib/services/password-reset-service";
 import { getForgotPasswordRateLimiter } from "@/lib/services/rate-limit-service";
@@ -36,18 +36,24 @@ export async function POST(request: Request) {
 
     const { emailedToken, user } = await issueResetTokenForEmail(email);
     if (emailedToken && user) {
-      try {
-        const { subject, text, html } = passwordResetEmail({
-          firstName: user.firstName,
-          rawToken: emailedToken,
-        });
-        await getEmailTransport().send({ to: user.email, subject, text, html });
-      } catch (mailError) {
-        // Still 200 — surfacing a mailer failure would leak account existence.
-        logger.error("Failed to send password-reset email", mailError, {
-          userId: user.id,
-        });
-      }
+      const { subject, text, html } = passwordResetEmail({
+        firstName: user.firstName,
+        rawToken: emailedToken,
+      });
+      const to = user.email;
+      const userId = user.id;
+      // Run the mailer AFTER the response is sent so response time doesn't
+      // reveal whether the email matched a real account. after() keeps the
+      // serverless function alive until the send completes.
+      after(async () => {
+        try {
+          await getEmailTransport().send({ to, subject, text, html });
+        } catch (mailError) {
+          logger.error("Failed to send password-reset email", mailError, {
+            userId,
+          });
+        }
+      });
     }
 
     return NextResponse.json({ ok: true });
