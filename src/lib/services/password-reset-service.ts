@@ -149,8 +149,19 @@ async function consumeToken(
   const token = await findValidToken(rawToken, purpose);
   const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
-  await prisma.$transaction([
-    prisma.user.update({
+  await prisma.$transaction(async (tx) => {
+    // Claim the token first: the conditional updateMany + count check is
+    // the atomic single-use guard. If a concurrent request already
+    // consumed it during the bcrypt window above, count === 0 and this
+    // throw aborts the transaction (no password write, no audit).
+    const claim = await tx.passwordResetToken.updateMany({
+      where: { id: token.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      throw new NotFoundError(INVALID_TOKEN_MESSAGE);
+    }
+    await tx.user.update({
       where: { id: token.userId },
       data: {
         password: hashedPassword,
@@ -158,12 +169,8 @@ async function consumeToken(
         tokenVersion: { increment: 1 },
         ...(purpose === "SETUP" && { isActive: true }),
       },
-    }),
-    prisma.passwordResetToken.update({
-      where: { id: token.id },
-      data: { usedAt: new Date() },
-    }),
-  ]);
+    });
+  });
 
   await createAuditLog(
     token.userId,
