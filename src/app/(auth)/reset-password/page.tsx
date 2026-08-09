@@ -93,7 +93,7 @@ function ResetPasswordContent() {
         Choose a strong password you haven&apos;t used before.
       </p>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form method="post" onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <div
             role="alert"
