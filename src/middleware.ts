@@ -5,6 +5,7 @@ import { getToken } from "next-auth/jwt";
 import { getClientIp } from "@/lib/utils/get-client-ip";
 import {
   getApiRateLimiter,
+  getAuthEndpointRateLimiter,
   getLoginRateLimiter,
 } from "@/lib/services/rate-limit-service";
 
@@ -57,6 +58,49 @@ async function apiRateLimitMiddleware(
   const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
 
   const { success, limit, remaining, reset } = await limiter.limit(key);
+  if (success) return null;
+
+  return NextResponse.json(
+    { error: "Too many requests. Please slow down." },
+    {
+      status: 429,
+      headers: {
+        "X-RateLimit-Limit": limit.toString(),
+        "X-RateLimit-Remaining": remaining.toString(),
+        "X-RateLimit-Reset": reset.toString(),
+      },
+    },
+  );
+}
+
+// Paths under /api/auth/** that we own and want IP-rate-limited (#140).
+// forgot-password self-limits (dual key needs the body); rate-limit-status
+// is a UX pre-check called ~2x per login attempt and intentionally left
+// unlimited; NextAuth internals and the credentials callback are handled
+// elsewhere.
+const AUTH_ENDPOINT_LIMITED_EXACT = new Set([
+  "/api/auth/reset-password",
+  "/api/auth/setup-password",
+]);
+
+function isAuthEndpointLimited(path: string): boolean {
+  return (
+    AUTH_ENDPOINT_LIMITED_EXACT.has(path) ||
+    path.startsWith("/api/auth/invite/")
+  );
+}
+
+async function authEndpointRateLimitMiddleware(
+  req: NextRequest,
+): Promise<NextResponse | null> {
+  if (!isAuthEndpointLimited(req.nextUrl.pathname)) return null;
+
+  const limiter = getAuthEndpointRateLimiter();
+  if (!limiter) return null;
+
+  const { success, limit, remaining, reset } = await limiter.limit(
+    `ip:${getClientIp(req)}`,
+  );
   if (success) return null;
 
   return NextResponse.json(
@@ -158,6 +202,13 @@ export default async function middleware(req: NextRequest) {
   const rateLimitResponse = await rateLimitMiddleware(req);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  // IP-keyed limit on the reset/setup/invite auth endpoints (#140)
+  const authEndpointRateLimitResponse =
+    await authEndpointRateLimitMiddleware(req);
+  if (authEndpointRateLimitResponse) {
+    return authEndpointRateLimitResponse;
   }
 
   // Per-user API rate limit on non-auth /api/* routes
