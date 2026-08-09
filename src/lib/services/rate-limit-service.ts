@@ -100,6 +100,46 @@ export function getForgotPasswordRateLimiter(): Ratelimit | null {
   return forgotPasswordRateLimiter;
 }
 
+let authEndpointRateLimiter: Ratelimit | null = null;
+
+/**
+ * IP-keyed limiter for the public auth endpoints we own that don't have
+ * their own limiter: reset-password, setup-password, invite/[token] (#140).
+ *
+ * Bucket: 10 requests / 15 min per IP. A legitimate user hits any of
+ * these ~1–2 times per lifetime (paste token → optional retype → submit,
+ * plus one GET for the invite pre-check). 10 leaves headroom without
+ * being generous enough to enable brute-force reconnaissance or log spam.
+ * Tokens are 43-char base64url (~256 bits) so this is defense-in-depth,
+ * not the primary security boundary.
+ *
+ * Excludes forgot-password (self-limits with a dual-key trick that needs
+ * the body) and rate-limit-status (called twice per login attempt as UX
+ * sugar — would 429 users mid-troubleshoot).
+ *
+ * Returns null when Upstash env vars are missing — caller treats that as
+ * "rate limiting disabled".
+ */
+export function getAuthEndpointRateLimiter(): Ratelimit | null {
+  if (
+    !authEndpointRateLimiter &&
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    authEndpointRateLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "15 m"),
+      analytics: true,
+      prefix: "ratelimit:auth-endpoint",
+    });
+  }
+  return authEndpointRateLimiter;
+}
+
 export interface LoginRateLimitStatus {
   limited: boolean;
   remaining: number;
