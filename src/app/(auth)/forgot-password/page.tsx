@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
         Enter your work email and we&apos;ll send you a link to reset it.
       </p>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form method="post" onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <div
             role="alert"
