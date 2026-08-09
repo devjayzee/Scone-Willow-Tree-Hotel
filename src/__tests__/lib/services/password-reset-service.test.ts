@@ -2,17 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
 import { NotFoundError } from "@/lib/errors";
 
-const mockUserFindUnique = vi.fn();
-const mockUserUpdate = vi.fn();
-const mockTokenFindUnique = vi.fn();
-const mockTokenCreate = vi.fn();
-const mockTokenUpdate = vi.fn();
-const mockTokenUpdateMany = vi.fn();
-const mockAuditLogCreate = vi.fn();
-const mockTransaction = vi.fn(async (ops: unknown[]) => Promise.all(ops));
+const h = vi.hoisted(() => {
+  const mockUserFindUnique = vi.fn();
+  const mockUserUpdate = vi.fn();
+  const mockTokenFindUnique = vi.fn();
+  const mockTokenCreate = vi.fn();
+  const mockTokenUpdateMany = vi.fn();
+  const mockAuditLogCreate = vi.fn();
 
-vi.mock("@/lib/prisma", () => ({
-  default: {
+  const client = {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
@@ -20,14 +18,49 @@ vi.mock("@/lib/prisma", () => ({
     passwordResetToken: {
       findUnique: (...args: unknown[]) => mockTokenFindUnique(...args),
       create: (...args: unknown[]) => mockTokenCreate(...args),
-      update: (...args: unknown[]) => mockTokenUpdate(...args),
       updateMany: (...args: unknown[]) => mockTokenUpdateMany(...args),
     },
     auditLog: {
       create: (...args: unknown[]) => mockAuditLogCreate(...args),
     },
-    $transaction: (...args: unknown[]) =>
-      mockTransaction(...(args as [unknown[]])),
+  };
+
+  // Handles both $transaction forms: array (sequential ops) and callback
+  // (interactive). consumeToken uses the callback form so the atomic
+  // single-use guard can throw and roll back.
+  const mockTransaction = vi.fn(async (arg: unknown) => {
+    if (typeof arg === "function") {
+      return (arg as (tx: typeof client) => unknown)(client);
+    }
+    return Promise.all(arg as unknown[]);
+  });
+
+  return {
+    mockUserFindUnique,
+    mockUserUpdate,
+    mockTokenFindUnique,
+    mockTokenCreate,
+    mockTokenUpdateMany,
+    mockAuditLogCreate,
+    mockTransaction,
+    client,
+  };
+});
+
+const {
+  mockUserFindUnique,
+  mockUserUpdate,
+  mockTokenFindUnique,
+  mockTokenCreate,
+  mockTokenUpdateMany,
+  mockAuditLogCreate,
+  mockTransaction,
+} = h;
+
+vi.mock("@/lib/prisma", () => ({
+  default: {
+    ...h.client,
+    $transaction: (arg: unknown) => h.mockTransaction(arg),
   },
 }));
 
@@ -196,6 +229,7 @@ describe("Password Reset Service", () => {
   describe("consumeResetToken", () => {
     it("hashes the password, marks the token used, and bumps tokenVersion in a transaction", async () => {
       mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
 
       const result = await consumeResetToken({
         rawToken: "raw-token",
@@ -204,6 +238,18 @@ describe("Password Reset Service", () => {
 
       expect(result).toEqual({ userId: "u1" });
       expect(mockTransaction).toHaveBeenCalledTimes(1);
+
+      // Atomic single-use guard: conditional updateMany on the token row.
+      const claimCall = mockTokenUpdateMany.mock.calls.find(
+        ([arg]) => (arg as { where?: { id?: string } }).where?.id === "t1"
+      );
+      expect(claimCall).toBeDefined();
+      expect(claimCall![0]).toEqual(
+        expect.objectContaining({
+          where: { id: "t1", usedAt: null },
+          data: { usedAt: expect.any(Date) },
+        })
+      );
 
       const userUpdateArg = mockUserUpdate.mock.calls[0][0];
       expect(userUpdateArg.where).toEqual({ id: "u1" });
@@ -214,12 +260,6 @@ describe("Password Reset Service", () => {
         bcrypt.compare("NewStr0ng!Pass", userUpdateArg.data.password)
       ).resolves.toBe(true);
 
-      expect(mockTokenUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: "t1" },
-          data: { usedAt: expect.any(Date) },
-        })
-      );
       expect(mockAuditLogCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -229,6 +269,23 @@ describe("Password Reset Service", () => {
           }),
         })
       );
+    });
+
+    it("throws NotFoundError and skips the password write when a concurrent request already consumed the token", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      // Race: read saw usedAt: null, but by the time the transaction runs
+      // another request already claimed the row → count: 0.
+      mockTokenUpdateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        consumeResetToken({
+          rawToken: "raw-token",
+          newPassword: "NewStr0ng!Pass",
+        })
+      ).rejects.toThrow(NotFoundError);
+
+      expect(mockUserUpdate).not.toHaveBeenCalled();
+      expect(mockAuditLogCreate).not.toHaveBeenCalled();
     });
 
     it("throws NotFoundError for a missing token", async () => {
@@ -270,6 +327,7 @@ describe("Password Reset Service", () => {
   describe("consumeSetupToken", () => {
     it("additionally activates the account and audits as SETUP", async () => {
       mockTokenFindUnique.mockResolvedValue(validToken({ purpose: "SETUP" }));
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
 
       await consumeSetupToken({
         rawToken: "raw-token",
