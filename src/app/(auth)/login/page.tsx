@@ -95,7 +95,7 @@ export default function LoginPage() {
         Sign in to manage reservations, rooms and staff.
       </p>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form method="post" onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <div
             role="alert"
