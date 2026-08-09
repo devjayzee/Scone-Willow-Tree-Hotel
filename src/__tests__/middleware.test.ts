@@ -364,6 +364,93 @@ describe("middleware", () => {
     });
   });
 
+  describe("auth-endpoint rate limit (#140)", () => {
+    const limitedRoutes = [
+      { path: "/api/auth/reset-password", method: "POST" },
+      { path: "/api/auth/setup-password", method: "POST" },
+      { path: "/api/auth/invite/some-raw-token", method: "GET" },
+    ];
+
+    for (const { path, method } of limitedRoutes) {
+      it(`returns 429 for ${method} ${path} when the auth-endpoint limiter reports success: false`, async () => {
+        mockLimit.mockResolvedValue({
+          success: false,
+          limit: 10,
+          remaining: 0,
+          reset: Date.now() + 900_000,
+        });
+
+        const req = buildReq({ path, method });
+        const response = (await middleware(req)) as NextResponse;
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(data.error).toMatch(/too many requests/i);
+        expect(response.headers.get("X-RateLimit-Limit")).toBe("10");
+        expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
+        expect(mockLimit).toHaveBeenCalledWith("ip:203.0.113.7");
+      });
+
+      it(`passes ${method} ${path} through when the auth-endpoint limiter reports success: true`, async () => {
+        mockLimit.mockResolvedValue({
+          success: true,
+          limit: 10,
+          remaining: 9,
+          reset: Date.now() + 900_000,
+        });
+
+        const req = buildReq({ path, method });
+        const response = (await middleware(req)) as NextResponse;
+
+        expect(response.status).not.toBe(429);
+      });
+    }
+
+    it("does not rate-limit /api/auth/forgot-password (self-limits with dual key)", async () => {
+      const req = buildReq({
+        path: "/api/auth/forgot-password",
+        method: "POST",
+      });
+      await middleware(req);
+
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("does not rate-limit /api/auth/rate-limit-status (login-page UX pre-check)", async () => {
+      const req = buildReq({
+        path: "/api/auth/rate-limit-status",
+        method: "GET",
+      });
+      await middleware(req);
+
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("does not rate-limit NextAuth internals (/api/auth/session)", async () => {
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      await middleware(req);
+
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("does not rate-limit non-auth API paths via the auth-endpoint limiter (that's the general api limiter's job)", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 120,
+        remaining: 119,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/bookings", method: "GET" });
+      await middleware(req);
+
+      // Only the general api limiter fires — one call, keyed by userId, not IP.
+      expect(mockLimit).toHaveBeenCalledTimes(1);
+      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+    });
+  });
+
   describe("non-auth API paths skip withAuth (#117 companion)", () => {
     // Non-auth API routes handle their own session check in the handler
     // (Rule 4). Middleware must NOT 302 unauthenticated API calls to /login.
