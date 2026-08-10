@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createStaffSchema } from "@/lib/validations/staff";
 import { getAllStaff, createStaff } from "@/lib/services/staff";
-import { getEmailTransport } from "@/lib/email/transport";
+import { getEmailTransport } from "@/lib/email/email-transport";
 import { inviteSetupEmail } from "@/lib/email/templates/invite-setup";
 import {
   handleApiError,
