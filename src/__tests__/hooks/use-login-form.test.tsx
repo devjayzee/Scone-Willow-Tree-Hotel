@@ -44,6 +44,7 @@ describe("useLoginForm", () => {
 
     expect(result.current.email).toBe("");
     expect(result.current.password).toBe("");
+    expect(result.current.rememberDevice).toBe(false);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBe("");
   });
@@ -182,10 +183,39 @@ describe("useLoginForm", () => {
     expect(mockSignIn).toHaveBeenCalledWith("credentials", {
       email: "user@example.com",
       password: "wrong",
+      remember: "0",
       redirect: false,
     });
     expect(mockRouterPush).not.toHaveBeenCalled();
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it("passes remember: '1' to signIn when the checkbox is on (#145)", async () => {
+    mockFetchStatus.mockResolvedValue({
+      limited: false,
+      remaining: 5,
+      resetAt: 0,
+    });
+    mockSignIn.mockResolvedValue({ error: null });
+
+    const { result } = renderHook(() => useLoginForm());
+
+    act(() => {
+      result.current.setEmail("user@example.com");
+      result.current.setPassword("correct");
+      result.current.setRememberDevice(true);
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent());
+    });
+
+    expect(mockSignIn).toHaveBeenCalledWith("credentials", {
+      email: "user@example.com",
+      password: "correct",
+      remember: "1",
+      redirect: false,
+    });
   });
 
   it("navigates to /bookings on successful signIn", async () => {

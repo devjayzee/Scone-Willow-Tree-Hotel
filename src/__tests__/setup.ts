@@ -7,6 +7,13 @@ import { vi } from "vitest";
 process.env.NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "test-nextauth-secret-not-used-in-real-crypto";
 
+// email/app-url.ts asserts NEXTAUTH_URL at module scope (#143). Same
+// pattern as NEXTAUTH_SECRET above — tests that transitively import an
+// email template need a truthy value. The app-url test itself deletes
+// this in a beforeEach so it can exercise the missing-env branch.
+process.env.NEXTAUTH_URL =
+  process.env.NEXTAUTH_URL || "http://localhost:3000";
+
 // Mock next-auth
 vi.mock("next-auth/react", () => ({
   signIn: vi.fn(),

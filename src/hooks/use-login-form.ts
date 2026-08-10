@@ -15,6 +15,7 @@ export function useLoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -48,6 +49,7 @@ export function useLoginForm() {
       const result = await signIn("credentials", {
         email,
         password,
+        remember: rememberDevice ? "1" : "0",
         redirect: false,
       });
 
@@ -80,6 +82,8 @@ export function useLoginForm() {
     setEmail,
     password,
     setPassword,
+    rememberDevice,
+    setRememberDevice,
     isLoading,
     error,
     remaining,
