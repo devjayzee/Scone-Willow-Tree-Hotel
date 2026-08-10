@@ -123,7 +123,7 @@ function SetupPasswordContent() {
         </span>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form method="post" onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <div
             role="alert"
