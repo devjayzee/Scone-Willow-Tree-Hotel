@@ -7,6 +7,7 @@ import {
   useUpdateStaff,
   useDeleteStaff,
   useToggleStaffActive,
+  useResendInvite,
 } from "@/hooks/use-staffs";
 import type { Staff } from "@/types/staff";
 import type { StaffFormData } from "@/components/staff/staff-dialog";
@@ -23,6 +24,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
   const updateMutation = useUpdateStaff();
   const deleteMutation = useDeleteStaff();
   const toggleActiveMutation = useToggleStaffActive();
+  const resendInviteMutation = useResendInvite();
 
   // Dialog state
   const [staffDialogOpen, setStaffDialogOpen] = useState(false);
@@ -80,8 +82,13 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
           data: updateData,
         });
       } else {
-        // Create new staff
-        await createMutation.mutateAsync(formData);
+        // Create new staff — invite flow, no password sent (#144).
+        await createMutation.mutateAsync({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          role: formData.role,
+        });
       }
 
       setStaffDialogOpen(false);
@@ -112,6 +119,14 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
       });
     },
     [toggleActiveMutation]
+  );
+
+  // Resend a setup invite to an inactive staff member (#144).
+  const resendInvite = useCallback(
+    async (staff: Staff) => {
+      await resendInviteMutation.mutateAsync(staff.id);
+    },
+    [resendInviteMutation]
   );
 
   // Update search query
@@ -154,6 +169,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
     saveStaff,
     confirmDelete,
     toggleActive,
+    resendInvite,
     updateSearch,
     setStaffDialogOpen,
     setDeleteDialogOpen,
