@@ -23,6 +23,9 @@ import { RefreshCw } from "lucide-react";
 import { checkPasswordStrength, generatePassword } from "@/lib/validations/password";
 import type { Staff, Role } from "@/types/staff";
 
+// Password is only present when editing (#144). Create flow issues a
+// setup invite; staff sets their own password on /setup-password.
+
 interface StaffFormData {
   firstName: string;
   lastName: string;
@@ -64,7 +67,8 @@ export function StaffDialog({
 
   const isEditing = staff !== null;
 
-  // Check if password meets requirements
+  // Check if password meets requirements. Only relevant in edit mode —
+  // create no longer collects a password (#144).
   const passwordStrength = useMemo(
     () => checkPasswordStrength(formData.password),
     [formData.password]
@@ -72,7 +76,7 @@ export function StaffDialog({
 
   const isPasswordValid = isEditing
     ? formData.password === "" || passwordStrength.isValid
-    : passwordStrength.isValid;
+    : true;
 
   // Reset form when dialog opens/closes or staff changes
   useEffect(() => {
@@ -88,12 +92,12 @@ export function StaffDialog({
           role: staff.role,
         });
       } else {
-        // Creating new staff
+        // Creating new staff — no password collected; invite email carries the setup link (#144).
         setFormData({
           firstName: "",
           lastName: "",
           email: "",
-          password: generatePassword(),
+          password: "",
           role: "STAFF",
         });
       }
@@ -185,46 +189,49 @@ export function StaffDialog({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                Password {isEditing ? "(leave blank to keep current)" : "*"}
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="password"
-                  type={formData.password ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  placeholder={isEditing ? "••••••••" : ""}
-                  required={!isEditing}
-                  className="font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() =>
-                    setFormData({ ...formData, password: generatePassword() })
-                  }
-                  title="Generate new password"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+            {isEditing ? (
+              <div className="space-y-2">
+                <Label htmlFor="password">
+                  Password (leave blank to keep current)
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="password"
+                    type={formData.password ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    placeholder="••••••••"
+                    className="font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      setFormData({ ...formData, password: generatePassword() })
+                    }
+                    title="Generate new password"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <PasswordStrengthIndicator password={formData.password} />
+
+                {formData.password && passwordStrength.isValid && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    New password generated. Share this with the staff member.
+                  </p>
+                )}
               </div>
-
-              {/* Password strength indicator */}
-              <PasswordStrengthIndicator password={formData.password} />
-
-              {formData.password && passwordStrength.isValid && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {isEditing
-                    ? "New password generated. Share this with the staff member."
-                    : "Auto-generated password. Share this with the staff member."}
-                </p>
-              )}
-            </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                The new staff member will receive an email invite to set their
+                own password.
+              </p>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="role">Role *</Label>

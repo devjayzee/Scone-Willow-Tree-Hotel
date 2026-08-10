@@ -7,6 +7,7 @@ import type { Staff } from "@/types/staff";
 import {
   createStaff,
   deleteStaff,
+  resendInvite,
   updateStaff,
 } from "./staff-api";
 import { staffKeys } from "./staff-keys";
@@ -27,7 +28,8 @@ export function useCreateStaff() {
         lastName: newStaffData.lastName,
         email: newStaffData.email,
         role: newStaffData.role,
-        isActive: true,
+        // Invited users are inactive until they set a password (#144).
+        isActive: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         _count: { bookings: 0 },
@@ -46,11 +48,23 @@ export function useCreateStaff() {
       }
       toast.error(error.message);
     },
-    onSuccess: () => {
-      toast.success("Staff created successfully");
+    onSuccess: (staff) => {
+      toast.success(`Invite sent to ${staff.email}`);
     },
     onSettled: () => {
       invalidateWithRelated(queryClient, "staff");
+    },
+  });
+}
+
+export function useResendInvite() {
+  return useMutation({
+    mutationFn: resendInvite,
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+    onSuccess: () => {
+      toast.success("Invite resent");
     },
   });
 }
