@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import type { EmailMessage, EmailTransport } from "@/lib/email/transport";
+import type { EmailMessage, EmailTransport } from "@/lib/email/email-transport";
 
 /**
  * Log-only transport for local dev (no RESEND_API_KEY / EMAIL_FROM set).

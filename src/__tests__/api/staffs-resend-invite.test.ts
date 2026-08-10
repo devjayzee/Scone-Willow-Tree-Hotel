@@ -42,7 +42,7 @@ vi.mock("@/lib/services/staff", () => ({
   resendInvite: (...args: unknown[]) => mockResendInvite(...args),
 }));
 
-vi.mock("@/lib/email/transport", () => ({
+vi.mock("@/lib/email/email-transport", () => ({
   getEmailTransport: () => ({
     send: (...args: unknown[]) => mockSend(...args),
   }),
