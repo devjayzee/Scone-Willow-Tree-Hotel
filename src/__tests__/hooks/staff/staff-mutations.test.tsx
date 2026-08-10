@@ -58,7 +58,6 @@ const createInput = {
   firstName: "Bob",
   lastName: "Jones",
   email: "bob@example.com",
-  password: "hunter22!",
   role: "STAFF" as Role,
 };
 
@@ -81,7 +80,9 @@ describe("staff mutation hooks", () => {
       const existing = makeStaff({ id: "existing", firstName: "Existing" });
       queryClient.setQueryData<Staff[]>(staffKeys.list(), [existing]);
 
-      mockCreateStaff.mockResolvedValue(makeStaff({ id: "server-1", firstName: "Bob" }));
+      mockCreateStaff.mockResolvedValue(
+        makeStaff({ id: "server-1", firstName: "Bob", email: "bob@example.com" })
+      );
 
       const { result } = renderHook(() => useCreateStaff(), { wrapper });
       const promise = result.current.mutateAsync(createInput);
@@ -97,7 +98,7 @@ describe("staff mutation hooks", () => {
       await promise;
 
       await waitFor(() => {
-        expect(mockToastSuccess).toHaveBeenCalledWith("Staff created successfully");
+        expect(mockToastSuccess).toHaveBeenCalledWith("Invite sent to bob@example.com");
       });
       expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staff");
     });

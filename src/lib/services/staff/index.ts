@@ -17,4 +17,9 @@ export type { DeleteStaffResult } from "./staff-mutations";
 export { getAllStaff, getStaffById } from "./staff-queries";
 
 // Export mutations
-export { createStaff, updateStaff, deleteStaff } from "./staff-mutations";
+export {
+  createStaff,
+  updateStaff,
+  deleteStaff,
+  resendInvite,
+} from "./staff-mutations";
