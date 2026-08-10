@@ -8,6 +8,11 @@ import { fetchLoginRateLimitStatus } from "@/hooks/auth";
 /** remaining >= this sentinel means the limiter is disabled (see rate-limit-service). */
 const LIMITER_DISABLED_REMAINING = 999;
 
+// claude-allow: rule-5 — auth surface intentionally bypasses TanStack Query.
+// Login runs pre-session against next-auth's signIn (not a normal API
+// mutation), with a rate-limit pre-check as UX sugar. Nothing to cache,
+// nothing to invalidate — a useMutation wrapper would add ceremony without
+// buying anything. Decision approved in the #127 auth-redesign thread.
 /**
  * Login form state + submit orchestration. Page becomes presentational.
  */
