@@ -1,10 +1,11 @@
 import { RESET_TOKEN_TTL_MINUTES } from "@/lib/services/password-reset-service";
+import { APP_BASE_URL } from "@/lib/email/app-url";
 
 export function passwordResetEmail(input: {
   firstName: string;
   rawToken: string;
 }): { subject: string; text: string; html: string } {
-  const url = `${process.env.NEXTAUTH_URL}/reset-password?token=${input.rawToken}`;
+  const url = `${APP_BASE_URL}/reset-password?token=${input.rawToken}`;
   const subject = "Reset your Willow Tree password";
   const text = [
     `Hi ${input.firstName},`,

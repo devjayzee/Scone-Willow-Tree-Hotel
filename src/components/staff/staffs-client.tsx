@@ -34,6 +34,7 @@ export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: Staffs
     saveStaff,
     confirmDelete,
     toggleActive,
+    resendInvite,
     updateSearch,
     setStaffDialogOpen,
     setDeleteDialogOpen,
@@ -99,6 +100,7 @@ export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: Staffs
           onEdit={openEditDialog}
           onDelete={openDeleteDialog}
           onToggleActive={toggleActive}
+          onResendInvite={resendInvite}
         />
       )}
 

@@ -72,10 +72,17 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should reject staff without password", () => {
-      const { password: _password, ...noPassword } = validStaff;
-      const result = createStaffSchema.safeParse(noPassword);
-      expect(result.success).toBe(false);
+    // password removed from createStaffSchema in #144 — new staff receive an
+    // email invite and set their own password on /setup-password.
+    it("ignores an incoming password field (invite flow, #144)", () => {
+      const result = createStaffSchema.safeParse({
+        ...validStaff,
+        password: "anything",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect((result.data as { password?: unknown }).password).toBeUndefined();
+      }
     });
 
     // Email validation
@@ -104,21 +111,15 @@ describe("Staff Validation", () => {
       });
     });
 
-    // Password validation (using strongPasswordSchema)
-    it("should reject weak password", () => {
+    it("normalizes email to trimmed lowercase (fix #142)", () => {
       const result = createStaffSchema.safeParse({
         ...validStaff,
-        password: "weak",
+        email: "  Jane@Example.COM \n",
       });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject password without special character", () => {
-      const result = createStaffSchema.safeParse({
-        ...validStaff,
-        password: "NoSpecial123",
-      });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.email).toBe("jane@example.com");
+      }
     });
 
     // Role validation
@@ -208,6 +209,16 @@ describe("Staff Validation", () => {
         firstName: "",
       });
       expect(result.success).toBe(false);
+    });
+
+    it("normalizes email to trimmed lowercase when provided (fix #142)", () => {
+      const result = updateStaffSchema.safeParse({
+        email: "  Jane@Example.COM \n",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.email).toBe("jane@example.com");
+      }
     });
 
     it("should reject invalid email when provided", () => {
