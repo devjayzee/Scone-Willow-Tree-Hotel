@@ -59,7 +59,13 @@ import { authOptions } from "@/lib/auth";
 // Get the authorize function from the credentials provider
 const getAuthorize = () => {
   const credentialsProvider = authOptions.providers[0] as {
-    options: { authorize: (credentials: { email: string; password: string }) => Promise<unknown> };
+    options: {
+      authorize: (credentials: {
+        email: string;
+        password: string;
+        remember?: string;
+      }) => Promise<unknown>;
+    };
   };
   return credentialsProvider.options.authorize;
 };
@@ -100,7 +106,49 @@ describe("Auth - authorize function", () => {
       firstName: "John",
       role: "STAFF",
       tokenVersion: 0,
+      remember: false,
     });
+  });
+
+  it("returns user.remember: true when credentials.remember is '1' (#145)", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(mockUser);
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+    const result = (await authorize({
+      email: "test@example.com",
+      password: "correctPassword",
+      remember: "1",
+    })) as { remember: boolean };
+
+    expect(result.remember).toBe(true);
+  });
+
+  it("returns user.remember: false when credentials.remember is '0' (#145)", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(mockUser);
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+    const result = (await authorize({
+      email: "test@example.com",
+      password: "correctPassword",
+      remember: "0",
+    })) as { remember: boolean };
+
+    expect(result.remember).toBe(false);
+  });
+
+  it("returns user.remember: false when credentials.remember is omitted (#145)", async () => {
+    const authorize = getAuthorize();
+    mockFindUnique.mockResolvedValue(mockUser);
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+    const result = (await authorize({
+      email: "test@example.com",
+      password: "correctPassword",
+    })) as { remember: boolean };
+
+    expect(result.remember).toBe(false);
   });
 
   it("should throw error for missing email", async () => {
@@ -403,6 +451,79 @@ describe("Auth - JWT callback", () => {
 
     expect(result.id).toBe("user-123");
   });
+
+  it("sets token.expiresAt ~30 days out on initial sign in with remember: true (#145)", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+    const before = Math.floor(Date.now() / 1000);
+
+    const result = (await jwtCallback({
+      token: {},
+      user: { ...mockUser, remember: true },
+      account: null,
+      trigger: "signIn",
+    } as any)) as { expiresAt: number; remember: boolean };
+
+    const after = Math.floor(Date.now() / 1000);
+    const thirtyDays = 30 * 24 * 60 * 60;
+
+    expect(result.remember).toBe(true);
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + thirtyDays);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + thirtyDays);
+  });
+
+  it("sets token.expiresAt ~12 hours out on initial sign in with remember: false (#145)", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+    const before = Math.floor(Date.now() / 1000);
+
+    const result = (await jwtCallback({
+      token: {},
+      user: { ...mockUser, remember: false },
+      account: null,
+      trigger: "signIn",
+    } as any)) as { expiresAt: number; remember: boolean };
+
+    const after = Math.floor(Date.now() / 1000);
+    const twelveHours = 12 * 60 * 60;
+
+    expect(result.remember).toBe(false);
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + twelveHours);
+    expect(result.expiresAt).toBeLessThanOrEqual(after + twelveHours);
+  });
+
+  it("invalidates the token when now > token.expiresAt (#145)", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+    const oneSecondAgo = Math.floor(Date.now() / 1000) - 1;
+
+    const result = await jwtCallback({
+      token: {
+        id: "user-123",
+        tokenVersion: 0,
+        role: "STAFF",
+        expiresAt: oneSecondAgo,
+      },
+      user: undefined,
+      account: null,
+      trigger: "update",
+    } as any);
+
+    expect(result.id).toBeNull();
+    // Should short-circuit before hitting the DB
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("passes through legacy tokens without token.expiresAt (#145 backward compat)", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+    mockFindUnique.mockResolvedValue({ tokenVersion: 0, isActive: true });
+
+    const result = await jwtCallback({
+      token: { id: "user-123", tokenVersion: 0, role: "STAFF" },
+      user: undefined,
+      account: null,
+      trigger: "update",
+    } as any);
+
+    expect(result.id).toBe("user-123");
+  });
 });
 
 describe("Auth - Session callback", () => {
@@ -431,6 +552,25 @@ describe("Auth - Session callback", () => {
       firstName: "John",
     });
   });
+
+  it("reflects token.expiresAt in session.expires (#145)", async () => {
+    const sessionCallback = authOptions.callbacks!.session!;
+    const expiresAtSeconds = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
+
+    const result = await sessionCallback({
+      session: { user: { name: "John" }, expires: "1970-01-01T00:00:00.000Z" },
+      token: {
+        id: "user-123",
+        role: "STAFF",
+        firstName: "John",
+        expiresAt: expiresAtSeconds,
+      },
+    } as any);
+
+    expect(result.expires).toBe(
+      new Date(expiresAtSeconds * 1000).toISOString(),
+    );
+  });
 });
 
 describe("Auth - Configuration", () => {
@@ -438,8 +578,12 @@ describe("Auth - Configuration", () => {
     expect(authOptions.session?.strategy).toBe("jwt");
   });
 
-  it("caps session lifetime at 12 hours (hotel shift-aware, #67)", () => {
-    expect(authOptions.session?.maxAge).toBe(12 * 60 * 60);
+  it("sets the cookie-lifetime ceiling to 30 days for remember-device (#145)", () => {
+    // Per-user actual duration (12h vs 30d) is enforced inside the jwt
+    // callback via token.expiresAt; session.maxAge is the ceiling that
+    // both flows share so unchecked-remember tokens can invalidate on
+    // schedule while checked ones survive.
+    expect(authOptions.session?.maxAge).toBe(30 * 24 * 60 * 60);
   });
 
   it("rotates the JWT every hour of activity (#67)", () => {

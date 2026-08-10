@@ -14,6 +14,11 @@ declare module "next-auth" {
     role: string;
     firstName: string;
     tokenVersion: number;
+    /**
+     * Present only on the initial-sign-in projection returned by
+     * authorize(). Reflects the "Remember this device" checkbox.
+     */
+    remember?: boolean;
   }
 }
 
@@ -24,5 +29,13 @@ declare module "next-auth/jwt" {
     role: string;
     firstName: string;
     tokenVersion: number;
+    /** Persisted remember-device choice (#145). */
+    remember?: boolean;
+    /**
+     * Per-login expiry in seconds since epoch (#145). Optional for
+     * backward compatibility with tokens issued before this feature
+     * shipped — those fall through to NextAuth's own maxAge check.
+     */
+    expiresAt?: number;
   }
 }
