@@ -7,6 +7,7 @@ export {
   useUpdateStaff,
   useDeleteStaff,
   useToggleStaffActive,
+  useResendInvite,
 } from "./staff-mutations";
 
 export {
@@ -14,6 +15,7 @@ export {
   createStaff,
   updateStaff,
   deleteStaff,
-  type StaffFormData,
+  resendInvite,
+  type CreateStaffData,
   type UpdateStaffData,
 } from "./staff-api";

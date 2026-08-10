@@ -1,6 +1,7 @@
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { BCRYPT_COST } from "@/lib/constants/auth";
+import { BCRYPT_COST, DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
 import type {
   CreateStaffSchemaInput,
   UpdateStaffSchemaInput,
@@ -12,18 +13,34 @@ import {
   EntityType,
   sanitizeForAudit,
 } from "../audit-service";
+import { issueSetupTokenForUser } from "../password-reset-service";
 import { staffSelectFieldsMinimal } from "./staff-constants";
 import { logStaffUpdateAudits } from "./staff-audit";
 
 /**
- * Create a new staff member
+ * Create a new staff member via the invite flow (#144).
+ *
+ * The account is created inactive with a placeholder password hash;
+ * consumeSetupToken flips isActive to true and sets the real password
+ * when the invited user completes /setup-password. Login against the
+ * placeholder is impossible on two axes (bcrypt.compare fails against
+ * an unknown-plaintext hash AND authorize short-circuits on
+ * !isActive), so no schema migration to nullable password is needed.
+ *
+ * Returns both the created row AND the raw setup token — the caller
+ * (POST /api/staffs route) uses the token to render the invite URL for
+ * the email, but the token is NEVER surfaced in the API response.
+ *
  * @throws ConflictError if email already exists
  */
+type MinimalStaff = Prisma.UserGetPayload<{
+  select: typeof staffSelectFieldsMinimal;
+}>;
+
 export async function createStaff(
   data: CreateStaffSchemaInput,
   performedBy?: string
-) {
-  // Check if email already exists
+): Promise<{ staff: MinimalStaff; setupToken: string }> {
   const existingUser = await prisma.user.findUnique({
     where: { email: data.email },
   });
@@ -32,21 +49,20 @@ export async function createStaff(
     throw new ConflictError("Email already exists");
   }
 
-  // Hash password
-  const hashedPassword = await bcrypt.hash(data.password, BCRYPT_COST);
-
   const staff = await prisma.user.create({
     data: {
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
-      password: hashedPassword,
+      password: DUMMY_PASSWORD_HASH,
       role: data.role ?? "STAFF",
+      isActive: false,
     },
     select: staffSelectFieldsMinimal,
   });
 
-  // Audit log
+  const setupToken = await issueSetupTokenForUser(staff.id);
+
   if (performedBy) {
     await createAuditLog(
       performedBy,
@@ -64,7 +80,53 @@ export async function createStaff(
     );
   }
 
-  return staff;
+  return { staff, setupToken };
+}
+
+/**
+ * Reissue a setup invite (#144). issueSetupTokenForUser voids any prior
+ * unused SETUP token for this user by design, so the old link 404s the
+ * moment this succeeds.
+ *
+ * @throws NotFoundError if user missing
+ * @throws BusinessRuleError if user is already active (nothing to invite)
+ */
+export async function resendInvite(
+  userId: string,
+  performedBy: string
+): Promise<{
+  user: { id: string; email: string; firstName: string };
+  setupToken: string;
+}> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, firstName: true, isActive: true },
+  });
+
+  if (!user) {
+    throw new NotFoundError("Staff not found");
+  }
+
+  if (user.isActive) {
+    throw new BusinessRuleError(
+      "Cannot resend invite — this staff member has already completed setup"
+    );
+  }
+
+  const setupToken = await issueSetupTokenForUser(user.id);
+
+  await createAuditLog(
+    performedBy,
+    AuditAction.STAFF_INVITE_RESENT,
+    EntityType.STAFF,
+    user.id,
+    { reason: "Setup invite reissued via manager action" }
+  );
+
+  return {
+    user: { id: user.id, email: user.email, firstName: user.firstName },
+    setupToken,
+  };
 }
 
 /**
