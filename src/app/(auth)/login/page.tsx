@@ -19,13 +19,14 @@ function formatCountdown(totalSeconds: number) {
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberDevice, setRememberDevice] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const {
     email,
     setEmail,
     password,
     setPassword,
+    rememberDevice,
+    setRememberDevice,
     isLoading,
     error,
     remaining,
@@ -170,7 +171,6 @@ export default function LoginPage() {
         </div>
 
         <label className="flex cursor-pointer items-center gap-2.5 select-none">
-          {/* TODO: wire to per-login session maxAge via a NextAuth callback — UI-only for now */}
           <input
             type="checkbox"
             checked={rememberDevice}
