@@ -8,7 +8,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 async function loadTransportModule() {
   vi.resetModules();
-  return await import("@/lib/email/transport");
+  return await import("@/lib/email/email-transport");
 }
 
 describe("email transport selection", () => {
