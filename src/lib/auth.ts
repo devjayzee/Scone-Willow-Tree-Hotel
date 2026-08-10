@@ -5,6 +5,7 @@ import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { BCRYPT_COST, DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
+import { normalizeEmail } from "@/lib/validations/email";
 
 // Fail loud at server boot instead of on the first sign-in attempt (#70).
 if (!process.env.NEXTAUTH_SECRET) {
@@ -52,20 +53,25 @@ export const authOptions: NextAuthOptions = {
           throw new Error(invalidCredentialsError);
         }
 
-        // Per-email rate limit — normalize so casing/whitespace variants
-        // share one bucket. Blocked attempts return the same generic error
-        // as bad credentials so the limit isn't distinguishable via response.
+        // Normalize once — this MUST match how emails are stored (staff
+        // creation schema) and looked up elsewhere (forgot-password), or
+        // mixed-case input silently misses the row.
+        const email = normalizeEmail(credentials.email);
+
+        // Per-email rate limit — the normalized value is the bucket key
+        // so casing/whitespace variants share one budget. Blocked attempts
+        // return the same generic error as bad credentials so the limit
+        // isn't distinguishable via response.
         const limiter = getEmailRateLimiter();
         if (limiter) {
-          const emailKey = credentials.email.toLowerCase().trim();
-          const { success } = await limiter.limit(emailKey);
+          const { success } = await limiter.limit(email);
           if (!success) {
             throw new Error(invalidCredentialsError);
           }
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email },
         });
 
         // Run a dummy compare against the same-cost hash on the two
