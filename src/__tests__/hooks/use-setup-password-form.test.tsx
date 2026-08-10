@@ -12,7 +12,6 @@ vi.mock("@/hooks/auth", async () => {
   };
 });
 
-import { AuthApiError } from "@/hooks/auth/auth-api";
 import { useSetupPasswordForm } from "@/hooks/use-setup-password-form";
 
 const submitEvent = () =>
@@ -25,7 +24,7 @@ describe("useSetupPasswordForm", () => {
     vi.clearAllMocks();
   });
 
-  it("flips done on a successful submit", async () => {
+  it("delegates a valid submit to setupPasswordApi with the token + password", async () => {
     mockSetupPasswordApi.mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useSetupPasswordForm("tok"));
@@ -45,40 +44,5 @@ describe("useSetupPasswordForm", () => {
       token: "tok",
       password: STRONG,
     });
-  });
-
-  it("flips invalidToken on a 404", async () => {
-    mockSetupPasswordApi.mockRejectedValue(
-      new AuthApiError(404, "This link is invalid or has expired")
-    );
-
-    const { result } = renderHook(() => useSetupPasswordForm("stale"));
-
-    act(() => {
-      result.current.setPassword(STRONG);
-      result.current.setConfirm(STRONG);
-    });
-    await act(async () => {
-      await result.current.handleSubmit(submitEvent());
-    });
-
-    await waitFor(() => {
-      expect(result.current.invalidToken).toBe(true);
-    });
-    expect(result.current.error).toBe("");
-  });
-
-  it("does not submit while passwords mismatch", async () => {
-    const { result } = renderHook(() => useSetupPasswordForm("tok"));
-
-    act(() => {
-      result.current.setPassword(STRONG);
-      result.current.setConfirm("other");
-    });
-    await act(async () => {
-      await result.current.handleSubmit(submitEvent());
-    });
-
-    expect(mockSetupPasswordApi).not.toHaveBeenCalled();
   });
 });

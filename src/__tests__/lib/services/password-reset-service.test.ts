@@ -85,7 +85,7 @@ vi.mock("@/lib/services/rate-limit-service", () => ({
 
 const mockSend = vi.fn();
 
-vi.mock("@/lib/email/transport", () => ({
+vi.mock("@/lib/email/email-transport", () => ({
   getEmailTransport: () => ({
     send: (...args: unknown[]) => mockSend(...args),
   }),
