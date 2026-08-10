@@ -4,6 +4,12 @@ import { useState, type FormEvent } from "react";
 import { checkPasswordStrength } from "@/lib/validations/password";
 import { AuthApiError } from "@/hooks/auth";
 
+// claude-allow: rule-5 — auth surface intentionally bypasses TanStack Query.
+// One-shot form submits against public unauthenticated endpoints with no
+// cache/invalidation surface. The 404 → invalidToken branch is form-local
+// state, not server state worth caching. A useMutation wrapper would add
+// ceremony without buying anything. Decision approved in the #127
+// auth-redesign thread.
 /**
  * Shared token-and-password form engine for `useResetPasswordForm` and
  * `useSetupPasswordForm`. The two flows differ only in which API endpoint
