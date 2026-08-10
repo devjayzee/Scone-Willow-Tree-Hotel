@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff } from "lucide-react";
 import { useLoginForm } from "@/hooks/use-login-form";
-
-const inputClasses =
-  "h-[46px] rounded-lg border-input bg-surface-raised px-4 text-[15px] shadow-none md:text-[15px] focus-visible:border-gold focus-visible:ring-ring/25";
+import { authInputClasses } from "@/components/auth/auth-input-classes";
+import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 
 function formatCountdown(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -127,7 +126,7 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={inputClasses}
+            className={authInputClasses}
           />
         </div>
 
@@ -153,29 +152,19 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`${inputClasses} pr-[46px]`}
+              className={`${authInputClasses} pr-[46px]`}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-gold"
-            >
-              {showPassword ? (
-                <EyeOff className="h-[18px] w-[18px]" />
-              ) : (
-                <Eye className="h-[18px] w-[18px]" />
-              )}
-            </button>
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword(!showPassword)}
+            />
           </div>
         </div>
 
         <label className="flex cursor-pointer items-center gap-2.5 select-none">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={rememberDevice}
-            onChange={(e) => setRememberDevice(e.target.checked)}
-            className="h-4 w-4 accent-gold"
+            onCheckedChange={(checked) => setRememberDevice(checked === true)}
           />
           <span className="text-sm text-muted-foreground">
             Remember this device

@@ -72,6 +72,7 @@
   --color-success-foreground: var(--success-foreground);
   --color-surface-raised: var(--surface-raised);
   --color-auth-surface: var(--auth-surface);
+  --color-strength-track: var(--strength-track);
 }
 
 :root {
@@ -112,6 +113,7 @@
   --success-foreground: #ffffff;
   --surface-raised: #ffffff;
   --auth-surface: #faf4e8;
+  --strength-track: #c9baa0;
   --ring-shadow: 0 0 0 3px rgb(201 162 39 / 0.25);
 }
 
@@ -151,6 +153,7 @@
   --success-foreground: #12233b;
   --surface-raised: rgb(255 255 255 / 0.06);
   --auth-surface: #12233b;
+  --strength-track: #4a5d78;
   --ring-shadow: 0 0 0 3px rgb(201 162 39 / 0.25);
 }
 
