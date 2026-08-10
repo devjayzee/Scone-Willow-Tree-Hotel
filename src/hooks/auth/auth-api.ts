@@ -1,4 +1,7 @@
-import type { ResolvedInviteResponse } from "@/types/auth";
+import type {
+  LoginRateLimitStatus,
+  ResolvedInviteResponse,
+} from "@/types/auth";
 
 /**
  * Carries the HTTP status so pages can branch on it (404 → expired-link
@@ -78,4 +81,17 @@ export async function setupPasswordApi(input: {
   if (!response.ok) {
     await throwAuthApiError(response, "Failed to set up your password");
   }
+}
+
+/**
+ * Read-only pre-check consumed by the login form to short-circuit a
+ * doomed `signIn` call. Middleware still enforces the actual limit —
+ * this is UX sugar, so a plain Error is enough (no status branching).
+ */
+export async function fetchLoginRateLimitStatus(): Promise<LoginRateLimitStatus> {
+  const response = await fetch("/api/auth/rate-limit-status");
+  if (!response.ok) {
+    throw new Error("Failed to check rate limit");
+  }
+  return response.json();
 }

@@ -6,9 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail } from "lucide-react";
 import { useForgotPasswordForm } from "@/hooks/use-forgot-password-form";
-
-const inputClasses =
-  "h-[46px] rounded-lg border-input bg-surface-raised px-4 text-[15px] shadow-none md:text-[15px] focus-visible:border-gold focus-visible:ring-ring/25";
+import { authInputClasses } from "@/components/auth/auth-input-classes";
 
 export default function ForgotPasswordPage() {
   const { email, setEmail, isLoading, sent, error, handleSubmit } =
@@ -73,7 +71,7 @@ export default function ForgotPasswordPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={inputClasses}
+            className={authInputClasses}
           />
         </div>
 

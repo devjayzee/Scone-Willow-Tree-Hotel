@@ -1,150 +1,88 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
-
-// Per-process singleton. Vercel edge + serverless runtimes each get their
-// own module graph — this instance is not shared across runtimes. That's
-// fine: state lives in Redis, and both callers (middleware gate and status
-// route pre-check) now build their limiter from the same source config,
-// which is the point of the extraction.
-let loginRateLimiter: Ratelimit | null = null;
+import type { LoginRateLimitStatus } from "@/types/auth";
 
 /**
- * Shared IP-keyed login rate limiter (5 attempts / 15 min).
- * Returns null when Upstash env vars are missing — both callers already
- * handle the null case as "rate limiting disabled".
+ * Per-process singleton factories for Upstash-backed rate limiters. Vercel
+ * edge + serverless runtimes each get their own module graph — instances are
+ * not shared across runtimes. That's fine: state lives in Redis, and both
+ * callers (middleware gate and status route pre-check) build their limiter
+ * from the same source config.
+ *
+ * All four limiters share the same env vars and the same shape (env check
+ * → new Redis → new Ratelimit); the extracted `makeRateLimiter` closure
+ * captures the per-config memo. Callers still get null when Upstash is
+ * unconfigured, which they already handle as "rate limiting disabled".
  */
-export function getLoginRateLimiter(): Ratelimit | null {
-  if (
-    !loginRateLimiter &&
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_TOKEN
-  ) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    loginRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(5, "15 m"),
-      analytics: true,
-      prefix: "ratelimit:login",
-    });
-  }
-  return loginRateLimiter;
+function makeRateLimiter(config: {
+  limiter: ReturnType<typeof Ratelimit.slidingWindow>;
+  prefix: string;
+}): () => Ratelimit | null {
+  let instance: Ratelimit | null = null;
+  return () => {
+    if (
+      !instance &&
+      process.env.UPSTASH_REDIS_REST_URL &&
+      process.env.UPSTASH_REDIS_REST_TOKEN
+    ) {
+      const redis = new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      });
+      instance = new Ratelimit({
+        redis,
+        limiter: config.limiter,
+        analytics: true,
+        prefix: config.prefix,
+      });
+    }
+    return instance;
+  };
 }
 
-let apiRateLimiter: Ratelimit | null = null;
+/** Shared IP-keyed login rate limiter (5 attempts / 15 min). */
+export const getLoginRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(5, "15 m"),
+  prefix: "ratelimit:login",
+});
 
 /**
- * Per-user (or per-IP fallback) API rate limiter for non-auth /api/*
- * routes (#116). Prevents a compromised or malicious authenticated token
- * from enumerating or exhausting server resources at will.
- *
- * Bucket: 120 requests per 1-minute sliding window. Bursty operator
- * usage (loading a dashboard page kicks off ~5 parallel API calls) fits
- * comfortably under this ceiling; sustained abuse gets throttled. Adjust
- * if real traffic patterns push against it.
- *
- * Returns null when Upstash env vars are missing — caller treats that
- * as "rate limiting disabled".
+ * Per-user (or per-IP fallback) limiter for non-auth /api/* routes (#116).
+ * Bucket: 120 requests / 1-minute sliding window — bursty operator UX (a
+ * dashboard load fires ~5 parallel calls) fits under this ceiling; sustained
+ * abuse gets throttled.
  */
-export function getApiRateLimiter(): Ratelimit | null {
-  if (
-    !apiRateLimiter &&
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_TOKEN
-  ) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    apiRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(120, "1 m"),
-      analytics: true,
-      prefix: "ratelimit:api",
-    });
-  }
-  return apiRateLimiter;
-}
-
-let forgotPasswordRateLimiter: Ratelimit | null = null;
+export const getApiRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(120, "1 m"),
+  prefix: "ratelimit:api",
+});
 
 /**
- * Limiter for the public forgot-password endpoint. Unlike the login
- * limiter's read-only status check, callers consume with `.limit()` on
- * TWO keys per request — `ip:<clientIp>` and `email:<lowercased>` — and
- * treat failure on either as a throttle. Keying by both stops one IP
- * from spraying many emails and many IPs from hammering one email.
- *
- * Bucket: 3 requests / 15 min per key. Returns null when Upstash env
- * vars are missing — caller treats that as "rate limiting disabled".
+ * Limiter for the public forgot-password endpoint. Callers consume with
+ * `.limit()` on TWO keys per request — `ip:<clientIp>` and
+ * `email:<lowercased>` — and treat failure on either as a throttle. Keying
+ * by both stops one IP from spraying many emails and many IPs from
+ * hammering one email. Bucket: 3 / 15 min per key.
  */
-export function getForgotPasswordRateLimiter(): Ratelimit | null {
-  if (
-    !forgotPasswordRateLimiter &&
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_TOKEN
-  ) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    forgotPasswordRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(3, "15 m"),
-      analytics: true,
-      prefix: "ratelimit:forgot-password",
-    });
-  }
-  return forgotPasswordRateLimiter;
-}
-
-let authEndpointRateLimiter: Ratelimit | null = null;
+export const getForgotPasswordRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(3, "15 m"),
+  prefix: "ratelimit:forgot-password",
+});
 
 /**
- * IP-keyed limiter for the public auth endpoints we own that don't have
- * their own limiter: reset-password, setup-password, invite/[token] (#140).
- *
- * Bucket: 10 requests / 15 min per IP. A legitimate user hits any of
- * these ~1–2 times per lifetime (paste token → optional retype → submit,
- * plus one GET for the invite pre-check). 10 leaves headroom without
- * being generous enough to enable brute-force reconnaissance or log spam.
- * Tokens are 43-char base64url (~256 bits) so this is defense-in-depth,
- * not the primary security boundary.
- *
- * Excludes forgot-password (self-limits with a dual-key trick that needs
- * the body) and rate-limit-status (called twice per login attempt as UX
- * sugar — would 429 users mid-troubleshoot).
- *
- * Returns null when Upstash env vars are missing — caller treats that as
- * "rate limiting disabled".
+ * IP-keyed limiter for reset-password / setup-password / invite/[token]
+ * (#140). Bucket: 10 / 15 min. Excludes forgot-password (self-limits with
+ * dual-key trick) and rate-limit-status (called twice per login attempt as
+ * UX sugar — would 429 users mid-troubleshoot). Defense-in-depth: tokens
+ * are 43-char base64url (~256 bits), so this is CPU/log-spam protection,
+ * not the primary boundary.
  */
-export function getAuthEndpointRateLimiter(): Ratelimit | null {
-  if (
-    !authEndpointRateLimiter &&
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_TOKEN
-  ) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    authEndpointRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(10, "15 m"),
-      analytics: true,
-      prefix: "ratelimit:auth-endpoint",
-    });
-  }
-  return authEndpointRateLimiter;
-}
+export const getAuthEndpointRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(10, "15 m"),
+  prefix: "ratelimit:auth-endpoint",
+});
 
-export interface LoginRateLimitStatus {
-  limited: boolean;
-  remaining: number;
-  resetAt: number;
-}
+export type { LoginRateLimitStatus };
 
 /**
  * Read-only status check for the login-page pre-check. Does NOT consume a
