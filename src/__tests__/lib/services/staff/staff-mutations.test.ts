@@ -8,6 +8,7 @@ import {
   mockUserCreate,
   mockUserUpdate,
   mockUserDelete,
+  mockIssueSetupTokenForUser,
 } from "./test-utils";
 
 // Setup mocks before importing services
@@ -18,10 +19,12 @@ import {
   createStaff,
   updateStaff,
   deleteStaff,
+  resendInvite,
   NotFoundError,
   ConflictError,
   BusinessRuleError,
 } from "@/lib/services/staff";
+import { DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
 
 describe("Staff Mutations", () => {
   beforeEach(() => {
@@ -30,38 +33,40 @@ describe("Staff Mutations", () => {
   });
 
   // ============================================================
-  // createStaff
+  // createStaff (invite flow — #144)
   // ============================================================
   describe("createStaff", () => {
     const validInput = {
       firstName: "Jane",
       lastName: "Smith",
       email: "jane.smith@sconewillowtree.com",
-      password: "password123",
       role: "STAFF" as const,
     };
 
-    it("should create staff member with hashed password", async () => {
+    it("creates an inactive staff with a placeholder hash and issues a setup token", async () => {
       const createdStaff = createMockStaff({
         id: "new-staff",
         firstName: "Jane",
         lastName: "Smith",
         email: "jane.smith@sconewillowtree.com",
+        isActive: false,
       });
-      mockUserFindUnique.mockResolvedValue(null); // No existing user
+      mockUserFindUnique.mockResolvedValue(null);
       mockUserCreate.mockResolvedValue(createdStaff);
-      mockHash.mockResolvedValue("securely_hashed_password");
+      mockIssueSetupTokenForUser.mockResolvedValue("raw-setup-token");
 
       const result = await createStaff(validInput);
 
-      expect(mockHash).toHaveBeenCalledWith("password123", 12);
+      // No password hashing — the placeholder is a constant.
+      expect(mockHash).not.toHaveBeenCalled();
       expect(mockUserCreate).toHaveBeenCalledWith({
         data: {
           firstName: "Jane",
           lastName: "Smith",
           email: "jane.smith@sconewillowtree.com",
-          password: "securely_hashed_password",
+          password: DUMMY_PASSWORD_HASH,
           role: "STAFF",
+          isActive: false,
         },
         select: expect.objectContaining({
           id: true,
@@ -72,23 +77,29 @@ describe("Staff Mutations", () => {
           isActive: true,
         }),
       });
-      expect(result.email).toBe("jane.smith@sconewillowtree.com");
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("new-staff");
+      expect(result).toEqual({
+        staff: createdStaff,
+        setupToken: "raw-setup-token",
+      });
     });
 
-    it("should throw ConflictError when email already exists", async () => {
-      mockUserFindUnique.mockResolvedValue(createMockStaff({ email: validInput.email }));
+    it("throws ConflictError when email already exists and skips token issuance", async () => {
+      mockUserFindUnique.mockResolvedValue(
+        createMockStaff({ email: validInput.email })
+      );
 
       await expect(createStaff(validInput)).rejects.toThrow(ConflictError);
       await expect(createStaff(validInput)).rejects.toThrow("Email already exists");
       expect(mockUserCreate).not.toHaveBeenCalled();
+      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
     });
 
-    it("should use default role STAFF when not explicitly set", async () => {
+    it("uses default role STAFF when not explicitly set", async () => {
       const inputWithDefaultRole = {
         firstName: "Bob",
         lastName: "Wilson",
         email: "bob.wilson@sconewillowtree.com",
-        password: "password123",
         role: "STAFF" as const,
       };
       mockUserFindUnique.mockResolvedValue(null);
@@ -98,30 +109,70 @@ describe("Staff Mutations", () => {
 
       expect(mockUserCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            role: "STAFF",
-          }),
+          data: expect.objectContaining({ role: "STAFF" }),
         })
       );
     });
 
-    it("should create staff member with GENERAL_MANAGER role", async () => {
-      const managerInput = {
-        ...validInput,
-        role: "GENERAL_MANAGER" as const,
-      };
+    it("supports the GENERAL_MANAGER role", async () => {
       mockUserFindUnique.mockResolvedValue(null);
-      mockUserCreate.mockResolvedValue(createMockStaff({ role: "GENERAL_MANAGER" }));
+      mockUserCreate.mockResolvedValue(
+        createMockStaff({ role: "GENERAL_MANAGER" })
+      );
 
-      await createStaff(managerInput);
+      await createStaff({ ...validInput, role: "GENERAL_MANAGER" });
 
       expect(mockUserCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            role: "GENERAL_MANAGER",
-          }),
+          data: expect.objectContaining({ role: "GENERAL_MANAGER" }),
         })
       );
+    });
+  });
+
+  // ============================================================
+  // resendInvite (#144)
+  // ============================================================
+  describe("resendInvite", () => {
+    it("issues a fresh setup token and returns the invited user projection", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        id: "u1",
+        email: "invitee@example.com",
+        firstName: "Ivy",
+        isActive: false,
+      });
+      mockIssueSetupTokenForUser.mockResolvedValue("fresh-token");
+
+      const result = await resendInvite("u1", "manager-1");
+
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("u1");
+      expect(result).toEqual({
+        user: { id: "u1", email: "invitee@example.com", firstName: "Ivy" },
+        setupToken: "fresh-token",
+      });
+    });
+
+    it("throws NotFoundError for an unknown user", async () => {
+      mockUserFindUnique.mockResolvedValue(null);
+
+      await expect(resendInvite("ghost", "manager-1")).rejects.toThrow(
+        NotFoundError
+      );
+      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
+    });
+
+    it("throws BusinessRuleError for an already-active staff member", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        id: "u1",
+        email: "active@example.com",
+        firstName: "Ann",
+        isActive: true,
+      });
+
+      await expect(resendInvite("u1", "manager-1")).rejects.toThrow(
+        BusinessRuleError
+      );
+      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
     });
   });
 

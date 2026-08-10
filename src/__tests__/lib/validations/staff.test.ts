@@ -72,10 +72,17 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should reject staff without password", () => {
-      const { password: _password, ...noPassword } = validStaff;
-      const result = createStaffSchema.safeParse(noPassword);
-      expect(result.success).toBe(false);
+    // password removed from createStaffSchema in #144 — new staff receive an
+    // email invite and set their own password on /setup-password.
+    it("ignores an incoming password field (invite flow, #144)", () => {
+      const result = createStaffSchema.safeParse({
+        ...validStaff,
+        password: "anything",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect((result.data as { password?: unknown }).password).toBeUndefined();
+      }
     });
 
     // Email validation
@@ -113,23 +120,6 @@ describe("Staff Validation", () => {
       if (result.success) {
         expect(result.data.email).toBe("jane@example.com");
       }
-    });
-
-    // Password validation (using strongPasswordSchema)
-    it("should reject weak password", () => {
-      const result = createStaffSchema.safeParse({
-        ...validStaff,
-        password: "weak",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("should reject password without special character", () => {
-      const result = createStaffSchema.safeParse({
-        ...validStaff,
-        password: "NoSpecial123",
-      });
-      expect(result.success).toBe(false);
     });
 
     // Role validation
