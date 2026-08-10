@@ -1,5 +1,7 @@
-import type { ResolvedInviteResponse } from "@/types/auth";
-import type { LoginRateLimitStatus } from "@/lib/services/rate-limit-service";
+import type {
+  LoginRateLimitStatus,
+  ResolvedInviteResponse,
+} from "@/types/auth";
 
 /**
  * Carries the HTTP status so pages can branch on it (404 → expired-link
