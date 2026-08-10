@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { strongPasswordSchema } from "@/lib/validations/password";
+import { emailSchema } from "@/lib/validations/email";
 
 export const forgotPasswordSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email("Enter a valid email address"),
+  email: emailSchema,
 });
 
 export const resetPasswordSchema = z.object({
