@@ -3,7 +3,7 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { fetchLoginRateLimitStatus } from "@/hooks/use-auth";
+import { fetchLoginRateLimitStatus } from "@/hooks/auth";
 
 /** remaining >= this sentinel means the limiter is disabled (see rate-limit-service). */
 const LIMITER_DISABLED_REMAINING = 999;

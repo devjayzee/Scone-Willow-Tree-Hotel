@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/hooks/use-auth", () => ({
+vi.mock("@/hooks/auth", () => ({
   fetchLoginRateLimitStatus: (...args: unknown[]) => mockFetchStatus(...args),
 }));
 
