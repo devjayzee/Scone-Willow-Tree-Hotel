@@ -7,37 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordStrengthIndicator } from "@/components/ui/password-strength-indicator";
-import { Check, Eye, EyeOff, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { useInviteToken } from "@/hooks/auth";
 import { useSetupPasswordForm } from "@/hooks/use-setup-password-form";
 import { ROLE_LABELS } from "@/lib/constants/roles";
+import { authInputClasses } from "@/components/auth/auth-input-classes";
+import { ExpiredLinkScreen } from "@/components/auth/expired-link-screen";
+import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 import { cn } from "@/lib/utils";
-
-const inputClasses =
-  "h-[46px] rounded-lg border-input bg-surface-raised px-4 text-[15px] shadow-none md:text-[15px] focus-visible:border-gold focus-visible:ring-ring/25";
-
-function InvalidInviteScreen() {
-  return (
-    <div className="text-center">
-      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-destructive bg-destructive/15">
-        <X className="h-[26px] w-[26px] text-destructive" />
-      </div>
-      <h1 className="font-display text-4xl leading-[1.1] font-semibold text-foreground">
-        This link has expired
-      </h1>
-      <p className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground">
-        This invite link is invalid or has expired. Ask a manager to send you
-        a new invitation.
-      </p>
-      <Button
-        asChild
-        className="mt-8 h-12 w-full rounded-lg text-[15px] font-semibold transition-[filter] hover:brightness-[1.12]"
-      >
-        <Link href="/login">Back to sign in</Link>
-      </Button>
-    </div>
-  );
-}
 
 function InviteSkeleton() {
   return (
@@ -70,7 +47,13 @@ function SetupPasswordContent() {
   } = useSetupPasswordForm(token ?? "");
 
   if (!token || invalidToken || invite.isError) {
-    return <InvalidInviteScreen />;
+    return (
+      <ExpiredLinkScreen
+        description="This invite link is invalid or has expired. Ask a manager to send you a new invitation."
+        primaryHref="/login"
+        primaryLabel="Back to sign in"
+      />
+    );
   }
 
   if (invite.isPending) {
@@ -147,20 +130,12 @@ function SetupPasswordContent() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`${inputClasses} pr-[46px]`}
+              className={`${authInputClasses} pr-[46px]`}
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground transition-colors hover:text-gold"
-            >
-              {showPassword ? (
-                <EyeOff className="h-[18px] w-[18px]" />
-              ) : (
-                <Eye className="h-[18px] w-[18px]" />
-              )}
-            </button>
+            <PasswordVisibilityToggle
+              visible={showPassword}
+              onToggle={() => setShowPassword(!showPassword)}
+            />
           </div>
         </div>
 
@@ -177,7 +152,7 @@ function SetupPasswordContent() {
             required
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className={inputClasses}
+            className={authInputClasses}
           />
         </div>
 
@@ -188,9 +163,7 @@ function SetupPasswordContent() {
               aria-hidden
               className={cn(
                 "h-[7px] w-[7px] rounded-full",
-                passwordsMatch
-                  ? "bg-success"
-                  : "bg-[#c9baa0] dark:bg-[#4a5d78]"
+                passwordsMatch ? "bg-success" : "bg-strength-track"
               )}
             />
             <span
