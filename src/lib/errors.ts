@@ -85,3 +85,13 @@ export class BusinessRuleError extends AppError {
     super(message, 400, "BUSINESS_RULE_VIOLATION");
   }
 }
+
+/**
+ * Thrown when a caller has exceeded a rate-limit budget.
+ * Maps to HTTP 429 Too Many Requests.
+ */
+export class RateLimitError extends AppError {
+  constructor(message: string = "Too many requests") {
+    super(message, 429, "RATE_LIMITED");
+  }
+}
