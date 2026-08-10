@@ -3,6 +3,7 @@ import {
   strongPasswordSchema,
   optionalStrongPasswordSchema,
 } from "./password";
+import { emailSchema } from "./email";
 
 // Role enum for validation
 const roleEnum = z.enum(["GENERAL_MANAGER", "MANAGER", "STAFF"]);
@@ -11,7 +12,7 @@ const roleEnum = z.enum(["GENERAL_MANAGER", "MANAGER", "STAFF"]);
 export const createStaffSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Valid email is required"),
+  email: emailSchema,
   password: strongPasswordSchema,
   role: roleEnum.default("STAFF"),
 });
@@ -20,7 +21,7 @@ export const createStaffSchema = z.object({
 export const updateStaffSchema = z.object({
   firstName: z.string().min(1, "First name is required").optional(),
   lastName: z.string().min(1, "Last name is required").optional(),
-  email: z.string().email("Valid email is required").optional(),
+  email: emailSchema.optional(),
   password: optionalStrongPasswordSchema,
   role: roleEnum.optional(),
   isActive: z.boolean().optional(),
