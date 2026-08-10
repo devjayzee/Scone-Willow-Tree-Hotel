@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
   BusinessRuleError,
+  RateLimitError,
 } from "./errors";
 import { logger } from "./logger";
 
@@ -108,4 +109,5 @@ export {
   UnauthorizedError,
   ForbiddenError,
   BusinessRuleError,
+  RateLimitError,
 };

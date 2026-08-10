@@ -4,7 +4,13 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { BCRYPT_COST, DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
+import {
+  BCRYPT_COST,
+  DUMMY_PASSWORD_HASH,
+  SESSION_MAX_AGE_REMEMBER,
+  SESSION_MAX_AGE_STANDARD,
+} from "@/lib/constants/auth";
+import { normalizeEmail } from "@/lib/validations/email";
 
 // Fail loud at server boot instead of on the first sign-in attempt (#70).
 if (!process.env.NEXTAUTH_SECRET) {
@@ -43,6 +49,9 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        // "1" from the "Remember this device" checkbox; anything else is
+        // treated as unchecked. NextAuth stringifies all credentials.
+        remember: { label: "Remember", type: "text" },
       },
       async authorize(credentials) {
         // Security: Use generic error messages to prevent account enumeration
@@ -52,20 +61,25 @@ export const authOptions: NextAuthOptions = {
           throw new Error(invalidCredentialsError);
         }
 
-        // Per-email rate limit — normalize so casing/whitespace variants
-        // share one bucket. Blocked attempts return the same generic error
-        // as bad credentials so the limit isn't distinguishable via response.
+        // Normalize once — this MUST match how emails are stored (staff
+        // creation schema) and looked up elsewhere (forgot-password), or
+        // mixed-case input silently misses the row.
+        const email = normalizeEmail(credentials.email);
+
+        // Per-email rate limit — the normalized value is the bucket key
+        // so casing/whitespace variants share one budget. Blocked attempts
+        // return the same generic error as bad credentials so the limit
+        // isn't distinguishable via response.
         const limiter = getEmailRateLimiter();
         if (limiter) {
-          const emailKey = credentials.email.toLowerCase().trim();
-          const { success } = await limiter.limit(emailKey);
+          const { success } = await limiter.limit(email);
           if (!success) {
             throw new Error(invalidCredentialsError);
           }
         }
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email },
         });
 
         // Run a dummy compare against the same-cost hash on the two
@@ -105,6 +119,7 @@ export const authOptions: NextAuthOptions = {
           firstName: user.firstName,
           role: user.role,
           tokenVersion: user.tokenVersion,
+          remember: credentials.remember === "1",
         };
       },
     }),
@@ -117,6 +132,21 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.firstName = user.firstName;
         token.tokenVersion = user.tokenVersion;
+        token.remember = user.remember ?? false;
+        token.expiresAt =
+          Math.floor(Date.now() / 1000) +
+          (user.remember ? SESSION_MAX_AGE_REMEMBER : SESSION_MAX_AGE_STANDARD);
+      }
+
+      // Custom per-login expiry (#145). The session cookie's own maxAge is
+      // set to the remember-me ceiling so both flows share one cookie
+      // config; the actual per-user duration is enforced here. Legacy
+      // tokens without expiresAt fall through to NextAuth's own maxAge.
+      if (
+        typeof token.expiresAt === "number" &&
+        Math.floor(Date.now() / 1000) > token.expiresAt
+      ) {
+        return { ...token, id: null };
       }
 
       // On subsequent requests, validate tokenVersion against database
@@ -152,6 +182,13 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role;
         session.user.firstName = token.firstName;
       }
+
+      // Reflect the per-user expiry (#145) so the client sees the real
+      // remaining lifetime instead of the cookie's 30-day ceiling.
+      if (typeof token.expiresAt === "number") {
+        session.expires = new Date(token.expiresAt * 1000).toISOString();
+      }
+
       return session;
     },
   },
@@ -160,11 +197,13 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: "jwt",
-    // 12h accommodates hotel double/overnight shifts while halving the
-    // leaked-token window vs. the previous 24h. updateAge re-signs the
-    // JWT once per hour of activity so an active user's session extends
-    // through their shift without a mid-shift re-login.
-    maxAge: 12 * 60 * 60,
+    // Cookie-lifetime ceiling — the remember-me window (#145). The
+    // actual per-user duration (12h vs 30d) is enforced inside the jwt
+    // callback via token.expiresAt, so an unchecked-remember session
+    // becomes an invalid-token cookie after 12h even though the cookie
+    // itself sticks around until the ceiling. updateAge re-signs the
+    // JWT once per hour of activity; custom fields survive re-signing.
+    maxAge: SESSION_MAX_AGE_REMEMBER,
     updateAge: 60 * 60,
   },
   secret: process.env.NEXTAUTH_SECRET,

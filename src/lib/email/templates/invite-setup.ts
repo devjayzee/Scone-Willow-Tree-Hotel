@@ -1,10 +1,11 @@
 import { SETUP_TOKEN_TTL_HOURS } from "@/lib/services/password-reset-service";
+import { APP_BASE_URL } from "@/lib/email/app-url";
 
 export function inviteSetupEmail(input: {
   firstName: string;
   rawToken: string;
 }): { subject: string; text: string; html: string } {
-  const url = `${process.env.NEXTAUTH_URL}/setup-password?token=${input.rawToken}`;
+  const url = `${APP_BASE_URL}/setup-password?token=${input.rawToken}`;
   const subject = "You're invited to the Willow Tree team";
   const text = [
     `Hi ${input.firstName},`,
