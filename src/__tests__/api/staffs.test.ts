@@ -46,7 +46,7 @@ vi.mock("@/lib/services/staff", () => ({
   createStaff: (...args: unknown[]) => mockCreateStaff(...args),
 }));
 
-vi.mock("@/lib/email/transport", () => ({
+vi.mock("@/lib/email/email-transport", () => ({
   getEmailTransport: () => ({
     send: (...args: unknown[]) => mockSend(...args),
   }),

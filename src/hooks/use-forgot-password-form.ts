@@ -3,6 +3,11 @@
 import { useState, type FormEvent } from "react";
 import { forgotPasswordApi } from "@/hooks/auth";
 
+// claude-allow: rule-5 — auth surface intentionally bypasses TanStack Query.
+// One-shot form submit against a public unauthenticated endpoint with no
+// cache/invalidation surface (nothing to refetch, no cross-hook sharing).
+// A useMutation wrapper would add ceremony without buying anything.
+// Decision approved in the #127 auth-redesign thread.
 /**
  * Forgot-password form state + submit. `sent` flips on 200 regardless of
  * whether the email exists — the API never reveals account existence.

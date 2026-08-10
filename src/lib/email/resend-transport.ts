@@ -1,4 +1,4 @@
-import type { EmailMessage, EmailTransport } from "@/lib/email/transport";
+import type { EmailMessage, EmailTransport } from "@/lib/email/email-transport";
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
