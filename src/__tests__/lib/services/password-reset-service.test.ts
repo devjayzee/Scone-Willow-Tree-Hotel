@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
-import { NotFoundError } from "@/lib/errors";
+import { NotFoundError, RateLimitError } from "@/lib/errors";
 
 const h = vi.hoisted(() => {
   const mockUserFindUnique = vi.fn();
@@ -64,8 +64,31 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+const mockLoggerError = vi.fn();
+
 vi.mock("@/lib/logger", () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
+const mockRateLimit = vi.fn();
+const mockGetForgotPasswordRateLimiter = vi.fn();
+
+vi.mock("@/lib/services/rate-limit-service", () => ({
+  getForgotPasswordRateLimiter: (...args: unknown[]) =>
+    mockGetForgotPasswordRateLimiter(...args),
+}));
+
+const mockSend = vi.fn();
+
+vi.mock("@/lib/email/transport", () => ({
+  getEmailTransport: () => ({
+    send: (...args: unknown[]) => mockSend(...args),
+  }),
 }));
 
 import {
@@ -75,6 +98,7 @@ import {
   resolveSetupInvite,
   consumeResetToken,
   consumeSetupToken,
+  requestPasswordReset,
   RESET_TOKEN_TTL_MINUTES,
   SETUP_TOKEN_TTL_HOURS,
 } from "@/lib/services/password-reset-service";
@@ -340,6 +364,146 @@ describe("Password Reset Service", () => {
         expect.objectContaining({
           data: expect.objectContaining({ action: "STAFF_PASSWORD_SETUP" }),
         })
+      );
+    });
+  });
+
+  describe("requestPasswordReset (#146)", () => {
+    const activeUserRow = {
+      id: "u1",
+      email: "jane@example.com",
+      firstName: "Jane",
+      isActive: true,
+    };
+    const deferSend = vi.fn();
+
+    beforeEach(() => {
+      deferSend.mockReset();
+      mockGetForgotPasswordRateLimiter.mockReturnValue({
+        limit: (...args: unknown[]) => mockRateLimit(...args),
+      });
+      mockRateLimit.mockResolvedValue({ success: true });
+    });
+
+    it("checks both ip and email rate-limit keys and defers the send for a known email", async () => {
+      mockUserFindUnique.mockResolvedValue(activeUserRow);
+
+      await requestPasswordReset(
+        { email: "jane@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      const keys = mockRateLimit.mock.calls.map((c) => c[0] as string);
+      expect(keys).toContain("ip:203.0.113.7");
+      expect(keys).toContain("email:jane@example.com");
+      expect(mockTokenCreate).toHaveBeenCalledTimes(1);
+      expect(deferSend).toHaveBeenCalledTimes(1);
+      expect(typeof deferSend.mock.calls[0][0]).toBe("function");
+    });
+
+    it("does not defer a send for an unknown email (enumeration protection)", async () => {
+      mockUserFindUnique.mockResolvedValue(null);
+
+      await requestPasswordReset(
+        { email: "ghost@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      expect(mockTokenCreate).not.toHaveBeenCalled();
+      expect(deferSend).not.toHaveBeenCalled();
+    });
+
+    it("does not defer a send for an inactive user", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        ...activeUserRow,
+        isActive: false,
+      });
+
+      await requestPasswordReset(
+        { email: "jane@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      expect(deferSend).not.toHaveBeenCalled();
+    });
+
+    it("throws RateLimitError when the ip: bucket is exhausted, before touching the DB", async () => {
+      mockRateLimit
+        .mockResolvedValueOnce({ success: false })
+        .mockResolvedValueOnce({ success: true });
+
+      await expect(
+        requestPasswordReset(
+          { email: "jane@example.com", ip: "203.0.113.7" },
+          deferSend,
+        ),
+      ).rejects.toThrow(RateLimitError);
+      expect(mockUserFindUnique).not.toHaveBeenCalled();
+      expect(deferSend).not.toHaveBeenCalled();
+    });
+
+    it("throws RateLimitError when the email: bucket is exhausted", async () => {
+      mockRateLimit
+        .mockResolvedValueOnce({ success: true })
+        .mockResolvedValueOnce({ success: false });
+
+      await expect(
+        requestPasswordReset(
+          { email: "jane@example.com", ip: "203.0.113.7" },
+          deferSend,
+        ),
+      ).rejects.toThrow(RateLimitError);
+      expect(deferSend).not.toHaveBeenCalled();
+    });
+
+    it("skips the rate-limit check when the limiter is unconfigured", async () => {
+      mockGetForgotPasswordRateLimiter.mockReturnValue(null);
+      mockUserFindUnique.mockResolvedValue(activeUserRow);
+
+      await requestPasswordReset(
+        { email: "jane@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      expect(mockRateLimit).not.toHaveBeenCalled();
+      expect(deferSend).toHaveBeenCalledTimes(1);
+    });
+
+    it("swallows mailer failure inside the deferred closure and logs it", async () => {
+      mockUserFindUnique.mockResolvedValue(activeUserRow);
+      mockSend.mockRejectedValue(new Error("smtp down"));
+
+      await requestPasswordReset(
+        { email: "jane@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      const deferredTask = deferSend.mock.calls[0][0] as () => Promise<void>;
+      // The closure must not re-throw — that's how enumeration protection
+      // survives a mailer outage.
+      await expect(deferredTask()).resolves.toBeUndefined();
+
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        "Failed to send password-reset email",
+        expect.any(Error),
+        { userId: "u1" },
+      );
+    });
+
+    it("sends via the transport with the composed template when the closure runs", async () => {
+      mockUserFindUnique.mockResolvedValue(activeUserRow);
+      mockSend.mockResolvedValue(undefined);
+
+      await requestPasswordReset(
+        { email: "jane@example.com", ip: "203.0.113.7" },
+        deferSend,
+      );
+
+      const deferredTask = deferSend.mock.calls[0][0] as () => Promise<void>;
+      await deferredTask();
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "jane@example.com" }),
       );
     });
   });

@@ -3,7 +3,11 @@ import bcrypt from "bcryptjs";
 import type { Role, PasswordResetTokenPurpose } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { BCRYPT_COST } from "@/lib/constants/auth";
-import { NotFoundError } from "@/lib/errors";
+import { NotFoundError, RateLimitError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+import { getForgotPasswordRateLimiter } from "@/lib/services/rate-limit-service";
+import { getEmailTransport } from "@/lib/email/transport";
+import { passwordResetEmail } from "@/lib/email/templates/password-reset";
 import {
   createAuditLog,
   AuditAction,
@@ -197,4 +201,60 @@ export async function consumeSetupToken(input: {
   newPassword: string;
 }): Promise<{ userId: string }> {
   return consumeToken(input.rawToken, input.newPassword, "SETUP");
+}
+
+/**
+ * Callback shape used by `requestPasswordReset` to schedule the email
+ * send after the HTTP response returns. The route passes Next.js's
+ * `after` from `next/server`; tests pass a spy. Keeping the runtime
+ * primitive out of the service preserves Rule 2 (services don't touch
+ * HTTP infrastructure).
+ */
+export type DeferSend = (task: () => Promise<void>) => void;
+
+/**
+ * Orchestrates the full forgot-password flow — rate limiting, token
+ * issuance, deferred mailer dispatch — so the route stays a thin
+ * parse/serialize wrapper (Rule 1, #146). Deferring the send is the
+ * timing-enumeration protection from #139: known and unknown emails
+ * take comparable time because the Resend HTTP call runs post-response.
+ *
+ * @throws RateLimitError when either the `ip:` or `email:` bucket is
+ *   over quota. handleApiError maps to 429.
+ */
+export async function requestPasswordReset(
+  { email, ip }: { email: string; ip: string },
+  deferSend: DeferSend,
+): Promise<void> {
+  const limiter = getForgotPasswordRateLimiter();
+  if (limiter) {
+    const [byIp, byEmail] = await Promise.all([
+      limiter.limit(`ip:${ip}`),
+      limiter.limit(`email:${email}`),
+    ]);
+    if (!byIp.success || !byEmail.success) {
+      throw new RateLimitError("Too many reset requests. Try again later.");
+    }
+  }
+
+  const { emailedToken, user } = await issueResetTokenForEmail(email);
+  if (!emailedToken || !user) return;
+
+  const { subject, text, html } = passwordResetEmail({
+    firstName: user.firstName,
+    rawToken: emailedToken,
+  });
+  const to = user.email;
+  const userId = user.id;
+  deferSend(async () => {
+    try {
+      await getEmailTransport().send({ to, subject, text, html });
+    } catch (mailError) {
+      // Swallow — surfacing a mailer failure would leak account
+      // existence, defeating the enumeration protection.
+      logger.error("Failed to send password-reset email", mailError, {
+        userId,
+      });
+    }
+  });
 }
