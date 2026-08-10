@@ -266,7 +266,7 @@ describe("Auth - per-email rate limit", () => {
     mockRateLimit.mockResolvedValue({ success: true });
     mockFindUnique.mockResolvedValue({
       id: "u",
-      email: "  USER@Example.com  ",
+      email: "user@example.com",
       password: "hashed",
       firstName: "U",
       lastName: "L",
@@ -279,6 +279,28 @@ describe("Auth - per-email rate limit", () => {
     await authorize({ email: "  USER@Example.com  ", password: "pw" });
 
     expect(mockRateLimit).toHaveBeenCalledWith("user@example.com");
+  });
+
+  it("looks up the DB row via the normalized email so mixed-case input matches lowercased rows (fix #142)", async () => {
+    const authorize = getAuthorize();
+    mockRateLimit.mockResolvedValue({ success: true });
+    mockFindUnique.mockResolvedValue({
+      id: "u",
+      email: "user@example.com",
+      password: "hashed",
+      firstName: "U",
+      lastName: "L",
+      role: "STAFF",
+      isActive: true,
+      tokenVersion: 0,
+    });
+    vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+
+    await authorize({ email: "  USER@Example.com  ", password: "pw" });
+
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { email: "user@example.com" },
+    });
   });
 
   it("does not touch the limiter when credentials shape is missing", async () => {

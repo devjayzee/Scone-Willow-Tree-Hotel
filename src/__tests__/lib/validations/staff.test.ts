@@ -104,6 +104,17 @@ describe("Staff Validation", () => {
       });
     });
 
+    it("normalizes email to trimmed lowercase (fix #142)", () => {
+      const result = createStaffSchema.safeParse({
+        ...validStaff,
+        email: "  Jane@Example.COM \n",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.email).toBe("jane@example.com");
+      }
+    });
+
     // Password validation (using strongPasswordSchema)
     it("should reject weak password", () => {
       const result = createStaffSchema.safeParse({
@@ -208,6 +219,16 @@ describe("Staff Validation", () => {
         firstName: "",
       });
       expect(result.success).toBe(false);
+    });
+
+    it("normalizes email to trimmed lowercase when provided (fix #142)", () => {
+      const result = updateStaffSchema.safeParse({
+        email: "  Jane@Example.COM \n",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.email).toBe("jane@example.com");
+      }
     });
 
     it("should reject invalid email when provided", () => {
