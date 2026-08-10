@@ -1,19 +1,16 @@
 import { z } from "zod";
-import {
-  strongPasswordSchema,
-  optionalStrongPasswordSchema,
-} from "./password";
+import { optionalStrongPasswordSchema } from "./password";
 import { emailSchema } from "./email";
 
 // Role enum for validation
 const roleEnum = z.enum(["GENERAL_MANAGER", "MANAGER", "STAFF"]);
 
-// Schema for creating a new staff member
+// Schema for creating a new staff member (#144). No password — new staff
+// are invited via email and set their own on the /setup-password page.
 export const createStaffSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: emailSchema,
-  password: strongPasswordSchema,
   role: roleEnum.default("STAFF"),
 });
 

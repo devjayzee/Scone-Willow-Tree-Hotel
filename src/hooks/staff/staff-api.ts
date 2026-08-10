@@ -2,11 +2,14 @@
 
 import type { Staff, Role } from "@/types/staff";
 
-export interface StaffFormData {
+/**
+ * Create payload — no password (#144). Staff receive an invite email
+ * and set their own on /setup-password.
+ */
+export interface CreateStaffData {
   firstName: string;
   lastName: string;
   email: string;
-  password: string;
   role: Role;
 }
 
@@ -27,7 +30,7 @@ export async function fetchStaffs(): Promise<Staff[]> {
   return response.json();
 }
 
-export async function createStaff(data: StaffFormData): Promise<Staff> {
+export async function createStaff(data: CreateStaffData): Promise<Staff> {
   const response = await fetch("/api/staffs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,6 +40,19 @@ export async function createStaff(data: StaffFormData): Promise<Staff> {
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.error || "Failed to create staff");
+  }
+
+  return response.json();
+}
+
+export async function resendInvite(id: string): Promise<{ ok: true }> {
+  const response = await fetch(`/api/staffs/${id}/resend-invite`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || "Failed to resend invite");
   }
 
   return response.json();
