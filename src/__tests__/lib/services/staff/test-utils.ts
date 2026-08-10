@@ -10,6 +10,9 @@ export const mockUserCreate = vi.fn();
 export const mockUserUpdate = vi.fn();
 export const mockUserDelete = vi.fn();
 
+// password-reset-service mock (#144 — createStaff / resendInvite call this)
+export const mockIssueSetupTokenForUser = vi.fn();
+
 // Setup mocks — call this at the top of each test file, before importing services.
 export function setupMocks() {
   vi.mock("bcryptjs", () => ({
@@ -39,6 +42,7 @@ export function setupMocks() {
       STAFF_DEACTIVATED: "STAFF_DEACTIVATED",
       STAFF_ACTIVATED: "STAFF_ACTIVATED",
       STAFF_PASSWORD_CHANGED: "STAFF_PASSWORD_CHANGED",
+      STAFF_INVITE_RESENT: "STAFF_INVITE_RESENT",
       STAFF_ROLE_CHANGED: "STAFF_ROLE_CHANGED",
     },
     EntityType: {
@@ -63,6 +67,11 @@ export function setupMocks() {
       }
       return changedFields;
     },
+  }));
+
+  vi.mock("@/lib/services/password-reset-service", () => ({
+    issueSetupTokenForUser: (...args: unknown[]) =>
+      mockIssueSetupTokenForUser(...args),
   }));
 }
 
@@ -103,6 +112,8 @@ export function resetMocks() {
   mockUserCreate.mockReset();
   mockUserUpdate.mockReset();
   mockUserDelete.mockReset();
-  // Restore the default hash behavior tests expect
+  mockIssueSetupTokenForUser.mockReset();
+  // Restore default behaviors tests expect
   mockHash.mockResolvedValue("hashed_password");
+  mockIssueSetupTokenForUser.mockResolvedValue("stub-setup-token");
 }

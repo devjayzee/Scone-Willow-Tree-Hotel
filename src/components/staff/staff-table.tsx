@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Edit, Trash2, UserCheck, UserX, Mail, Calendar as CalendarIcon } from "lucide-react";
+import { MoreHorizontal, Edit, Trash2, UserCheck, UserX, Mail, Calendar as CalendarIcon, Send } from "lucide-react";
 import { format } from "date-fns";
 import type { Staff } from "@/types/staff";
 
@@ -20,6 +20,7 @@ interface StaffTableProps {
   onEdit: (staff: Staff) => void;
   onDelete: (staff: Staff) => void;
   onToggleActive: (staff: Staff) => void;
+  onResendInvite: (staff: Staff) => void;
 }
 
 export function StaffTable({
@@ -28,6 +29,7 @@ export function StaffTable({
   onEdit,
   onDelete,
   onToggleActive,
+  onResendInvite,
 }: StaffTableProps) {
   // Use shared pagination hook
   const {
@@ -73,6 +75,12 @@ export function StaffTable({
           <Edit className="h-4 w-4 mr-2" aria-hidden="true" />
           Edit
         </DropdownMenuItem>
+        {!staff.isActive && (
+          <DropdownMenuItem onClick={() => onResendInvite(staff)}>
+            <Send className="h-4 w-4 mr-2" aria-hidden="true" />
+            Resend invite
+          </DropdownMenuItem>
+        )}
         {staff.id !== currentUserId && (
           <>
             <DropdownMenuItem onClick={() => onToggleActive(staff)}>
