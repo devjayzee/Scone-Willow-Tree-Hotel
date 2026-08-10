@@ -6,7 +6,7 @@ import { BCRYPT_COST } from "@/lib/constants/auth";
 import { NotFoundError, RateLimitError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { getForgotPasswordRateLimiter } from "@/lib/services/rate-limit-service";
-import { getEmailTransport } from "@/lib/email/transport";
+import { getEmailTransport } from "@/lib/email/email-transport";
 import { passwordResetEmail } from "@/lib/email/templates/password-reset";
 import {
   createAuditLog,
