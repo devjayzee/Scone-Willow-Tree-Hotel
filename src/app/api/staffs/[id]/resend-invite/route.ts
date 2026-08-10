@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { resendInvite } from "@/lib/services/staff";
-import { getEmailTransport } from "@/lib/email/transport";
+import { getEmailTransport } from "@/lib/email/email-transport";
 import { inviteSetupEmail } from "@/lib/email/templates/invite-setup";
 import {
   handleApiError,
