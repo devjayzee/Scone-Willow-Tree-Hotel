@@ -52,7 +52,7 @@ export function useCreateStaff() {
       toast.success(`Invite sent to ${staff.email}`);
     },
     onSettled: () => {
-      invalidateWithRelated(queryClient, "staff");
+      invalidateWithRelated(queryClient, "staffs");
     },
   });
 }
@@ -105,7 +105,7 @@ export function useUpdateStaff() {
       toast.error(error.message);
     },
     onSettled: () => {
-      invalidateWithRelated(queryClient, "staff");
+      invalidateWithRelated(queryClient, "staffs");
     },
   });
 }
@@ -141,7 +141,7 @@ export function useDeleteStaff() {
       }
     },
     onSettled: () => {
-      invalidateWithRelated(queryClient, "staff");
+      invalidateWithRelated(queryClient, "staffs");
     },
   });
 }
@@ -179,7 +179,7 @@ export function useToggleStaffActive() {
       toast.success(variables.isActive ? "Staff activated" : "Staff deactivated");
     },
     onSettled: () => {
-      invalidateWithRelated(queryClient, "staff");
+      invalidateWithRelated(queryClient, "staffs");
     },
   });
 }
