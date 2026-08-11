@@ -53,4 +53,14 @@ describe("passwordResetEmail template", () => {
     expect(text).toContain("Hi Jane,");
     expect(html).toContain("Hi Jane,");
   });
+
+  it("escapes HTML-unsafe characters in firstName in the html body", async () => {
+    const { passwordResetEmail } = await loadTemplate();
+    const { html } = passwordResetEmail({
+      firstName: "<script>",
+      rawToken: "raw-token-abc",
+    });
+    expect(html).toContain("Hi &lt;script&gt;,");
+    expect(html).not.toContain("Hi <script>,");
+  });
 });
