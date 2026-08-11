@@ -12,7 +12,7 @@ interface RoomPerformanceCardProps {
   isLoading: boolean;
   totalBookings: number;
   totalNights: number;
-  totalRevenue: number;
+  bookedRevenue: number;
 }
 
 export function RoomPerformanceCard({
@@ -20,7 +20,7 @@ export function RoomPerformanceCard({
   isLoading,
   totalBookings,
   totalNights,
-  totalRevenue,
+  bookedRevenue,
 }: RoomPerformanceCardProps) {
   return (
     <Card className="bg-white">
@@ -71,9 +71,9 @@ export function RoomPerformanceCard({
                     </div>
                     <div className="bg-emerald-50 rounded-lg py-2">
                       <div className="text-sm font-semibold text-emerald-600">
-                        ${room.totalRevenue.toLocaleString()}
+                        ${room.bookedRevenue.toLocaleString()}
                       </div>
-                      <div className="text-xs text-gray-500">Revenue</div>
+                      <div className="text-xs text-gray-500">Booked</div>
                     </div>
                   </div>
                 </div>
@@ -89,7 +89,7 @@ export function RoomPerformanceCard({
                     <th className="text-right py-3 px-4">Rate/Night</th>
                     <th className="text-right py-3 px-4">Total Bookings</th>
                     <th className="text-right py-3 px-4">Total Nights</th>
-                    <th className="text-right py-3 px-4">Total Revenue</th>
+                    <th className="text-right py-3 px-4">Booked Revenue</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -108,7 +108,7 @@ export function RoomPerformanceCard({
                         {room.totalNights}
                       </td>
                       <td className="py-3 px-4 text-right font-medium text-emerald-600">
-                        ${room.totalRevenue.toLocaleString()}
+                        ${room.bookedRevenue.toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -121,7 +121,7 @@ export function RoomPerformanceCard({
                     <td className="py-3 px-4 text-right">{totalBookings}</td>
                     <td className="py-3 px-4 text-right">{totalNights}</td>
                     <td className="py-3 px-4 text-right text-emerald-600">
-                      ${totalRevenue.toLocaleString()}
+                      ${bookedRevenue.toLocaleString()}
                     </td>
                   </tr>
                 </tfoot>

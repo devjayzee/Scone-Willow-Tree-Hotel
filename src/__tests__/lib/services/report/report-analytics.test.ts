@@ -103,7 +103,7 @@ describe("Report Analytics", () => {
 
       expect(result).toHaveLength(6);
       expect(result[0]).toHaveProperty("month");
-      expect(result[0]).toHaveProperty("revenue");
+      expect(result[0]).toHaveProperty("realisedRevenue");
     });
 
     it("should calculate revenue based on nights and room price", async () => {
@@ -124,7 +124,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       // Last month: 4 nights * $100 = $400
-      expect(result[5].revenue).toBe(400);
+      expect(result[5].realisedRevenue).toBe(400);
     });
 
     it("should sum revenue from multiple bookings", async () => {
@@ -148,7 +148,7 @@ describe("Report Analytics", () => {
 
       const result = await getRevenueReport();
 
-      expect(result[5].revenue).toBe(500); // $200 + $300
+      expect(result[5].realisedRevenue).toBe(500); // $200 + $300
     });
 
     it("should return zero revenue when no bookings exist", async () => {
@@ -157,7 +157,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       result.forEach((month) => {
-        expect(month.revenue).toBe(0);
+        expect(month.realisedRevenue).toBe(0);
       });
     });
 
@@ -178,7 +178,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       // 3 * 99.99 = 299.97, rounded to 300
-      expect(Number.isInteger(result[5].revenue)).toBe(true);
+      expect(Number.isInteger(result[5].realisedRevenue)).toBe(true);
     });
   });
 
@@ -262,7 +262,7 @@ describe("Report Analytics", () => {
       expect(result[0]).toHaveProperty("pricePerNight");
       expect(result[0]).toHaveProperty("totalBookings");
       expect(result[0]).toHaveProperty("totalNights");
-      expect(result[0]).toHaveProperty("totalRevenue");
+      expect(result[0]).toHaveProperty("bookedRevenue");
     });
 
     it("should calculate totals from bookings", async () => {
@@ -290,7 +290,7 @@ describe("Report Analytics", () => {
 
       expect(result[0].totalBookings).toBe(2);
       expect(result[0].totalNights).toBe(6); // 4 + 2
-      expect(result[0].totalRevenue).toBe(600); // 6 nights * $100
+      expect(result[0].bookedRevenue).toBe(600); // 6 nights * $100
     });
 
     it("should return zero totals for rooms with no bookings", async () => {
@@ -307,7 +307,7 @@ describe("Report Analytics", () => {
 
       expect(result[0].totalBookings).toBe(0);
       expect(result[0].totalNights).toBe(0);
-      expect(result[0].totalRevenue).toBe(0);
+      expect(result[0].bookedRevenue).toBe(0);
     });
 
     it("should filter by date range when provided", async () => {
@@ -377,7 +377,7 @@ describe("Report Analytics", () => {
       const result = await getRoomPerformance();
 
       // 3 * 99.99 = 299.97, rounded to 300
-      expect(Number.isInteger(result[0].totalRevenue)).toBe(true);
+      expect(Number.isInteger(result[0].bookedRevenue)).toBe(true);
     });
 
     it("should return empty array when no rooms exist", async () => {
