@@ -24,7 +24,6 @@ import {
   ConflictError,
   BusinessRuleError,
 } from "@/lib/services/staff";
-import { DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
 
 describe("Staff Mutations", () => {
   beforeEach(() => {
@@ -43,7 +42,7 @@ describe("Staff Mutations", () => {
       role: "STAFF" as const,
     };
 
-    it("creates an inactive staff with a placeholder hash and issues a setup token", async () => {
+    it("creates an inactive staff with a per-user random placeholder hash and issues a setup token (#188)", async () => {
       const createdStaff = createMockStaff({
         id: "new-staff",
         firstName: "Jane",
@@ -54,17 +53,22 @@ describe("Staff Mutations", () => {
       mockUserFindUnique.mockResolvedValue(null);
       mockUserCreate.mockResolvedValue(createdStaff);
       mockIssueSetupTokenForUser.mockResolvedValue("raw-setup-token");
+      mockHash.mockResolvedValue("random-placeholder-hash");
 
       const result = await createStaff(validInput);
 
-      // No password hashing — the placeholder is a constant.
-      expect(mockHash).not.toHaveBeenCalled();
+      // Per-user random hash (not the shared DUMMY_PASSWORD_HASH).
+      expect(mockHash).toHaveBeenCalledTimes(1);
+      const [randomPlaintext, cost] = mockHash.mock.calls[0];
+      expect(typeof randomPlaintext).toBe("string");
+      expect((randomPlaintext as string).length).toBeGreaterThan(20);
+      expect(cost).toBe(12);
       expect(mockUserCreate).toHaveBeenCalledWith({
         data: {
           firstName: "Jane",
           lastName: "Smith",
           email: "jane.smith@sconewillowtree.com",
-          password: DUMMY_PASSWORD_HASH,
+          password: "random-placeholder-hash",
           role: "STAFF",
           isActive: false,
         },
@@ -277,25 +281,7 @@ describe("Staff Mutations", () => {
       expect(mockUserFindUnique).toHaveBeenCalledTimes(1);
     });
 
-    it("should hash password and increment tokenVersion when password provided", async () => {
-      mockUserFindUnique.mockResolvedValue(existingStaff);
-      mockUserUpdate.mockResolvedValue({ ...existingStaff, tokenVersion: 1 });
-      mockHash.mockResolvedValue("new_hashed_password");
-
-      await updateStaff("staff-1", { password: "newpassword123" }, "current-user-id");
-
-      expect(mockHash).toHaveBeenCalledWith("newpassword123", 12);
-      expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1" },
-        data: {
-          password: "new_hashed_password",
-          tokenVersion: { increment: 1 },
-        },
-        select: expect.any(Object),
-      });
-    });
-
-    it("should not increment tokenVersion when password not provided", async () => {
+    it("never hashes a password or touches tokenVersion — password rotation lives on /reset-password (#188)", async () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue(existingStaff);
 

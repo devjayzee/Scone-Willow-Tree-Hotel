@@ -6,6 +6,7 @@ const mockGetAllStaff = vi.fn();
 const mockCreateStaff = vi.fn();
 const mockSend = vi.fn();
 const mockLoggerError = vi.fn();
+const mockGetStaffInviteRateLimiter = vi.fn(() => null);
 
 // after() from next/server: collect callbacks so tests can assert the
 // send was scheduled without racing on it (same pattern as
@@ -56,6 +57,10 @@ vi.mock("@/lib/auth", () => ({
   authOptions: {},
 }));
 
+vi.mock("@/lib/services/rate-limit-service", () => ({
+  getStaffInviteRateLimiter: () => mockGetStaffInviteRateLimiter(),
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     error: (...args: unknown[]) => mockLoggerError(...args),
@@ -88,6 +93,10 @@ describe("Staffs API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAfterCallbacks.length = 0;
+    // Default: Upstash unconfigured → limiter disabled. Individual tests
+    // that need to exercise throttling override this per case.
+    mockGetStaffInviteRateLimiter.mockReturnValue(null);
+    delete process.env.INVITE_DOMAIN_ALLOWLIST;
   });
 
   describe("GET /api/staffs", () => {
@@ -251,6 +260,40 @@ describe("Staffs API", () => {
       expect(response.status).toBe(400);
       expect(data.code).toBe("VALIDATION_ERROR");
       expect(mockCreateStaff).not.toHaveBeenCalled();
+    });
+
+    it("returns 429 when the staff-invite rate limiter denies (#182)", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      mockGetStaffInviteRateLimiter.mockReturnValue({
+        limit: async () => ({ success: false, limit: 5, remaining: 0, reset: 0 }),
+      } as unknown as null);
+
+      const response = await POST(buildRequest(validCreateInput));
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.code).toBe("RATE_LIMITED");
+      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockAfterCallbacks).toHaveLength(0);
+    });
+
+    it("returns 400 when INVITE_DOMAIN_ALLOWLIST blocks the recipient (#182)", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.com";
+
+      const response = await POST(
+        buildRequest({
+          ...validCreateInput,
+          email: "attacker@evil.example",
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(data.error).toMatch(/domain is not allowed/i);
+      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockAfterCallbacks).toHaveLength(0);
     });
   });
 });

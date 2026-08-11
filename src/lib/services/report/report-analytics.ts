@@ -25,6 +25,10 @@ export async function getOccupancyReport(): Promise<OccupancyData[]> {
   const today = new Date();
   const months: OccupancyData[] = [];
 
+  // Room count is invariant across the 6 iterations (#188). Hoist it
+  // out of the loop instead of re-issuing the same query six times.
+  const totalRooms = await prisma.room.count();
+
   for (let i = 5; i >= 0; i--) {
     const monthStart = startOfMonth(subMonths(today, i));
     const monthEnd = endOfMonth(subMonths(today, i));
@@ -33,7 +37,6 @@ export async function getOccupancyReport(): Promise<OccupancyData[]> {
       end: monthEnd,
     }).length;
 
-    const totalRooms = await prisma.room.count();
     const totalRoomDays = totalRooms * daysInMonth;
 
     // Count booked room-days
@@ -114,7 +117,7 @@ export async function getRevenueReport(): Promise<RevenueData[]> {
 
     months.push({
       month: format(monthStart, "MMM yyyy"),
-      revenue: Math.round(revenue),
+      realisedRevenue: Math.round(revenue),
     });
   }
 
@@ -126,22 +129,31 @@ export async function getRevenueReport(): Promise<RevenueData[]> {
  */
 export async function getBookingTrends(): Promise<BookingTrendData[]> {
   const today = new Date();
+  const rangeStart = startOfDay(subDays(today, 29));
+  const rangeEnd = endOfDay(today);
+
+  // Was 30 sequential prisma.booking.count() queries — one per day
+  // (#188). Now a single findMany over the 30-day window, bucketed in
+  // memory so days with zero bookings still appear in the returned
+  // series. Portable across Prisma providers vs raw SQL DATE_TRUNC.
+  const bookings = await prisma.booking.findMany({
+    where: { createdAt: { gte: rangeStart, lte: rangeEnd } },
+    select: { createdAt: true },
+  });
+
+  const countsByDay = new Map<string, number>();
+  for (const booking of bookings) {
+    const key = format(startOfDay(booking.createdAt), "yyyy-MM-dd");
+    countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+  }
+
   const days: BookingTrendData[] = [];
-
   for (let i = 29; i >= 0; i--) {
-    const day = subDays(today, i);
-    const dayStart = startOfDay(day);
-    const dayEnd = endOfDay(day);
-
-    const count = await prisma.booking.count({
-      where: {
-        createdAt: { gte: dayStart, lte: dayEnd },
-      },
-    });
-
+    const day = startOfDay(subDays(today, i));
+    const key = format(day, "yyyy-MM-dd");
     days.push({
-      date: format(dayStart, "MMM dd"),
-      bookings: count,
+      date: format(day, "MMM dd"),
+      bookings: countsByDay.get(key) ?? 0,
     });
   }
 
@@ -202,7 +214,7 @@ export async function getRoomPerformance(
       pricePerNight: Number(room.pricePerNight),
       totalBookings,
       totalNights,
-      totalRevenue: Math.round(totalRevenue),
+      bookedRevenue: Math.round(totalRevenue),
     };
   });
 

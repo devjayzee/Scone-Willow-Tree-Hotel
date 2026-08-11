@@ -1,7 +1,11 @@
 import type { BookingStatus } from "@prisma/client";
 
 /**
- * Room performance data for analytics
+ * Room performance data for analytics.
+ * `bookedRevenue` counts CONFIRMED + CHECKED_IN + CHECKED_OUT — includes
+ * money on the books for future confirmed stays. Disambiguated from
+ * `RevenueData.realisedRevenue` which only counts started/completed
+ * stays (#186).
  */
 export interface RoomPerformanceData {
   id: string;
@@ -9,7 +13,7 @@ export interface RoomPerformanceData {
   pricePerNight: number;
   totalBookings: number;
   totalNights: number;
-  totalRevenue: number;
+  bookedRevenue: number;
 }
 
 /**
@@ -53,11 +57,15 @@ export interface OccupancyData {
 }
 
 /**
- * Monthly revenue data for trend analysis
+ * Monthly revenue data for trend analysis.
+ * `realisedRevenue` counts only CHECKED_IN + CHECKED_OUT bookings —
+ * money actually earned from stays that started/completed. Disambiguated
+ * from `RoomPerformanceData.bookedRevenue` which also counts CONFIRMED
+ * future bookings (#186).
  */
 export interface RevenueData {
   month: string;
-  revenue: number;
+  realisedRevenue: number;
 }
 
 /**
