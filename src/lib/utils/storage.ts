@@ -28,14 +28,3 @@ export function safeSetItem(key: string, value: string): boolean {
   }
 }
 
-export function safeRemoveItem(key: string): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
-  try {
-    localStorage.removeItem(key);
-    return true;
-  } catch {
-    return false;
-  }
-}

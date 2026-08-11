@@ -13,4 +13,3 @@ export const calendarQuerySchema = z.object({
   roomId: z.string().min(1).optional(),
 });
 
-export type CalendarQueryInput = z.infer<typeof calendarQuerySchema>;
