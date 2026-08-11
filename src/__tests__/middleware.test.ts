@@ -55,7 +55,10 @@ type Token = {
 } | null;
 
 // Minimal NextRequest shim — the middleware only reads .headers, .method,
-// .nextUrl.pathname, .url, and .nextauth.token.
+// .nextUrl.pathname, .url, and .nextauth.token. Defaults a
+// `content-length: "0"` header on body-carrying methods so the
+// enforceBodySizeCap (#188) doesn't 411 tests that aren't exercising it;
+// the body-size-cap suite overrides this explicitly.
 function buildReq(opts: {
   path: string;
   method?: string;
@@ -63,10 +66,17 @@ function buildReq(opts: {
   headers?: Record<string, string>;
 }) {
   const url = `http://localhost${opts.path}`;
+  const method = opts.method ?? "GET";
+  const needsLength =
+    method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  const headers = new Headers(opts.headers ?? {});
+  if (needsLength && !headers.has("content-length")) {
+    headers.set("content-length", "0");
+  }
   return {
     url,
-    method: opts.method ?? "GET",
-    headers: new Headers(opts.headers ?? {}),
+    method,
+    headers,
     nextUrl: { pathname: opts.path },
     nextauth: { token: opts.token ?? null },
   } as unknown as Parameters<typeof middleware>[0];
@@ -302,6 +312,27 @@ describe("middleware", () => {
       const response = (await middleware(req)) as NextResponse;
 
       expect(response.status).not.toBe(413);
+    });
+
+    it("returns 411 when a POST omits Content-Length (chunked bypass, #188)", async () => {
+      // Bypass buildReq's default content-length by constructing the
+      // request inline — this test is explicitly about the missing
+      // header case.
+      const req = {
+        url: "http://localhost/api/bookings",
+        method: "POST",
+        headers: new Headers(),
+        nextUrl: { pathname: "/api/bookings" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
+
+      const response = (await middleware(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(411);
+      expect(data.error).toMatch(/content-length required/i);
+      // Cap runs before the rate limiter
+      expect(mockLimit).not.toHaveBeenCalled();
     });
   });
 

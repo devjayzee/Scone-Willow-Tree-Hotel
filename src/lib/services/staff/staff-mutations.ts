@@ -1,7 +1,8 @@
 import { Prisma } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { BCRYPT_COST, DUMMY_PASSWORD_HASH } from "@/lib/constants/auth";
+import { BCRYPT_COST } from "@/lib/constants/auth";
 import type {
   CreateStaffSchemaInput,
   UpdateStaffSchemaInput,
@@ -49,12 +50,22 @@ export async function createStaff(
     throw new ConflictError("Email already exists");
   }
 
+  // Per-user random placeholder hash (#188). Previously all pending
+  // invitees shared DUMMY_PASSWORD_HASH; if a GM flipped `isActive` on
+  // a pending user, they'd have collapsed one of the two "can't log
+  // in" defences onto a value known to every reader of this repo. A
+  // per-user random hash makes each pending account independently
+  // impossible to log in as, even in the misused-isActive scenario.
+  // consumeSetupToken overwrites this with the user's real password.
+  const placeholderPassword = randomBytes(24).toString("base64url");
+  const placeholderHash = await bcrypt.hash(placeholderPassword, BCRYPT_COST);
+
   const staff = await prisma.user.create({
     data: {
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email,
-      password: DUMMY_PASSWORD_HASH,
+      password: placeholderHash,
       role: data.role ?? "STAFF",
       isActive: false,
     },
@@ -167,15 +178,17 @@ export async function updateStaff(
     }
   }
 
-  // Build update data
+  // Build update data. GMs cannot set another user's password directly
+  // (#188) — rotation goes through /reset-password. Removing this
+  // branch also removes account-takeover risk from the staff-edit
+  // path and keeps the only tokenVersion-incrementing writes inside
+  // password-reset-service where they belong.
   const updateData: {
     firstName?: string;
     lastName?: string;
     email?: string;
-    password?: string;
     role?: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
     isActive?: boolean;
-    tokenVersion?: { increment: number };
   } = {};
 
   if (data.firstName) updateData.firstName = data.firstName;
@@ -183,12 +196,6 @@ export async function updateStaff(
   if (data.email) updateData.email = data.email;
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
-
-  // Hash password if provided and increment tokenVersion to invalidate sessions
-  if (data.password) {
-    updateData.password = await bcrypt.hash(data.password, BCRYPT_COST);
-    updateData.tokenVersion = { increment: 1 };
-  }
 
   const staff = await prisma.user.update({
     where: { id },
