@@ -49,9 +49,9 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
         (acc, room) => ({
           totalBookings: acc.totalBookings + room.totalBookings,
           totalNights: acc.totalNights + room.totalNights,
-          totalRevenue: acc.totalRevenue + room.totalRevenue,
+          bookedRevenue: acc.bookedRevenue + room.bookedRevenue,
         }),
-        { totalBookings: 0, totalNights: 0, totalRevenue: 0 },
+        { totalBookings: 0, totalNights: 0, bookedRevenue: 0 },
       ),
     [roomPerformance],
   );
@@ -76,7 +76,7 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
       <ReportsSummaryCards
         totalBookings={totals.totalBookings}
         totalNights={totals.totalNights}
-        totalRevenue={totals.totalRevenue}
+        bookedRevenue={totals.bookedRevenue}
       />
 
       <RoomPerformanceCard
@@ -84,7 +84,7 @@ export function ReportsClient({ initialData, fetchTime }: ReportsClientProps) {
         isLoading={isLoading}
         totalBookings={totals.totalBookings}
         totalNights={totals.totalNights}
-        totalRevenue={totals.totalRevenue}
+        bookedRevenue={totals.bookedRevenue}
       />
     </div>
   );
