@@ -1,9 +1,11 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { requireSession } from "@/lib/auth-guard";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await requireSession();
   return <DashboardShell>{children}</DashboardShell>;
 }

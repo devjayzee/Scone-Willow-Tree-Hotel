@@ -1,3 +1,4 @@
+import { requireSession } from "@/lib/auth-guard";
 import { getCalendarEvents } from "@/lib/services/calendar-service";
 import { getAllRooms } from "@/lib/services/room-service";
 import { CalendarClient } from "@/components/calendar/calendar-client";
@@ -9,6 +10,8 @@ export const dynamic = "force-dynamic";
 export default async function CalendarPage() {
   // Track when data was fetched for cache freshness
   const fetchTime = Date.now();
+
+  await requireSession();
 
   // Fetch initial data for a wider range (3 months back, 6 months ahead)
   const today = new Date();
