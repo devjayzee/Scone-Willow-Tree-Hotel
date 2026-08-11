@@ -82,6 +82,32 @@ export const getAuthEndpointRateLimiter = makeRateLimiter({
   prefix: "ratelimit:auth-endpoint",
 });
 
+/**
+ * Per-user limiter for `POST /api/staffs` (#182). Bucket: 5 / 1 h. The
+ * generic apiRateLimiter (120 / 1 min) is too loose here because a
+ * compromised GM account can spray outbound invites from the verified
+ * Resend domain. 5 / hour is enough for a normal hiring push and low
+ * enough to blunt an abuse burst even before the recipient-domain
+ * allowlist kicks in.
+ */
+export const getStaffInviteRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(5, "1 h"),
+  prefix: "ratelimit:staff-invite",
+});
+
+/**
+ * IP-keyed cap on the public `GET /api/auth/rate-limit-status` endpoint
+ * (#188). Bucket: 60 / 1 min — generous enough for the login page's
+ * ~2 pre-checks per attempt without any UX hit, but enough to blunt a
+ * flood that would otherwise burn Upstash quota. Enforced softly: on
+ * denial the route returns the same `LoginRateLimitStatus` shape it
+ * would on a real login-limit hit, so the pre-check UI doesn't break.
+ */
+export const getRateLimitStatusLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(60, "1 m"),
+  prefix: "ratelimit:rate-limit-status",
+});
+
 export type { LoginRateLimitStatus };
 
 /**

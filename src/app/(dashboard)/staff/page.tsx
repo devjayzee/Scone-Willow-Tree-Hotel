@@ -1,19 +1,19 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { requireSession } from "@/lib/auth-guard";
 import { getAllStaff } from "@/lib/services/staff";
 import { StaffsClient } from "@/components/staff/staffs-client";
 import type { Staff } from "@/types/staff";
 
-// Revalidate every 5 minutes - staff data rarely changes
-export const revalidate = 300;
+// requireSession() reads cookies, which forces dynamic rendering — the
+// declaration is here so future readers don't wonder why the page isn't
+// cached.
+export const dynamic = "force-dynamic";
 
 export default async function StaffsPage() {
   // Track when data was fetched for cache freshness
   const fetchTime = Date.now();
 
-  // Get current user session
-  const session = await getServerSession(authOptions);
-  const currentUserId = session?.user?.id;
+  const session = await requireSession("GENERAL_MANAGER");
+  const currentUserId = session.user.id;
 
   // Fetch staffs server-side
   const staffs = await getAllStaff();
