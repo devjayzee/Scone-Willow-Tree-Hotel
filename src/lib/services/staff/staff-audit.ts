@@ -9,8 +9,9 @@ import type { UpdateStaffSchemaInput } from "@/lib/validations/staff";
 
 /**
  * Classify what changed on a staff update and write the matching audit entries.
- * Fires nothing when performedBy is undefined. Preserves the four-way branching
- * originally inlined in updateStaff: password / role / active-status / general.
+ * Fires nothing when performedBy is undefined. Branches on role /
+ * active-status / general — password rotation lives on the
+ * /reset-password flow (#188), not this path.
  */
 export async function logStaffUpdateAudits(
   id: string,
@@ -20,20 +21,9 @@ export async function logStaffUpdateAudits(
 ): Promise<void> {
   if (!performedBy) return;
 
-  const passwordChanged = !!data.password;
   const roleChanged = data.role && data.role !== existingStaff.role;
   const activeStatusChanged =
     data.isActive !== undefined && data.isActive !== existingStaff.isActive;
-
-  if (passwordChanged) {
-    await createAuditLog(
-      performedBy,
-      AuditAction.STAFF_PASSWORD_CHANGED,
-      EntityType.STAFF,
-      id,
-      { reason: "Password updated" },
-    );
-  }
 
   if (roleChanged) {
     await createAuditLog(
@@ -70,7 +60,6 @@ export async function logStaffUpdateAudits(
 
   if (
     changedFields.length > 0 &&
-    !passwordChanged &&
     !roleChanged &&
     !activeStatusChanged
   ) {
