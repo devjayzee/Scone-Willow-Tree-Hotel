@@ -114,7 +114,7 @@ export async function getRevenueReport(): Promise<RevenueData[]> {
 
     months.push({
       month: format(monthStart, "MMM yyyy"),
-      revenue: Math.round(revenue),
+      realisedRevenue: Math.round(revenue),
     });
   }
 
@@ -202,7 +202,7 @@ export async function getRoomPerformance(
       pricePerNight: Number(room.pricePerNight),
       totalBookings,
       totalNights,
-      totalRevenue: Math.round(totalRevenue),
+      bookedRevenue: Math.round(totalRevenue),
     };
   });
 
