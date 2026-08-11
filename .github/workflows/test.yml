@@ -41,8 +41,8 @@ jobs:
     timeout-minutes: 5
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -55,8 +55,8 @@ jobs:
     timeout-minutes: 5
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
@@ -70,8 +70,8 @@ jobs:
     timeout-minutes: 10
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: 'npm'
