@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 import {
   setupMocks,
   createMockBooking,
@@ -10,6 +11,18 @@ import {
   mockBookingDelete,
   mockRoomFindUnique,
 } from "./test-utils";
+
+// Reusable P2002 error for the bookingRef @unique column.
+function bookingRefCollision() {
+  return new Prisma.PrismaClientKnownRequestError(
+    "Unique constraint failed on the fields: (`bookingRef`)",
+    {
+      code: "P2002",
+      clientVersion: "test",
+      meta: { target: ["bookingRef"] },
+    },
+  );
+}
 
 // Setup mocks before importing services
 setupMocks();
@@ -91,6 +104,47 @@ describe("Booking Mutations", () => {
       await expect(createBooking(validInput, "user-1")).rejects.toThrow(NotFoundError);
       await expect(createBooking(validInput, "user-1")).rejects.toThrow("Room not found");
       expect(mockBookingCreate).not.toHaveBeenCalled();
+    });
+
+    it("retries the create on a bookingRef P2002 collision (#188)", async () => {
+      mockBookingFindFirst.mockResolvedValue(null);
+      mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
+      const successful = createMockBooking({ bookingRef: "BK-20240320-002" });
+      mockBookingCreate
+        .mockRejectedValueOnce(bookingRefCollision())
+        .mockResolvedValueOnce(successful);
+
+      const result = await createBooking(validInput, "user-1");
+
+      expect(mockBookingCreate).toHaveBeenCalledTimes(2);
+      expect(result.bookingRef).toBe("BK-20240320-002");
+    });
+
+    it("throws ConflictError when all retries collide (#188)", async () => {
+      mockBookingFindFirst.mockResolvedValue(null);
+      mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
+      mockBookingCreate
+        .mockRejectedValueOnce(bookingRefCollision())
+        .mockRejectedValueOnce(bookingRefCollision())
+        .mockRejectedValueOnce(bookingRefCollision());
+
+      await expect(createBooking(validInput, "user-1")).rejects.toThrow(
+        ConflictError,
+      );
+      expect(mockBookingCreate).toHaveBeenCalledTimes(3);
+    });
+
+    it("re-throws non-collision Prisma errors without retry (#188)", async () => {
+      mockBookingFindFirst.mockResolvedValue(null);
+      mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
+      const other = new Prisma.PrismaClientKnownRequestError("boom", {
+        code: "P2003", // foreign-key failure, unrelated
+        clientVersion: "test",
+      });
+      mockBookingCreate.mockRejectedValue(other);
+
+      await expect(createBooking(validInput, "user-1")).rejects.toThrow("boom");
+      expect(mockBookingCreate).toHaveBeenCalledTimes(1);
     });
 
     it("should create booking with optional fields", async () => {
