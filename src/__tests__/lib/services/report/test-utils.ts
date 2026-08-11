@@ -32,6 +32,7 @@ export function createMockBooking(
     guestEmail: string;
     checkIn: Date;
     checkOut: Date;
+    ratePerNight: number;
     status: BookingStatus;
     createdAt: Date;
     roomId: string;
@@ -45,6 +46,11 @@ export function createMockBooking(
     guestEmail: overrides.guestEmail ?? "john@example.com",
     checkIn: overrides.checkIn ?? new Date("2024-03-01"),
     checkOut: overrides.checkOut ?? new Date("2024-03-05"),
+    // Default matches the room's default pricePerNight below so tests
+    // that don't care about the snapshot vs current distinction keep
+    // producing intuitive numbers. Tests that DO care set both fields
+    // to distinct values (#185).
+    ratePerNight: overrides.ratePerNight ?? 100,
     status: overrides.status ?? BookingStatus.CONFIRMED,
     createdAt: overrides.createdAt ?? new Date("2024-02-15"),
     roomId: overrides.roomId ?? "room-1",
@@ -63,6 +69,7 @@ export function createMockRoom(
     bookings: Array<{
       checkIn: Date;
       checkOut: Date;
+      ratePerNight: number;
       status: BookingStatus;
     }>;
   }> = {}

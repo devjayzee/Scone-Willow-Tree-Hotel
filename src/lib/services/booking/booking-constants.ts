@@ -19,6 +19,7 @@ export const bookingSelectFields = {
   checkOut: true,
   checkOutTime: true,
   bondDeposit: true,
+  ratePerNight: true,
   status: true,
   isPaid: true,
   notes: true,

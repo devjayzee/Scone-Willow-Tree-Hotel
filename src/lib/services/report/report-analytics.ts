@@ -96,23 +96,25 @@ export async function getRevenueReport(): Promise<RevenueData[]> {
     const monthStart = startOfMonth(subMonths(today, i));
     const monthEnd = endOfMonth(subMonths(today, i));
 
+    // Read booking.ratePerNight (snapshotted at creation, #185) rather
+    // than the room's current price — otherwise a later re-price would
+    // retroactively change historical revenue figures.
     const bookings = await prisma.booking.findMany({
       where: {
         status: { in: [BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT] },
         checkIn: { gte: monthStart, lte: monthEnd },
       },
-      include: {
-        room: {
-          select: { pricePerNight: true },
-        },
+      select: {
+        checkIn: true,
+        checkOut: true,
+        ratePerNight: true,
       },
     });
 
     let revenue = 0;
     bookings.forEach((booking) => {
       const nights = differenceInDays(booking.checkOut, booking.checkIn);
-      const pricePerNight = Number(booking.room.pricePerNight);
-      revenue += nights * pricePerNight;
+      revenue += nights * Number(booking.ratePerNight);
     });
 
     months.push({
@@ -192,6 +194,11 @@ export async function getRoomPerformance(
     include: {
       bookings: {
         where: bookingFilter,
+        select: {
+          checkIn: true,
+          checkOut: true,
+          ratePerNight: true,
+        },
       },
     },
     orderBy: { roomNumber: "asc" },
@@ -202,10 +209,13 @@ export async function getRoomPerformance(
     let totalNights = 0;
     let totalRevenue = 0;
 
+    // Revenue uses each booking's own ratePerNight snapshot (#185).
+    // room.pricePerNight below is the room's *current* rate — kept as
+    // a display anchor on the row, not used in the sum.
     room.bookings.forEach((booking) => {
       const nights = differenceInDays(booking.checkOut, booking.checkIn);
       totalNights += nights;
-      totalRevenue += nights * Number(room.pricePerNight);
+      totalRevenue += nights * Number(booking.ratePerNight);
     });
 
     return {
