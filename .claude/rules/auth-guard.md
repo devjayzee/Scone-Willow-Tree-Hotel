@@ -1,26 +1,52 @@
 ---
 paths:
+  - "src/app/(dashboard)/**/*.tsx"
   - "src/app/api/**/*.ts"
+  - "src/lib/auth-guard.ts"
   - "src/middleware.ts"
   - "src/lib/auth.ts"
 ---
 
 # Rule 4: Auth at the boundary — session check + inline role gate
 
-Two layers of protection, both mandatory:
+Three layers of protection:
 
-1. **Pages:** `src/middleware.ts` (`withAuth`) redirects unauthenticated users
-   away from `(dashboard)` routes. It also rate-limits credential logins via
-   Upstash (5 attempts / 15 min on `/api/auth/callback/credentials`).
-2. **API routes:** middleware protection is NOT enough — every handler
-   re-checks the session itself.
+1. **Middleware (`src/middleware.ts`, `withAuth`)** — fast-path UX redirect
+   for unauthenticated users on dashboard routes. Also rate-limits credential
+   logins (5 attempts / 15 min on `/api/auth/callback/credentials`). NOT the
+   security boundary — `withAuth` calls `getToken()` internally, which decodes
+   the JWE but does NOT invoke the `jwt` callback, so revocation/expiry never
+   runs here (#181).
+2. **Dashboard pages/layout** — `(dashboard)/layout.tsx` calls
+   `await requireSession()` from `@/lib/auth-guard`. Role-restricted pages
+   pass a role (or role array). `requireSession` uses `getServerSession`,
+   which DOES run the `jwt` callback — so a deactivated or expired session
+   gets kicked out before any RSC data fetch. This is the page-side
+   security boundary.
+3. **API routes** — every handler calls `getServerSession` itself. Middleware
+   protection is not enough — middleware config can drift.
 
-## Canonical pattern
+## Canonical patterns
+
+**API route:**
 
 ```ts
 const session = await getServerSession(authOptions);
 if (!session?.user) {
   throw new UnauthorizedError();
+}
+```
+
+**Dashboard page (role-gated):**
+
+```tsx
+import { requireSession } from "@/lib/auth-guard";
+
+export const dynamic = "force-dynamic";
+
+export default async function StaffsPage() {
+  const session = await requireSession("GENERAL_MANAGER");
+  // ...
 }
 ```
 
@@ -46,16 +72,21 @@ Current role gates (keep this list true when adding gates):
 | Room reads (`GET /api/rooms`, `GET /api/rooms/[id]`) | any authenticated user |
 | Everything else | any authenticated user |
 
-**Page-level (middleware redirect in `src/middleware.ts`):**
+**Page-level (server-side `requireSession` in each page + layout):**
 
 | Path | Required role |
 |---|---|
 | `/rooms`, `/reports` | `MANAGER` or `GENERAL_MANAGER` |
 | `/staff` | `GENERAL_MANAGER` |
-| Every other dashboard page | any authenticated user |
+| Every other dashboard page | any authenticated user (layout gate) |
 
-Page-level redirects are UX only — the API-level gates above are the real
-security boundary. Keep both layers when adding a new gated area.
+Middleware's role redirects in `src/middleware.ts` are the fast-path UX
+mirror of these; the server-side `requireSession` calls are the security
+boundary because they invoke `getServerSession` and therefore run the
+revocation/expiry logic in the `jwt` callback.
+
+Keep both middleware and page-side gates when adding a new gated area — the
+middleware redirect is the snappier UX; the page-side call is the guarantee.
 
 Requirements:
 
@@ -81,8 +112,11 @@ const { userId } = await request.json(); // → use session.user.id
 ## Audit checks
 
 ```bash
-# handlers missing a session check
+# API handlers missing a session check
 grep -rL "getServerSession" src/app/api --include="route.ts" | grep -v "api/auth/"
+
+# dashboard pages missing a requireSession call
+grep -rL "requireSession" "src/app/(dashboard)" --include="page.tsx" --include="layout.tsx"
 ```
 
 ## Allowed exceptions

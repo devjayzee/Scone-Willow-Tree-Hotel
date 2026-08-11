@@ -1,3 +1,4 @@
+import { requireSession } from "@/lib/auth-guard";
 import { getAllBookings } from "@/lib/services/booking";
 import { getAllRooms } from "@/lib/services/room-service";
 import { BookingsClient } from "@/components/booking/bookings-client";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function BookingsPage() {
   // Track when data was fetched for cache freshness
   const fetchTime = Date.now();
+
+  await requireSession();
 
   // Fetch data server-side
   const [bookings, rooms] = await Promise.all([
