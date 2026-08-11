@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import type {
   BookingActionInput,
@@ -18,7 +19,17 @@ import {
   findOverlappingBooking,
   pickUpdateFields,
   validateStatusTransition,
+  MAX_BOOKING_REF_RETRIES,
 } from "./booking-utils";
+
+function isBookingRefCollision(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    Array.isArray(err.meta?.target) &&
+    (err.meta.target as string[]).includes("bookingRef")
+  );
+}
 import {
   checkInBooking,
   checkOutBooking,
@@ -63,31 +74,52 @@ export async function createBooking(
     throw new NotFoundError("Room not found");
   }
 
-  const bookingRef = await generateBookingRef();
-
-  const booking = await prisma.booking.create({
-    data: {
-      bookingRef,
-      roomId: data.roomId,
-      guestName: data.guestName,
-      guestDateOfBirth: data.guestDateOfBirth
-        ? new Date(data.guestDateOfBirth)
-        : null,
-      guestAddress: data.guestAddress || null,
-      guestPhone: data.guestPhone,
-      guestEmail: data.guestEmail || null,
-      vehicleRego: data.vehicleRego || null,
-      additionalGuests: data.additionalGuests || null,
-      checkIn: checkInDate,
-      checkInTime: data.checkInTime || null,
-      checkOut: checkOutDate,
-      checkOutTime: data.checkOutTime || null,
-      bondDeposit: data.bondDeposit ?? null,
-      notes: data.notes || null,
-      createdById,
-    },
-    select: bookingSelectFields,
-  });
+  // Concurrent creates for the same date can race on the sequence
+  // number returned by generateBookingRef — both reads see the same
+  // `last` before either commits, so both try to write the same ref
+  // and one hits P2002 on the @unique column. Retry-on-collision
+  // resolves it without introducing a transaction / advisory lock
+  // (small hotel volumes; the loop very rarely fires more than once).
+  let booking;
+  for (let attempt = 0; attempt < MAX_BOOKING_REF_RETRIES; attempt++) {
+    const bookingRef = await generateBookingRef();
+    try {
+      booking = await prisma.booking.create({
+        data: {
+          bookingRef,
+          roomId: data.roomId,
+          guestName: data.guestName,
+          guestDateOfBirth: data.guestDateOfBirth
+            ? new Date(data.guestDateOfBirth)
+            : null,
+          guestAddress: data.guestAddress || null,
+          guestPhone: data.guestPhone,
+          guestEmail: data.guestEmail || null,
+          vehicleRego: data.vehicleRego || null,
+          additionalGuests: data.additionalGuests || null,
+          checkIn: checkInDate,
+          checkInTime: data.checkInTime || null,
+          checkOut: checkOutDate,
+          checkOutTime: data.checkOutTime || null,
+          bondDeposit: data.bondDeposit ?? null,
+          notes: data.notes || null,
+          createdById,
+        },
+        select: bookingSelectFields,
+      });
+      break;
+    } catch (err) {
+      if (isBookingRefCollision(err)) continue;
+      throw err;
+    }
+  }
+  if (!booking) {
+    // Exhausted retries — surface a ConflictError so the caller sees a
+    // domain error instead of an unmapped Prisma exception (#188).
+    throw new ConflictError(
+      "Could not allocate a unique booking reference — try again",
+    );
+  }
 
   // Audit log
   if (performedBy) {
