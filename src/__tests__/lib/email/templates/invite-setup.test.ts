@@ -52,4 +52,14 @@ describe("inviteSetupEmail template", () => {
     expect(text).toContain("Hi Alex,");
     expect(html).toContain("Hi Alex,");
   });
+
+  it("escapes HTML-unsafe characters in firstName in the html body", async () => {
+    const { inviteSetupEmail } = await loadTemplate();
+    const { html } = inviteSetupEmail({
+      firstName: "<script>",
+      rawToken: "invite-token-xyz",
+    });
+    expect(html).toContain("Hi &lt;script&gt;,");
+    expect(html).not.toContain("Hi <script>,");
+  });
 });
