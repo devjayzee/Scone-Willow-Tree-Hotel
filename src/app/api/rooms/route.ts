@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can create rooms");
+      throw new ForbiddenError("Only general managers can create rooms");
     }
 
     const body = await request.json();
