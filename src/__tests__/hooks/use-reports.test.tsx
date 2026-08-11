@@ -71,7 +71,7 @@ describe("report hooks", () => {
   });
 
   it("useRevenueReport hits /api/reports?type=revenue", async () => {
-    const data = [{ month: "May 2026", revenue: 12500 }];
+    const data = [{ month: "May 2026", realisedRevenue: 12500 }];
     mockFetch.mockResolvedValue(respondWith(data));
 
     const { result } = renderHook(() => useRevenueReport(), { wrapper });
@@ -102,7 +102,7 @@ describe("report hooks", () => {
         pricePerNight: 100,
         totalBookings: 2,
         totalNights: 6,
-        totalRevenue: 600,
+        bookedRevenue: 600,
       },
     ];
     mockFetch.mockResolvedValue(respondWith(data));
