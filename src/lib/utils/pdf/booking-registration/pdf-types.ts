@@ -23,12 +23,17 @@ export interface BookingPDFData {
 
 /**
  * Convert a persisted Booking object to the PDF-facing shape.
+ *
+ * Reads booking.ratePerNight (snapshotted at booking creation, #185)
+ * rather than booking.room.pricePerNight — so a customer printing
+ * their registration two years later sees the rate they were
+ * actually charged, not whatever the room costs today.
  */
 export function bookingToPDFData(booking: Booking): BookingPDFData {
   const pricePerNight =
-    typeof booking.room.pricePerNight === "string"
-      ? parseFloat(booking.room.pricePerNight)
-      : booking.room.pricePerNight;
+    typeof booking.ratePerNight === "string"
+      ? parseFloat(booking.ratePerNight)
+      : booking.ratePerNight;
 
   return {
     guestName: booking.guestName,
