@@ -4,18 +4,14 @@ const dateStringSchema = z
   .string()
   .refine((val) => !isNaN(Date.parse(val)), "Please enter a valid date");
 
-// Query params for GET /api/reports.
-// `type` defaults to "dashboard" when the caller omits it (matches the
-// pre-schema behaviour). `startDate`/`endDate` are only meaningful for
-// `type=rooms`; the flat shape keeps them optional across the board rather
-// than using a discriminated union + fallback, which would silently downgrade
-// malformed rooms requests to `dashboard`.
+// Query params for GET /api/reports. Only `type=rooms` is a live path
+// after the dead-slice sweep (#189). `type` still defaults to
+// `"rooms"` so callers that omit it keep working; `startDate`/`endDate`
+// window the room-performance data.
 export const reportsQuerySchema = z.object({
-  type: z
-    .enum(["dashboard", "occupancy", "revenue", "bookings", "rooms"])
-    .default("dashboard"),
+  type: z.literal("rooms").default("rooms"),
   startDate: dateStringSchema.optional(),
   endDate: dateStringSchema.optional(),
 });
 
-export type ReportsQueryInput = z.infer<typeof reportsQuerySchema>;
+
