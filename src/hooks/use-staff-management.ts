@@ -8,7 +8,7 @@ import {
   useDeleteStaff,
   useToggleStaffActive,
   useResendInvite,
-} from "@/hooks/use-staffs";
+} from "@/hooks/staff";
 import type { Staff } from "@/types/staff";
 import type { StaffFormData } from "@/components/staff/staff-dialog";
 
