@@ -90,6 +90,11 @@ model Booking {
   checkOutTime String? // e.g., "10:00"
   bondDeposit  Decimal? @db.Decimal(10, 2)
 
+  // Guest-visible per-night rate at the moment of booking. Snapshotted
+  // from Room.pricePerNight on create so historical revenue reports
+  // don't retroactively shift when a room's price is edited (#185).
+  ratePerNight Decimal  @db.Decimal(10, 2)
+
   status      BookingStatus @default(CONFIRMED)
   isPaid      Boolean       @default(false)
   notes       String?
