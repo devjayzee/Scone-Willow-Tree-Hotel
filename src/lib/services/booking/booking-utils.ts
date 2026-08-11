@@ -26,12 +26,23 @@ export async function generateBookingRef(): Promise<string> {
 
   let nextNumber = 1;
   if (lastBooking) {
-    const lastNumber = parseInt(lastBooking.bookingRef.split("-").pop() || "0");
+    // Explicit radix so a hypothetical "08"/"09" suffix doesn't fall
+    // into octal parsing quirks on older runtimes (#188).
+    const lastNumber = parseInt(
+      lastBooking.bookingRef.split("-").pop() || "0",
+      10,
+    );
     nextNumber = lastNumber + 1;
   }
 
   return `${prefix}${nextNumber.toString().padStart(3, "0")}`;
 }
+
+/**
+ * Maximum retries when a concurrent bookingRef collision hits Prisma's
+ * `@unique` constraint. See `createBooking` for the retry loop (#188).
+ */
+export const MAX_BOOKING_REF_RETRIES = 3;
 
 /**
  * Check for overlapping bookings for a room
