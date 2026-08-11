@@ -100,7 +100,7 @@ describe("staff mutation hooks", () => {
       await waitFor(() => {
         expect(mockToastSuccess).toHaveBeenCalledWith("Invite sent to bob@example.com");
       });
-      expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staff");
+      expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staffs");
     });
 
     it("rolls back the optimistic staff on error", async () => {
@@ -143,7 +143,7 @@ describe("staff mutation hooks", () => {
 
       await promise;
 
-      expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staff");
+      expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staffs");
     });
 
     it("rolls back on error", async () => {
