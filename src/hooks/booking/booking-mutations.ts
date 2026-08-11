@@ -37,6 +37,9 @@ export function useCreateBooking() {
         checkOut: newBookingData.checkOut,
         checkOutTime: newBookingData.checkOutTime ?? null,
         bondDeposit: newBookingData.bondDeposit ?? null,
+        // Optimistic placeholder; the server replaces this with the
+        // room's real ratePerNight snapshot in the create response (#185).
+        ratePerNight: "0",
         status: "CONFIRMED",
         isPaid: false,
         notes: newBookingData.notes ?? null,

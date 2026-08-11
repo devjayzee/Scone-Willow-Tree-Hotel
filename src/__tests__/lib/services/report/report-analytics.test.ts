@@ -146,11 +146,13 @@ describe("Report Analytics", () => {
         createMockBooking({
           checkIn: new Date("2024-03-01"),
           checkOut: new Date("2024-03-03"), // 2 nights @ $100 = $200
+          ratePerNight: 100,
           room: { roomNumber: "101", pricePerNight: 100 },
         }),
         createMockBooking({
           checkIn: new Date("2024-03-10"),
           checkOut: new Date("2024-03-12"), // 2 nights @ $150 = $300
+          ratePerNight: 150,
           room: { roomNumber: "102", pricePerNight: 150 },
         }),
       ]);
@@ -158,6 +160,28 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       expect(result[5].realisedRevenue).toBe(500); // $200 + $300
+    });
+
+    it("reads booking.ratePerNight (snapshot), not room.pricePerNight (current) — #185", async () => {
+      // First 5 months empty
+      for (let i = 0; i < 5; i++) {
+        mockBookingFindMany.mockResolvedValueOnce([]);
+      }
+      // Last month: booking was created at $80/night (its snapshot),
+      // but the room is currently priced at $200/night. Revenue must
+      // reflect the $80 snapshot.
+      mockBookingFindMany.mockResolvedValueOnce([
+        createMockBooking({
+          checkIn: new Date("2024-03-01"),
+          checkOut: new Date("2024-03-04"), // 3 nights
+          ratePerNight: 80,
+          room: { roomNumber: "101", pricePerNight: 200 },
+        }),
+      ]);
+
+      const result = await getRevenueReport();
+
+      expect(result[5].realisedRevenue).toBe(240); // 3 * 80, NOT 3 * 200
     });
 
     it("should return zero revenue when no bookings exist", async () => {
@@ -302,11 +326,13 @@ describe("Report Analytics", () => {
             {
               checkIn: new Date("2024-03-01"),
               checkOut: new Date("2024-03-05"), // 4 nights
+              ratePerNight: 100,
               status: BookingStatus.CHECKED_OUT,
             },
             {
               checkIn: new Date("2024-03-10"),
               checkOut: new Date("2024-03-12"), // 2 nights
+              ratePerNight: 100,
               status: BookingStatus.CONFIRMED,
             },
           ],
@@ -318,6 +344,40 @@ describe("Report Analytics", () => {
       expect(result[0].totalBookings).toBe(2);
       expect(result[0].totalNights).toBe(6); // 4 + 2
       expect(result[0].bookedRevenue).toBe(600); // 6 nights * $100
+    });
+
+    it("bookedRevenue uses booking.ratePerNight (snapshot), not room.pricePerNight (current) — #185", async () => {
+      // Room's current price is $200, but the two bookings were
+      // snapshotted at $80 and $90 respectively. Total revenue must
+      // reflect the snapshots, not the current room price.
+      mockRoomFindMany.mockResolvedValue([
+        createMockRoom({
+          id: "room-1",
+          roomNumber: "101",
+          pricePerNight: 200,
+          bookings: [
+            {
+              checkIn: new Date("2024-03-01"),
+              checkOut: new Date("2024-03-03"), // 2 nights
+              ratePerNight: 80,
+              status: BookingStatus.CHECKED_OUT,
+            },
+            {
+              checkIn: new Date("2024-03-10"),
+              checkOut: new Date("2024-03-13"), // 3 nights
+              ratePerNight: 90,
+              status: BookingStatus.CONFIRMED,
+            },
+          ],
+        }),
+      ]);
+
+      const result = await getRoomPerformance();
+
+      // 2 * 80 + 3 * 90 = 160 + 270 = 430. NOT 5 * 200 = 1000.
+      expect(result[0].bookedRevenue).toBe(430);
+      // pricePerNight stays as the room's current display anchor.
+      expect(result[0].pricePerNight).toBe(200);
     });
 
     it("should return zero totals for rooms with no bookings", async () => {
@@ -395,6 +455,7 @@ describe("Report Analytics", () => {
             {
               checkIn: new Date("2024-03-01"),
               checkOut: new Date("2024-03-04"), // 3 nights
+              ratePerNight: 99.99,
               status: BookingStatus.CONFIRMED,
             },
           ],
