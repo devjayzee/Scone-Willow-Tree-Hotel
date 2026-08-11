@@ -95,6 +95,19 @@ export const getStaffInviteRateLimiter = makeRateLimiter({
   prefix: "ratelimit:staff-invite",
 });
 
+/**
+ * IP-keyed cap on the public `GET /api/auth/rate-limit-status` endpoint
+ * (#188). Bucket: 60 / 1 min — generous enough for the login page's
+ * ~2 pre-checks per attempt without any UX hit, but enough to blunt a
+ * flood that would otherwise burn Upstash quota. Enforced softly: on
+ * denial the route returns the same `LoginRateLimitStatus` shape it
+ * would on a real login-limit hit, so the pre-check UI doesn't break.
+ */
+export const getRateLimitStatusLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(60, "1 m"),
+  prefix: "ratelimit:rate-limit-status",
+});
+
 export type { LoginRateLimitStatus };
 
 /**
