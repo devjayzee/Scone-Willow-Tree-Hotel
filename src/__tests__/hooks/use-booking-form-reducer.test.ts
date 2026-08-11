@@ -28,6 +28,7 @@ function makeBooking(overrides: Partial<Booking> = {}): Booking {
     checkOut: "2026-05-05T00:00:00.000Z",
     checkOutTime: "11:00",
     bondDeposit: "150.00",
+    ratePerNight: "120.00",
     status: "CONFIRMED",
     isPaid: false,
     notes: "VIP",

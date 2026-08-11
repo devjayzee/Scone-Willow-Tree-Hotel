@@ -63,6 +63,7 @@ export function createMockBooking(
     checkOut: Date;
     checkOutTime: string | null;
     bondDeposit: number | null;
+    ratePerNight: number;
     status: string;
     isPaid: boolean;
     notes: string | null;
@@ -88,6 +89,7 @@ export function createMockBooking(
     checkOut: overrides.checkOut ?? new Date("2024-03-15"),
     checkOutTime: overrides.checkOutTime ?? "10:00",
     bondDeposit: overrides.bondDeposit ?? null,
+    ratePerNight: overrides.ratePerNight ?? 100,
     status: overrides.status ?? "CONFIRMED",
     isPaid: overrides.isPaid ?? false,
     notes: overrides.notes ?? null,
