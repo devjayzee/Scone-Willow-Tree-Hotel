@@ -64,22 +64,17 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
   const saveStaff = useCallback(
     async (formData: StaffFormData) => {
       if (selectedStaff) {
-        // Update existing staff
-        const updateData: Record<string, string | undefined> = {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          role: formData.role,
-        };
-
-        // Only include password if provided
-        if (formData.password) {
-          updateData.password = formData.password;
-        }
-
+        // Update existing staff. Password rotation is deliberately
+        // absent from this payload (#188) — rotation happens via the
+        // /reset-password flow.
         await updateMutation.mutateAsync({
           id: selectedStaff.id,
-          data: updateData,
+          data: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            role: formData.role,
+          },
         });
       } else {
         // Create new staff — invite flow, no password sent (#144).

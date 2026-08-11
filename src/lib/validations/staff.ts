@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { optionalStrongPasswordSchema } from "./password";
 import { emailSchema } from "./email";
 
 // Role enum for validation
@@ -22,7 +21,10 @@ export const createStaffSchema = z.object({
   role: roleEnum.default("STAFF"),
 });
 
-// Schema for updating a staff member (all fields optional)
+// Schema for updating a staff member (all fields optional).
+// Password rotation is deliberately NOT accepted here (#188) — GMs
+// cannot set another user's password directly; rotation goes through
+// the /reset-password flow.
 export const updateStaffSchema = z.object({
   firstName: z
     .string()
@@ -35,7 +37,6 @@ export const updateStaffSchema = z.object({
     .max(100, "Last name must be 100 characters or fewer")
     .optional(),
   email: emailSchema.optional(),
-  password: optionalStrongPasswordSchema,
   role: roleEnum.optional(),
   isActive: z.boolean().optional(),
 });

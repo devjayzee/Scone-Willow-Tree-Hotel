@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,19 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PasswordStrengthIndicator } from "@/components/ui/password-strength-indicator";
-import { RefreshCw } from "lucide-react";
-import { checkPasswordStrength, generatePassword } from "@/lib/validations/password";
 import type { Staff, Role } from "@/types/staff";
 
-// Password is only present when editing (#144). Create flow issues a
-// setup invite; staff sets their own password on /setup-password.
+// Password rotation is handled by the /reset-password flow (#188) —
+// GMs cannot set another user's password directly through the staff
+// edit dialog. Create flow issues an email setup invite per #144.
 
 interface StaffFormData {
   firstName: string;
   lastName: string;
   email: string;
-  password: string;
   role: Role;
 }
 
@@ -60,23 +57,11 @@ export function StaffDialog({
     firstName: "",
     lastName: "",
     email: "",
-    password: "",
     role: "STAFF",
   });
   const [formError, setFormError] = useState("");
 
   const isEditing = staff !== null;
-
-  // Check if password meets requirements. Only relevant in edit mode —
-  // create no longer collects a password (#144).
-  const passwordStrength = useMemo(
-    () => checkPasswordStrength(formData.password),
-    [formData.password]
-  );
-
-  const isPasswordValid = isEditing
-    ? formData.password === "" || passwordStrength.isValid
-    : true;
 
   // Reset form when dialog opens/closes or staff changes
   useEffect(() => {
@@ -88,7 +73,6 @@ export function StaffDialog({
           firstName: staff.firstName,
           lastName: staff.lastName,
           email: staff.email,
-          password: "",
           role: staff.role,
         });
       } else {
@@ -97,7 +81,6 @@ export function StaffDialog({
           firstName: "",
           lastName: "",
           email: "",
-          password: "",
           role: "STAFF",
         });
       }
@@ -121,12 +104,6 @@ export function StaffDialog({
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError("");
-
-    // Validate password strength before submitting
-    if (!isPasswordValid) {
-      setFormError("Password does not meet security requirements");
-      return;
-    }
 
     try {
       await onSubmit(formData);
@@ -189,44 +166,7 @@ export function StaffDialog({
               />
             </div>
 
-            {isEditing ? (
-              <div className="space-y-2">
-                <Label htmlFor="password">
-                  Password (leave blank to keep current)
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="password"
-                    type={formData.password ? "text" : "password"}
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                    placeholder="••••••••"
-                    className="font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() =>
-                      setFormData({ ...formData, password: generatePassword() })
-                    }
-                    title="Generate new password"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <PasswordStrengthIndicator password={formData.password} />
-
-                {formData.password && passwordStrength.isValid && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    New password generated. Share this with the staff member.
-                  </p>
-                )}
-              </div>
-            ) : (
+            {!isEditing && (
               <p className="text-xs text-muted-foreground">
                 The new staff member will receive an email invite to set their
                 own password.
@@ -265,7 +205,7 @@ export function StaffDialog({
             <Button
               type="submit"
               className="bg-navy hover:bg-navy-dark text-cream"
-              disabled={isLoading || !isPasswordValid}
+              disabled={isLoading}
             >
               {isLoading
                 ? "Saving..."
