@@ -64,10 +64,11 @@ export async function createBooking(
     );
   }
 
-  // Verify room exists
+  // Verify room exists — also fetch the current price so we can
+  // snapshot it onto Booking.ratePerNight below (#185).
   const room = await prisma.room.findUnique({
     where: { id: data.roomId },
-    select: { id: true, roomNumber: true },
+    select: { id: true, roomNumber: true, pricePerNight: true },
   });
 
   if (!room) {
@@ -102,6 +103,10 @@ export async function createBooking(
           checkOut: checkOutDate,
           checkOutTime: data.checkOutTime || null,
           bondDeposit: data.bondDeposit ?? null,
+          // Snapshot the room's current rate onto the booking (#185).
+          // Reports read this field, not room.pricePerNight, so a
+          // later room re-price doesn't retroactively change history.
+          ratePerNight: room.pricePerNight,
           notes: data.notes || null,
           createdById,
         },
