@@ -15,21 +15,27 @@ export async function getCalendarEvents(
   endDate?: Date,
   roomId?: string
 ): Promise<CalendarEvent[]> {
-  // Build where clause for active bookings
+  // Build where clause for active bookings.
+  // Predicate is a standard overlap: booking.checkOut > start AND
+  // booking.checkIn < end. Containment (checkIn >= start AND
+  // checkOut <= end) would drop any stay straddling a window edge
+  // (#187). Strict gt/lt matches hotel semantics — a booking whose
+  // checkOut lands exactly on the window start isn't in-house during
+  // the window, and vice versa.
   const where: {
     status: { in: BookingStatus[] };
-    checkIn?: { gte: Date };
-    checkOut?: { lte: Date };
+    checkIn?: { lt: Date };
+    checkOut?: { gt: Date };
     roomId?: string;
   } = {
     status: { in: [BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN] },
   };
 
   if (startDate) {
-    where.checkIn = { gte: startDate };
+    where.checkOut = { gt: startDate };
   }
   if (endDate) {
-    where.checkOut = { lte: endDate };
+    where.checkIn = { lt: endDate };
   }
   if (roomId && roomId !== "all") {
     where.roomId = roomId;
