@@ -170,11 +170,15 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should accept partial update with password", () => {
+    it("strips password from update payloads — rotation goes through /reset-password (#188)", () => {
       const result = updateStaffSchema.safeParse({
-        password: "NewSecureP@ss123",
+        firstName: "Jane",
+        password: "AnyValidP@ss123",
       });
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect((result.data as { password?: unknown }).password).toBeUndefined();
+      }
     });
 
     it("should accept partial update with role", () => {
@@ -196,7 +200,6 @@ describe("Staff Validation", () => {
         firstName: "Jane",
         lastName: "Smith",
         email: "jane.smith@example.com",
-        password: "NewSecureP@ss123",
         role: "MANAGER",
         isActive: true,
       });
@@ -228,11 +231,16 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should reject weak password when provided", () => {
+    it("ignores an incoming password field entirely (#188)", () => {
+      // password is not in the schema; zod silently drops it on non-strict
+      // parse. The strong-password rule stays enforced by the reset flow.
       const result = updateStaffSchema.safeParse({
         password: "weak",
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect((result.data as { password?: unknown }).password).toBeUndefined();
+      }
     });
 
     it("should reject invalid role when provided", () => {
