@@ -145,37 +145,41 @@ describe("Calendar Service", () => {
       expect(result).toEqual([]);
     });
 
-    it("should filter by start date when provided", async () => {
+    it("uses the overlap predicate when only start date is provided (#187)", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const startDate = new Date("2024-03-01T00:00:00Z");
       await getCalendarEvents(startDate);
 
+      // Overlap: return any booking that hasn't already ended before
+      // the window opens. `checkOut > startDate`, NOT `checkIn >= startDate`.
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkIn: { gte: startDate },
+            checkOut: { gt: startDate },
           }),
         })
       );
     });
 
-    it("should filter by end date when provided", async () => {
+    it("uses the overlap predicate when only end date is provided (#187)", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const endDate = new Date("2024-03-31T23:59:59Z");
       await getCalendarEvents(undefined, endDate);
 
+      // Overlap: return any booking that starts before the window closes.
+      // `checkIn < endDate`, NOT `checkOut <= endDate`.
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkOut: { lte: endDate },
+            checkIn: { lt: endDate },
           }),
         })
       );
     });
 
-    it("should filter by date range when both dates provided", async () => {
+    it("uses the overlap predicate when both dates are provided (#187)", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const startDate = new Date("2024-03-01T00:00:00Z");
@@ -185,8 +189,8 @@ describe("Calendar Service", () => {
       expect(mockBookingFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            checkIn: { gte: startDate },
-            checkOut: { lte: endDate },
+            checkOut: { gt: startDate },
+            checkIn: { lt: endDate },
           }),
         })
       );
@@ -315,6 +319,30 @@ describe("Calendar Service", () => {
       expect(result[2].title).toBe("Room 102 - Guest Two");
     });
 
+    it("includes bookings that straddle the window edge (#187)", async () => {
+      // Booking Jan 28 → Feb 5 queried with window [Feb 1, Feb 28].
+      // Under the old containment predicate (`checkIn >= Feb 1`) this
+      // was silently dropped even though the guest is in-house on
+      // Feb 1. Overlap predicate returns it.
+      const straddler = createMockBooking({
+        id: "straddler",
+        checkIn: new Date("2024-01-28T14:00:00Z"),
+        checkOut: new Date("2024-02-05T10:00:00Z"),
+      });
+      mockBookingFindMany.mockResolvedValue([straddler]);
+
+      const result = await getCalendarEvents(
+        new Date("2024-02-01T00:00:00Z"),
+        new Date("2024-02-28T23:59:59Z"),
+      );
+
+      // 8 nights (Jan 28 through Feb 4) → 8 events. Concretely: the
+      // booking is present in the result at all, which under the old
+      // predicate it wouldn't be.
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0].id).toContain("straddler");
+    });
+
     it("should apply all filters together", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
@@ -329,8 +357,8 @@ describe("Calendar Service", () => {
           status: {
             in: [BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN],
           },
-          checkIn: { gte: startDate },
-          checkOut: { lte: endDate },
+          checkOut: { gt: startDate },
+          checkIn: { lt: endDate },
           roomId: "room-specific",
         },
         include: {
