@@ -1,63 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type {
-  RoomPerformanceData,
-  DashboardStats,
-  OccupancyData,
-  RevenueData,
-  BookingTrendData,
-} from "@/types/report";
+import type { RoomPerformanceData } from "@/types/report";
 
-// Query key factory for reports
+// Only the room-performance surface survives after the dead-slice
+// sweep (#189). Dashboard / occupancy / revenue / booking-trends
+// hooks were unconsumed.
 export const reportKeys = {
   all: ["reports"] as const,
-  dashboard: () => [...reportKeys.all, "dashboard"] as const,
-  occupancy: () => [...reportKeys.all, "occupancy"] as const,
-  revenue: () => [...reportKeys.all, "revenue"] as const,
-  bookingTrends: () => [...reportKeys.all, "bookingTrends"] as const,
   roomPerformance: () => [...reportKeys.all, "roomPerformance"] as const,
   roomPerformanceFiltered: (startDate?: string, endDate?: string) =>
     [...reportKeys.roomPerformance(), { startDate, endDate }] as const,
 };
 
-// Fetch dashboard stats
-async function fetchDashboardStats(): Promise<DashboardStats> {
-  const response = await fetch("/api/reports?type=dashboard");
-  if (!response.ok) {
-    throw new Error("Failed to fetch dashboard stats");
-  }
-  return response.json();
-}
-
-// Fetch occupancy report
-async function fetchOccupancyReport(): Promise<OccupancyData[]> {
-  const response = await fetch("/api/reports?type=occupancy");
-  if (!response.ok) {
-    throw new Error("Failed to fetch occupancy report");
-  }
-  return response.json();
-}
-
-// Fetch revenue report
-async function fetchRevenueReport(): Promise<RevenueData[]> {
-  const response = await fetch("/api/reports?type=revenue");
-  if (!response.ok) {
-    throw new Error("Failed to fetch revenue report");
-  }
-  return response.json();
-}
-
-// Fetch booking trends
-async function fetchBookingTrends(): Promise<BookingTrendData[]> {
-  const response = await fetch("/api/reports?type=bookings");
-  if (!response.ok) {
-    throw new Error("Failed to fetch booking trends");
-  }
-  return response.json();
-}
-
-// Fetch room performance with optional date filter
 async function fetchRoomPerformance(
   startDate?: string,
   endDate?: string
@@ -71,50 +26,6 @@ async function fetchRoomPerformance(
     throw new Error("Failed to fetch room performance");
   }
   return response.json();
-}
-
-/**
- * Hook to fetch dashboard statistics
- */
-export function useDashboardStats() {
-  return useQuery({
-    queryKey: reportKeys.dashboard(),
-    queryFn: fetchDashboardStats,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
-/**
- * Hook to fetch occupancy report (last 6 months)
- */
-export function useOccupancyReport() {
-  return useQuery({
-    queryKey: reportKeys.occupancy(),
-    queryFn: fetchOccupancyReport,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-  });
-}
-
-/**
- * Hook to fetch revenue report (last 6 months)
- */
-export function useRevenueReport() {
-  return useQuery({
-    queryKey: reportKeys.revenue(),
-    queryFn: fetchRevenueReport,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-  });
-}
-
-/**
- * Hook to fetch booking trends (last 30 days)
- */
-export function useBookingTrends() {
-  return useQuery({
-    queryKey: reportKeys.bookingTrends(),
-    queryFn: fetchBookingTrends,
-    staleTime: 1000 * 60 * 10, // 10 minutes
-  });
 }
 
 /**

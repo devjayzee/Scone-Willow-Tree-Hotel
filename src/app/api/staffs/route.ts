@@ -26,7 +26,7 @@ export async function GET() {
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can view staff list");
+      throw new ForbiddenError("Only general managers can view staff list");
     }
 
     const staffs = await getAllStaff();
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       }
 
       if (session.user.role !== "GENERAL_MANAGER") {
-        throw new ForbiddenError("Only managers can create staff");
+        throw new ForbiddenError("Only general managers can create staff");
       }
 
       // Per-user cap on invite creation (#182). Tightens the generic
