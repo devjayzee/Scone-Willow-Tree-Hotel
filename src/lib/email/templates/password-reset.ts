@@ -1,16 +1,8 @@
 import { RESET_TOKEN_TTL_MINUTES } from "@/lib/services/password-reset-service";
 import { APP_BASE_URL } from "@/lib/email/app-url";
+import { escapeHtml } from "@/lib/email/escape-html";
 
 const POSTAL_ADDRESS = "136 Kelly St, Scone NSW 2337, Australia";
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 export function passwordResetEmail(input: {
   firstName: string;
