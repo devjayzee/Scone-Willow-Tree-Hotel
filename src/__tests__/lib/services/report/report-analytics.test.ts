@@ -90,6 +90,15 @@ describe("Report Analytics", () => {
         expect(month.month).toMatch(/^[A-Z][a-z]{2} \d{4}$/);
       });
     });
+
+    it("issues room.count() once, not six times (#188)", async () => {
+      mockRoomCount.mockResolvedValue(10);
+      mockBookingFindMany.mockResolvedValue([]);
+
+      await getOccupancyReport();
+
+      expect(mockRoomCount).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ============================================================
@@ -187,7 +196,7 @@ describe("Report Analytics", () => {
   // ============================================================
   describe("getBookingTrends", () => {
     it("should return 30 days of booking data", async () => {
-      mockBookingCount.mockResolvedValue(0);
+      mockBookingFindMany.mockResolvedValue([]);
 
       const result = await getBookingTrends();
 
@@ -196,13 +205,22 @@ describe("Report Analytics", () => {
       expect(result[0]).toHaveProperty("bookings");
     });
 
+    it("uses a single findMany query, not 30 count() calls (#188)", async () => {
+      mockBookingFindMany.mockResolvedValue([]);
+
+      await getBookingTrends();
+
+      expect(mockBookingFindMany).toHaveBeenCalledTimes(1);
+      expect(mockBookingCount).not.toHaveBeenCalled();
+    });
+
     it("should return booking counts for each day", async () => {
-      // First 29 days with 0 bookings
-      for (let i = 0; i < 29; i++) {
-        mockBookingCount.mockResolvedValueOnce(0);
-      }
-      // Today has 5 bookings
-      mockBookingCount.mockResolvedValueOnce(5);
+      const today = new Date();
+      // 5 bookings created today
+      const bookings = Array.from({ length: 5 }, () => ({
+        createdAt: new Date(today),
+      }));
+      mockBookingFindMany.mockResolvedValue(bookings);
 
       const result = await getBookingTrends();
 
@@ -210,7 +228,7 @@ describe("Report Analytics", () => {
     });
 
     it("should format date as MMM dd", async () => {
-      mockBookingCount.mockResolvedValue(0);
+      mockBookingFindMany.mockResolvedValue([]);
 
       const result = await getBookingTrends();
 
@@ -221,10 +239,19 @@ describe("Report Analytics", () => {
     });
 
     it("should handle days with varying booking counts", async () => {
-      const counts = Array.from({ length: 30 }, (_, i) => i);
-      counts.forEach((count) => {
-        mockBookingCount.mockResolvedValueOnce(count);
-      });
+      // Emit `index` bookings for day at offset `29 - index` (i.e.
+      // today has 29, yesterday has 28, ...).
+      const today = new Date();
+      const bookings: { createdAt: Date }[] = [];
+      for (let index = 0; index < 30; index++) {
+        const dayOffset = 29 - index;
+        const date = new Date(today);
+        date.setDate(date.getDate() - dayOffset);
+        for (let j = 0; j < index; j++) {
+          bookings.push({ createdAt: new Date(date) });
+        }
+      }
+      mockBookingFindMany.mockResolvedValue(bookings);
 
       const result = await getBookingTrends();
 
