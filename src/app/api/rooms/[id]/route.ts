@@ -40,7 +40,7 @@ export async function PUT(
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can update rooms");
+      throw new ForbiddenError("Only general managers can update rooms");
     }
 
     const { id } = await params;
@@ -70,7 +70,7 @@ export async function DELETE(
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can delete rooms");
+      throw new ForbiddenError("Only general managers can delete rooms");
     }
 
     const { id } = await params;

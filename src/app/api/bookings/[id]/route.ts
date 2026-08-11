@@ -121,9 +121,9 @@ export async function DELETE(
         throw new UnauthorizedError();
       }
 
-      // Only managers can delete bookings
+      // Only general managers can delete bookings
       if (session.user.role !== "GENERAL_MANAGER") {
-        throw new ForbiddenError("Only managers can delete bookings");
+        throw new ForbiddenError("Only general managers can delete bookings");
       }
 
       const { id } = await params;
