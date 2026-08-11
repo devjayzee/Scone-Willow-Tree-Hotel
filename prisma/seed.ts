@@ -11,6 +11,20 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  // Refuse to run against production databases (#182). Seed hashes
+  // policy-violating passwords (REDACTED / REDACTED) and wipes bookings
+  // + rooms via deleteMany — accidental prod invocation would both
+  // destroy live data and plant weak credentials in it. Explicit
+  // escape hatch for the first-time demo seed: set ALLOW_PROD_SEED=1.
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_PROD_SEED !== "1"
+  ) {
+    throw new Error(
+      "Refusing to seed with NODE_ENV=production. Set ALLOW_PROD_SEED=1 to override (destructive).",
+    );
+  }
+
   console.log("Seeding database...");
 
   // Delete existing bookings first (due to foreign key constraint)

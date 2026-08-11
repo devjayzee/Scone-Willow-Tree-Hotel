@@ -82,6 +82,19 @@ export const getAuthEndpointRateLimiter = makeRateLimiter({
   prefix: "ratelimit:auth-endpoint",
 });
 
+/**
+ * Per-user limiter for `POST /api/staffs` (#182). Bucket: 5 / 1 h. The
+ * generic apiRateLimiter (120 / 1 min) is too loose here because a
+ * compromised GM account can spray outbound invites from the verified
+ * Resend domain. 5 / hour is enough for a normal hiring push and low
+ * enough to blunt an abuse burst even before the recipient-domain
+ * allowlist kicks in.
+ */
+export const getStaffInviteRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(5, "1 h"),
+  prefix: "ratelimit:staff-invite",
+});
+
 export type { LoginRateLimitStatus };
 
 /**
