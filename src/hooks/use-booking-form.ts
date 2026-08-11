@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { format } from "date-fns";
-import { useAvailableRooms } from "@/hooks/use-rooms";
+import { useAvailableRooms } from "@/hooks/room";
 import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
 import {
   downloadDraftBookingPDF,
   type BookingPDFData,
-} from "@/lib/utils/pdf/booking-registration";
+} from "@/lib/utils/pdf/booking-registration/index";
 import { formatDisplayDate, formatDisplayTime } from "@/lib/utils/format-date";
 import {
   bookingFormReducer,

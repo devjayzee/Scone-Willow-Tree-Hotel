@@ -31,7 +31,6 @@ export function StaffTable({
   onToggleActive,
   onResendInvite,
 }: StaffTableProps) {
-  // Use shared pagination hook
   const {
     currentPage,
     setCurrentPage,
@@ -46,18 +45,15 @@ export function StaffTable({
     storageKeyPrefix: "staff",
   });
 
-  // Helper to get initials
   const getInitials = (staff: Staff) =>
     `${staff.firstName[0] || ""}${staff.lastName[0] || ""}`.toUpperCase();
 
-  // Helper to get role display
   const getRoleDisplay = (role: string) => {
     if (role === "GENERAL_MANAGER") return "GM";
     if (role === "MANAGER") return "Manager";
     return "Staff";
   };
 
-  // Reusable action menu
   const renderActionMenu = (staff: Staff) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

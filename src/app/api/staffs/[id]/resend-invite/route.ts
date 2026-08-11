@@ -27,7 +27,7 @@ export async function POST(
         throw new UnauthorizedError();
       }
       if (session.user.role !== "GENERAL_MANAGER") {
-        throw new ForbiddenError("Only managers can resend staff invites");
+        throw new ForbiddenError("Only general managers can resend staff invites");
       }
 
       const { id } = await params;

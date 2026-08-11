@@ -56,35 +56,3 @@ export function invalidateWithRelated(
   });
 }
 
-/**
- * Invalidates multiple primary caches and all their related caches.
- * Automatically deduplicates to avoid redundant invalidations.
- *
- * @example
- * invalidateMultipleWithRelated(queryClient, ["bookings", "rooms"]);
- */
-export function invalidateMultipleWithRelated(
-  queryClient: QueryClient,
-  primaryKeys: CacheKey[]
-): void {
-  const allKeys = new Set<string>();
-
-  primaryKeys.forEach((key) => {
-    allKeys.add(key);
-    CACHE_RELATIONSHIPS[key].forEach((relatedKey) => {
-      allKeys.add(relatedKey);
-    });
-  });
-
-  allKeys.forEach((key) => {
-    queryClient.invalidateQueries({ queryKey: [key] });
-  });
-}
-
-/**
- * Gets all cache keys that would be invalidated for a given primary key.
- * Useful for debugging or logging.
- */
-export function getInvalidationTargets(primaryKey: CacheKey): string[] {
-  return [primaryKey, ...CACHE_RELATIONSHIPS[primaryKey]];
-}

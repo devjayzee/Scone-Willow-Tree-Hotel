@@ -21,7 +21,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { startOfDay } from "date-fns";
-import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration";
+import { downloadBookingPDF } from "@/lib/utils/pdf/booking-registration/index";
 import type { Booking, BookingSummary } from "@/types/booking";
 
 export interface BookingTableActionsProps<T extends BookingSummary> {
