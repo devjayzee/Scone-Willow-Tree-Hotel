@@ -11,14 +11,20 @@ import { QueryClient } from "@tanstack/react-query";
  * - rooms: Bookings display room info, calendar uses rooms, reports use room data
  * - calendar: No dependents (it's a consumer)
  * - reports: No dependents (it's a consumer)
- * - staff: No dependents currently
+ * - staffs: No dependents currently
+ *
+ * Keys here MUST match `<factory>.all[0]` (see the per-domain
+ * `-keys.ts` files under `src/hooks/`).
+ * `src/__tests__/lib/query-invalidation.test.ts` enforces this at test
+ * time — if any factory's `all` array is renamed, the drift guard fires
+ * so the invalidation call never silently no-ops again (#183).
  */
 const CACHE_RELATIONSHIPS = {
   bookings: ["calendar", "reports"],
   rooms: ["bookings", "calendar", "reports"],
   calendar: [],
   reports: [],
-  staff: [],
+  staffs: [],
 } as const;
 
 type CacheKey = keyof typeof CACHE_RELATIONSHIPS;

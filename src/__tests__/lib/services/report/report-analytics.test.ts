@@ -90,6 +90,15 @@ describe("Report Analytics", () => {
         expect(month.month).toMatch(/^[A-Z][a-z]{2} \d{4}$/);
       });
     });
+
+    it("issues room.count() once, not six times (#188)", async () => {
+      mockRoomCount.mockResolvedValue(10);
+      mockBookingFindMany.mockResolvedValue([]);
+
+      await getOccupancyReport();
+
+      expect(mockRoomCount).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ============================================================
@@ -103,7 +112,7 @@ describe("Report Analytics", () => {
 
       expect(result).toHaveLength(6);
       expect(result[0]).toHaveProperty("month");
-      expect(result[0]).toHaveProperty("revenue");
+      expect(result[0]).toHaveProperty("realisedRevenue");
     });
 
     it("should calculate revenue based on nights and room price", async () => {
@@ -124,7 +133,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       // Last month: 4 nights * $100 = $400
-      expect(result[5].revenue).toBe(400);
+      expect(result[5].realisedRevenue).toBe(400);
     });
 
     it("should sum revenue from multiple bookings", async () => {
@@ -148,7 +157,7 @@ describe("Report Analytics", () => {
 
       const result = await getRevenueReport();
 
-      expect(result[5].revenue).toBe(500); // $200 + $300
+      expect(result[5].realisedRevenue).toBe(500); // $200 + $300
     });
 
     it("should return zero revenue when no bookings exist", async () => {
@@ -157,7 +166,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       result.forEach((month) => {
-        expect(month.revenue).toBe(0);
+        expect(month.realisedRevenue).toBe(0);
       });
     });
 
@@ -178,7 +187,7 @@ describe("Report Analytics", () => {
       const result = await getRevenueReport();
 
       // 3 * 99.99 = 299.97, rounded to 300
-      expect(Number.isInteger(result[5].revenue)).toBe(true);
+      expect(Number.isInteger(result[5].realisedRevenue)).toBe(true);
     });
   });
 
@@ -187,7 +196,7 @@ describe("Report Analytics", () => {
   // ============================================================
   describe("getBookingTrends", () => {
     it("should return 30 days of booking data", async () => {
-      mockBookingCount.mockResolvedValue(0);
+      mockBookingFindMany.mockResolvedValue([]);
 
       const result = await getBookingTrends();
 
@@ -196,13 +205,22 @@ describe("Report Analytics", () => {
       expect(result[0]).toHaveProperty("bookings");
     });
 
+    it("uses a single findMany query, not 30 count() calls (#188)", async () => {
+      mockBookingFindMany.mockResolvedValue([]);
+
+      await getBookingTrends();
+
+      expect(mockBookingFindMany).toHaveBeenCalledTimes(1);
+      expect(mockBookingCount).not.toHaveBeenCalled();
+    });
+
     it("should return booking counts for each day", async () => {
-      // First 29 days with 0 bookings
-      for (let i = 0; i < 29; i++) {
-        mockBookingCount.mockResolvedValueOnce(0);
-      }
-      // Today has 5 bookings
-      mockBookingCount.mockResolvedValueOnce(5);
+      const today = new Date();
+      // 5 bookings created today
+      const bookings = Array.from({ length: 5 }, () => ({
+        createdAt: new Date(today),
+      }));
+      mockBookingFindMany.mockResolvedValue(bookings);
 
       const result = await getBookingTrends();
 
@@ -210,7 +228,7 @@ describe("Report Analytics", () => {
     });
 
     it("should format date as MMM dd", async () => {
-      mockBookingCount.mockResolvedValue(0);
+      mockBookingFindMany.mockResolvedValue([]);
 
       const result = await getBookingTrends();
 
@@ -221,10 +239,19 @@ describe("Report Analytics", () => {
     });
 
     it("should handle days with varying booking counts", async () => {
-      const counts = Array.from({ length: 30 }, (_, i) => i);
-      counts.forEach((count) => {
-        mockBookingCount.mockResolvedValueOnce(count);
-      });
+      // Emit `index` bookings for day at offset `29 - index` (i.e.
+      // today has 29, yesterday has 28, ...).
+      const today = new Date();
+      const bookings: { createdAt: Date }[] = [];
+      for (let index = 0; index < 30; index++) {
+        const dayOffset = 29 - index;
+        const date = new Date(today);
+        date.setDate(date.getDate() - dayOffset);
+        for (let j = 0; j < index; j++) {
+          bookings.push({ createdAt: new Date(date) });
+        }
+      }
+      mockBookingFindMany.mockResolvedValue(bookings);
 
       const result = await getBookingTrends();
 
@@ -262,7 +289,7 @@ describe("Report Analytics", () => {
       expect(result[0]).toHaveProperty("pricePerNight");
       expect(result[0]).toHaveProperty("totalBookings");
       expect(result[0]).toHaveProperty("totalNights");
-      expect(result[0]).toHaveProperty("totalRevenue");
+      expect(result[0]).toHaveProperty("bookedRevenue");
     });
 
     it("should calculate totals from bookings", async () => {
@@ -290,7 +317,7 @@ describe("Report Analytics", () => {
 
       expect(result[0].totalBookings).toBe(2);
       expect(result[0].totalNights).toBe(6); // 4 + 2
-      expect(result[0].totalRevenue).toBe(600); // 6 nights * $100
+      expect(result[0].bookedRevenue).toBe(600); // 6 nights * $100
     });
 
     it("should return zero totals for rooms with no bookings", async () => {
@@ -307,7 +334,7 @@ describe("Report Analytics", () => {
 
       expect(result[0].totalBookings).toBe(0);
       expect(result[0].totalNights).toBe(0);
-      expect(result[0].totalRevenue).toBe(0);
+      expect(result[0].bookedRevenue).toBe(0);
     });
 
     it("should filter by date range when provided", async () => {
@@ -377,7 +404,7 @@ describe("Report Analytics", () => {
       const result = await getRoomPerformance();
 
       // 3 * 99.99 = 299.97, rounded to 300
-      expect(Number.isInteger(result[0].totalRevenue)).toBe(true);
+      expect(Number.isInteger(result[0].bookedRevenue)).toBe(true);
     });
 
     it("should return empty array when no rooms exist", async () => {
