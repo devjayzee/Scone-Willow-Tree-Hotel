@@ -26,9 +26,25 @@ const PUBLIC_AUTH_PATHS = new Set([
 ]);
 
 function enforceBodySizeCap(req: NextRequest): NextResponse | null {
-  if (req.method === "GET" || req.method === "HEAD") return null;
+  if (
+    req.method === "GET" ||
+    req.method === "HEAD" ||
+    req.method === "OPTIONS"
+  ) {
+    return null;
+  }
   const contentLength = req.headers.get("content-length");
-  if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
+  // Missing content-length on a body-carrying method typically means
+  // Transfer-Encoding: chunked, which sidesteps the size check
+  // entirely (#188). Force clients to declare a length so the cap
+  // applies uniformly. Vercel's 4.5 MB cap is still the real backstop.
+  if (contentLength === null) {
+    return NextResponse.json(
+      { error: "Content-Length required" },
+      { status: 411 },
+    );
+  }
+  if (Number(contentLength) > MAX_BODY_BYTES) {
     return NextResponse.json(
       { error: "Request body too large" },
       { status: 413 },

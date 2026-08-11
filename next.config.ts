@@ -21,6 +21,10 @@ const CSP_DIRECTIVES = [
   SCRIPT_SRC,
   "font-src 'self' data:",
   "connect-src 'self' https://*.upstash.io",
+  // Block <object>, <embed>, <applet> plugin surfaces outright — we
+  // don't render any, and it's the standard tightening pair for
+  // script-src 'unsafe-inline' (#188).
+  "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
