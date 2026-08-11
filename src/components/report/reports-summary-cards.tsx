@@ -5,13 +5,13 @@ import { Calendar, TrendingUp, DollarSign } from "lucide-react";
 interface ReportsSummaryCardsProps {
   totalBookings: number;
   totalNights: number;
-  totalRevenue: number;
+  bookedRevenue: number;
 }
 
 export function ReportsSummaryCards({
   totalBookings,
   totalNights,
-  totalRevenue,
+  bookedRevenue,
 }: ReportsSummaryCardsProps) {
   return (
     <div className="grid grid-cols-3 gap-3 md:hidden">
@@ -34,9 +34,9 @@ export function ReportsSummaryCards({
           <DollarSign className="h-4 w-4 text-emerald-500" />
         </div>
         <div className="text-lg font-bold text-emerald-600">
-          ${totalRevenue.toLocaleString()}
+          ${bookedRevenue.toLocaleString()}
         </div>
-        <div className="text-xs text-gray-500">Revenue</div>
+        <div className="text-xs text-gray-500">Booked Revenue</div>
       </div>
     </div>
   );
