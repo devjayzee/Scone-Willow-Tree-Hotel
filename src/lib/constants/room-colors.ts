@@ -3,14 +3,14 @@
  * Used across calendar components for consistent room color coding
  */
 
-export interface RoomColorScheme {
+interface RoomColorScheme {
   bg: string;
   dot: string;
   text: string;
   border: string;
 }
 
-export const roomColors: Record<string, RoomColorScheme> = {
+const roomColors: Record<string, RoomColorScheme> = {
   "1": { bg: "#fef3c7", dot: "#f59e0b", text: "#92400e", border: "#fcd34d" },
   "2": { bg: "#dbeafe", dot: "#3b82f6", text: "#1e40af", border: "#93c5fd" },
   "3": { bg: "#dcfce7", dot: "#22c55e", text: "#166534", border: "#86efac" },
