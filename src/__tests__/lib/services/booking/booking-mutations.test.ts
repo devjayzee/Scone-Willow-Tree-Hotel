@@ -134,6 +134,32 @@ describe("Booking Mutations", () => {
       expect(mockBookingCreate).toHaveBeenCalledTimes(3);
     });
 
+    it("snapshots the room's current pricePerNight onto booking.ratePerNight (#185)", async () => {
+      mockBookingFindFirst.mockResolvedValue(null);
+      mockRoomFindUnique.mockResolvedValue({
+        id: "room-1",
+        roomNumber: "101",
+        pricePerNight: 217,
+      });
+      mockBookingCreate.mockResolvedValue(createMockBooking({ ratePerNight: 217 }));
+
+      await createBooking(validInput, "user-1");
+
+      // The room fetch must pull pricePerNight for the snapshot.
+      expect(mockRoomFindUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ pricePerNight: true }),
+        }),
+      );
+
+      // The create payload carries the snapshot.
+      expect(mockBookingCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ ratePerNight: 217 }),
+        }),
+      );
+    });
+
     it("re-throws non-collision Prisma errors without retry (#188)", async () => {
       mockBookingFindFirst.mockResolvedValue(null);
       mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
@@ -186,6 +212,16 @@ describe("Booking Mutations", () => {
     const existingBooking = createMockBooking({
       id: "booking-1",
       status: "CONFIRMED",
+    });
+
+    it("never touches ratePerNight on update — snapshot semantics (#185)", async () => {
+      mockBookingFindUnique.mockResolvedValue(existingBooking);
+      mockBookingUpdate.mockResolvedValue(existingBooking);
+
+      await updateBooking("booking-1", { roomId: "room-2" });
+
+      const [call] = mockBookingUpdate.mock.calls;
+      expect(call[0].data).not.toHaveProperty("ratePerNight");
     });
 
     it("should update booking when it exists", async () => {
