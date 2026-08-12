@@ -191,7 +191,12 @@ const authMiddleware = withAuth(
       }
     }
 
-    return NextResponse.next();
+    // Forward the (possibly mutated) request headers so the outer
+    // middleware's x-nonce injection reaches RSCs and Next's script
+    // emitter (#141). Without `{ request: { headers } }`, Next uses
+    // the ORIGINAL request headers and never sees x-nonce, so
+    // strict-dynamic blocks its own chunk loader.
+    return NextResponse.next({ request: { headers: req.headers } });
   },
   {
     callbacks: {
@@ -234,17 +239,20 @@ export default async function middleware(req: NextRequest) {
     return apiRateLimitResponse;
   }
 
-  // Per-request CSP nonce (#141). Next 15/16 auto-parses the CSP
-  // header on the outgoing response and applies the nonce to its own
-  // inline hydration scripts, so no per-page wiring is needed — the
-  // whole point of doing this in middleware. The 411/413/429 early
-  // returns above skip CSP; they emit JSON, browsers don't apply
-  // CSP to JSON responses.
+  // Per-request CSP nonce (#141). Next reads the nonce from the
+  // request's `x-nonce` header when emitting hydration <script>
+  // tags — with strict-dynamic on, chunk scripts without a nonce
+  // get blocked. Mutating req.headers here (a mutable Web Headers
+  // instance) makes the value available to the downstream branches
+  // via `NextResponse.next({ request: { headers: req.headers } })`.
+  // The 411/413/429 early returns above skip CSP entirely; they emit
+  // JSON and browsers don't apply CSP to JSON meaningfully.
   const nonce = crypto.randomUUID();
   const csp = buildCsp({
     nonce,
     dev: process.env.NODE_ENV === "development",
   });
+  req.headers.set("x-nonce", nonce);
 
   let response: NextResponse;
 
@@ -253,7 +261,7 @@ export default async function middleware(req: NextRequest) {
   // calls to /login instead of returning a JSON 401.
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
-    response = NextResponse.next();
+    response = NextResponse.next({ request: { headers: req.headers } });
   } else {
     // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
     // have a real NextFetchEvent at this call site — NextAuth treats {} as
