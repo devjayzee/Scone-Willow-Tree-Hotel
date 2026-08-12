@@ -158,13 +158,20 @@ plan template lives in `plans/README.md`.
 
 ## Git workflow
 
-- Branches: `main` (production, deploys to Vercel on push), `development`
-  (integration, default working branch and PR target for features),
-  feature branches off `development`. Feature PRs target `development`;
-  only release PRs promote `development` into `main`.
-- Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test:`, `docs:`.
+- **Permanent branches:** `main` (production, deploys to Vercel on push) and
+  `development` (integration, default PR target for features). Both are
+  never deleted or recreated.
+- **Feature branches** (`feat/*`, `fix/*`, `refactor/*`, `chore/*`, `test/*`,
+  `docs/*`) branch off `development`, PR into `development`, and are
+  auto-deleted on merge by `.github/workflows/auto-delete-feature-branch.yml`.
+- **Release PRs** promote `development` → `main`. Only `development` may PR
+  to `main` — enforced by `.github/workflows/enforce-release-source.yml`
+  (feature-branch-to-main PRs fail CI). After a release merge, `development`
+  is preserved; merge `main` back into `development` to bring the release
+  commit forward before the next feature.
+- Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore(scope):`, `test:`, `docs:`.
 - PRs merge as merge commits (squash and rebase disabled at the repo level
-  to preserve per-commit history). Merged branches auto-delete.
+  to preserve per-commit history).
 - CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
   must run before tests.
 - Never commit `.env`. Never push directly to `main` — enforced client-side
