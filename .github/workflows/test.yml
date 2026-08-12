@@ -78,3 +78,50 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npm run test:run
+
+  smoke:
+    # Post-deploy browser smoke for the four auth pages (#135). Catches
+    # CSP / hydration / chunk-load regressions that vitest and curl
+    # can't see — the exact class of bug that shipped PR #130's CSP
+    # outage. Scoped to render + hydration; no live DB required.
+    name: Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    env:
+      # Placeholder secrets — enough to boot the app. Rate limiting
+      # and email transport self-disable when their env vars are unset,
+      # so no real Upstash / Resend needed for a render smoke. The DB
+      # URL points nowhere; Prisma client construction is lazy and the
+      # smoke never hits an endpoint that queries.
+      NEXTAUTH_SECRET: ci-smoke-secret-placeholder-32-chars-ok
+      NEXTAUTH_URL: http://localhost:3000
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx prisma generate
+      # Cache Playwright's browsers separately from npm — ~200MB and
+      # invalidated only by the Playwright version, not package-lock.
+      - name: Playwright browsers cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run test:smoke
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
