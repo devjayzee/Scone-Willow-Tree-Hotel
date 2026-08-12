@@ -89,15 +89,24 @@ jobs:
     timeout-minutes: 15
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
-      # Placeholder secrets — enough to boot the app. Rate limiting
-      # and email transport self-disable when their env vars are unset,
-      # so no real Upstash / Resend needed for a render smoke. The DB
-      # URL points nowhere; Prisma client construction is lazy and the
-      # smoke never hits an endpoint that queries.
+      # Placeholder secrets — enough to boot the built app. The
+      # smoke never hits an endpoint that queries the DB or sends
+      # email; these values just satisfy fail-fast guards.
+      #
+      # - NEXTAUTH_SECRET: required by src/lib/auth.ts at module load.
+      # - NEXTAUTH_URL: required by src/lib/email/app-url.ts.
+      # - DATABASE_URL / DIRECT_URL: Prisma client construction is
+      #   lazy; the smoke doesn't query.
+      # - RESEND_API_KEY / EMAIL_FROM: src/lib/email/email-transport.ts
+      #   throws at module load when NODE_ENV=production (which
+      #   `next build` sets) and either is missing. Placeholders keep
+      #   the guard happy without sending real mail.
       NEXTAUTH_SECRET: ci-smoke-secret-placeholder-32-chars-ok
       NEXTAUTH_URL: http://localhost:3000
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      RESEND_API_KEY: ci-smoke-resend-placeholder
+      EMAIL_FROM: ci-smoke@example.invalid
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
