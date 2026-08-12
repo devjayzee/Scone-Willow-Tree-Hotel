@@ -13,7 +13,16 @@ jobs:
       - name: Assert head branch is development
         env:
           HEAD_REF: ${{ github.head_ref }}
+          PR_ACTOR: ${{ github.event.pull_request.user.login }}
         run: |
+          # Dependabot security updates always target the default branch
+          # (main) — the target-branch option in dependabot.yml does not
+          # apply to security PRs, per GitHub docs. Exempt them so CVE
+          # patches can fast-track directly to main.
+          if [ "$PR_ACTOR" = "dependabot[bot]" ]; then
+            echo "OK: dependabot PR — security updates may fast-track to main"
+            exit 0
+          fi
           if [ "$HEAD_REF" != "development" ]; then
             echo "::error::PRs to main must come from the 'development' branch (got: '$HEAD_REF'). Retarget this PR to 'development' first, then cut a release PR from development to main."
             exit 1
