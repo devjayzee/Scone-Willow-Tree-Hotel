@@ -169,8 +169,15 @@ const authMiddleware = withAuth(
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
 
-    // Redirect authenticated users away from the public auth pages
-    if (PUBLIC_AUTH_PATHS.has(path) && token) {
+    // Redirect authenticated users away from the public auth pages.
+    // Check `token.id` not `token` — auth.ts's jwt callback returns
+    // `{ ...token, id: null }` on invalidation (expiry, tokenVersion
+    // bump, deactivation) and NextAuth re-encodes that nulled shape
+    // back to the cookie. `!!token` is truthy for the nulled shape,
+    // which used to loop: middleware would send an invalidated user
+    // from /login → /bookings → requireSession redirects to /login →
+    // repeat. Requiring token.id breaks the loop (#181 follow-up).
+    if (PUBLIC_AUTH_PATHS.has(path) && token?.id) {
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
 
@@ -200,15 +207,17 @@ const authMiddleware = withAuth(
         if (PUBLIC_AUTH_PATHS.has(path) || path.startsWith("/api/auth/")) {
           return true;
         }
-        // Require token for all other matched routes
-        return !!token;
+        // Require a valid token (with id) — see the comment on the
+        // /login redirect above for the invalidated-token loop this
+        // guards against.
+        return !!token?.id;
       },
     },
   }
 );
 
 // Combined middleware
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   // Body-size cap runs before anything else so an oversized payload never
   // touches auth, rate limiting, or the route handler.
   const oversized = enforceBodySizeCap(req);
