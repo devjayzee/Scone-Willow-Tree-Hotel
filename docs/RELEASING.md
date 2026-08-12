@@ -21,8 +21,14 @@ catches a different class of bug.
    - `/forgot-password`
    - `/reset-password?token=fake-token-for-render-check`
    - `/setup-password?token=fake-token-for-render-check`
+
+   In particular watch for `Refused to execute inline script because
+   it violates the following Content Security Policy directive` —
+   that's the signature of a nonce-CSP regression (#141) and means
+   Next's hydration scripts didn't get nonce'd correctly. Blocks the
+   release.
 4. Sign in with the demo GM account (`manager@hotel.com` / `admin123`).
-   - After sign-in, click through the four dashboard tabs:
+   - After sign-in, click through the five dashboard tabs:
      `/bookings`, `/calendar`, `/rooms`, `/reports`, `/staff`.
    - Confirm each renders and no console errors appear.
 5. Sign out and hit `/login` again — the form must respond to a click
