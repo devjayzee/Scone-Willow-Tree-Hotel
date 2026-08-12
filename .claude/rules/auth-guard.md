@@ -3,7 +3,7 @@ paths:
   - "src/app/(dashboard)/**/*.tsx"
   - "src/app/api/**/*.ts"
   - "src/lib/auth-guard.ts"
-  - "src/middleware.ts"
+  - "src/proxy.ts"
   - "src/lib/auth.ts"
 ---
 
@@ -11,7 +11,7 @@ paths:
 
 Three layers of protection:
 
-1. **Middleware (`src/middleware.ts`, `withAuth`)** — fast-path UX redirect
+1. **Proxy — formerly middleware (`src/proxy.ts`, `withAuth`)** — fast-path UX redirect
    for unauthenticated users on dashboard routes. Also rate-limits credential
    logins (5 attempts / 15 min on `/api/auth/callback/credentials`). NOT the
    security boundary — `withAuth` calls `getToken()` internally, which decodes
@@ -80,7 +80,7 @@ Current role gates (keep this list true when adding gates):
 | `/staff` | `GENERAL_MANAGER` |
 | Every other dashboard page | any authenticated user (layout gate) |
 
-Middleware's role redirects in `src/middleware.ts` are the fast-path UX
+Middleware's role redirects in `src/proxy.ts` are the fast-path UX
 mirror of these; the server-side `requireSession` calls are the security
 boundary because they invoke `getServerSession` and therefore run the
 revocation/expiry logic in the `jwt` callback.

@@ -64,7 +64,7 @@ src/
 │   └── utils.ts                # Helper functions
 ├── types/                       # TypeScript type definitions
 │   └── next-auth.d.ts
-└── middleware.ts               # Route protection middleware
+└── proxy.ts                   # Route protection middleware (renamed from middleware.ts in Next 16)
 ```
 
 ### Route Groups
@@ -372,7 +372,7 @@ export const bookingService = {
 ### Route Protection
 
 ```typescript
-// middleware.ts
+// proxy.ts (or middleware.ts on Next ≤15)
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
 
