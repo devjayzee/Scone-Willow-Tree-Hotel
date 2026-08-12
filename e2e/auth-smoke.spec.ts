@@ -86,3 +86,35 @@ for (const path of AUTH_PAGES) {
     });
   });
 }
+
+// Nonce-CSP regression guard (#141). Exercises just /login (the four
+// auth pages share the same middleware-driven CSP header). Two things
+// must hold: the response carries a Content-Security-Policy header
+// with a `nonce-` allowlist, and the browser doesn't log any
+// "Refused to execute inline script" CSP violations for the page.
+test.describe("nonce-based CSP (#141)", () => {
+  test("/login: response includes a nonce'd script-src and browser reports no CSP violations", async ({
+    page,
+  }) => {
+    const { consoleErrors } = captureBrowserErrors(page);
+
+    const response = await page.goto("/login");
+    expect(response).not.toBeNull();
+
+    const csp = response!.headers()["content-security-policy"];
+    expect(csp, "CSP header present").toBeDefined();
+    expect(csp).toMatch(/'nonce-[^']+'/);
+    expect(csp).toContain("'strict-dynamic'");
+
+    await page.waitForLoadState("networkidle");
+
+    // A nonce-mis-wire surfaces as this exact console message from
+    // the browser. If it appears, the CSP header was set but Next
+    // didn't nonce its own hydration scripts — the failure mode we
+    // deferred fixing in the #130 hotfix.
+    const cspViolations = consoleErrors.filter((msg) =>
+      msg.includes("Refused to execute inline script"),
+    );
+    expect(cspViolations).toEqual([]);
+  });
+});
