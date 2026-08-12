@@ -43,7 +43,7 @@ the start of every design task.
 - `@/lib/auth` — NextAuth `authOptions`; session augmented in `src/types/next-auth.d.ts`
 - `@/lib/services/audit-service` — audit trail for mutations on core entities
 - `@/lib/query-invalidation`, `@/lib/logger`
-- `src/middleware.ts` — `withAuth` page protection + Upstash login rate limiting
+- `src/proxy.ts` — `withAuth` page protection + Upstash login rate limiting (renamed from `middleware.ts` per the Next 16 file-convention rename)
 
 ## Hard rules you design within
 
