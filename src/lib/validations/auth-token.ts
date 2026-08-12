@@ -16,6 +16,3 @@ export const setupPasswordSchema = z.object({
   password: strongPasswordSchema,
 });
 
-export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
-export type SetupPasswordInput = z.infer<typeof setupPasswordSchema>;

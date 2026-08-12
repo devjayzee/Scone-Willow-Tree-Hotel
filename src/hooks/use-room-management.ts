@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/use-rooms";
-import type { RoomFormData } from "@/hooks/use-rooms";
+import { useRooms, useCreateRoom, useUpdateRoom, useDeleteRoom } from "@/hooks/room";
+import type { RoomFormData } from "@/hooks/room";
 import type { Room } from "@/types/room";
 
 // Re-export for consumers that import from this module
-export type { RoomFormData } from "@/hooks/use-rooms";
+export type { RoomFormData } from "@/hooks/room";
 
 interface UseRoomManagementOptions {
   initialRooms: Room[];
