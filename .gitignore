@@ -12,6 +12,9 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
+/e2e/.auth
 
 # next.js
 /.next/
@@ -30,8 +33,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — everything is ignored except the committed template
 .env*
+!.env.example
 
 # vercel
 .vercel
