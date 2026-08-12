@@ -29,6 +29,22 @@ const AUTH_PAGES = [
   "/setup-password?token=fake-token-for-render-check",
 ];
 
+// Browser-emitted network errors ("Failed to load resource: the
+// server responded with a status of X") are expected when the smoke
+// hits API endpoints without a real DB (e.g. /setup-password calls
+// /api/auth/invite/<fake-token>, which 500s because Prisma has
+// nothing to query). Filter them out — they're not the CSP /
+// hydration failure class the smoke is here to catch.
+//
+// Everything else stays: real JS errors, CSP violations
+// ("Refused to execute inline script..."), and React hydration
+// mismatches all surface as console errors with different text.
+function isExpectedNetworkError(text: string): boolean {
+  return /Failed to load resource: the server responded with a status of (4|5)\d\d/.test(
+    text,
+  );
+}
+
 // Attach console + page-error listeners. Returns two arrays that
 // tests assert are empty after `page.goto` completes.
 function captureBrowserErrors(page: Page) {
@@ -36,7 +52,7 @@ function captureBrowserErrors(page: Page) {
   const pageErrors: string[] = [];
 
   page.on("console", (msg: ConsoleMessage) => {
-    if (msg.type() === "error") {
+    if (msg.type() === "error" && !isExpectedNetworkError(msg.text())) {
       consoleErrors.push(msg.text());
     }
   });
