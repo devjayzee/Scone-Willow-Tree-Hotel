@@ -8,6 +8,7 @@ import {
   getAuthEndpointRateLimiter,
   getLoginRateLimiter,
 } from "@/lib/services/rate-limit-service";
+import { buildCsp } from "@/lib/security/csp";
 
 // Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
 // 3), but a 100 MB payload still hits `request.json()` before validation
@@ -233,20 +234,37 @@ export default async function middleware(req: NextRequest) {
     return apiRateLimitResponse;
   }
 
+  // Per-request CSP nonce (#141). Next 15/16 auto-parses the CSP
+  // header on the outgoing response and applies the nonce to its own
+  // inline hydration scripts, so no per-page wiring is needed — the
+  // whole point of doing this in middleware. The 411/413/429 early
+  // returns above skip CSP; they emit JSON, browsers don't apply
+  // CSP to JSON responses.
+  const nonce = crypto.randomUUID();
+  const csp = buildCsp({
+    nonce,
+    dev: process.env.NODE_ENV === "development",
+  });
+
+  let response: NextResponse;
+
   // Non-auth API routes handle their own session check in the route handler
   // (Rule 4). Running withAuth here would 302-redirect unauthenticated API
   // calls to /login instead of returning a JSON 401.
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
-    return NextResponse.next();
+    response = NextResponse.next();
+  } else {
+    // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
+    // have a real NextFetchEvent at this call site — NextAuth treats {} as
+    // a stub. @ts-expect-error fails loudly if the upstream typing gap ever
+    // closes, forcing us to revisit this shim.
+    // @ts-expect-error next-auth/middleware withAuth typing gap
+    response = await authMiddleware(req, {} as NextFetchEvent);
   }
 
-  // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
-  // have a real NextFetchEvent at this call site — NextAuth treats {} as
-  // a stub. @ts-expect-error fails loudly if the upstream typing gap ever
-  // closes, forcing us to revisit this shim.
-  // @ts-expect-error next-auth/middleware withAuth typing gap
-  return authMiddleware(req, {} as NextFetchEvent);
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
 }
 
 export const config = {

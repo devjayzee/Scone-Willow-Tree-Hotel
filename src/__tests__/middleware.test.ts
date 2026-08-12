@@ -501,4 +501,81 @@ describe("middleware", () => {
       expect(response.headers.get("location")).toBeNull();
     });
   });
+
+  describe("Content-Security-Policy header (#141)", () => {
+    it("sets a CSP header with a per-request nonce on page responses", async () => {
+      const req = buildReq({
+        path: "/bookings",
+        token: { role: "MANAGER" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+      const csp = response.headers.get("content-security-policy");
+
+      expect(csp).not.toBeNull();
+      // Prod branch (NODE_ENV !== 'development' in the vitest env).
+      expect(csp).toContain("'strict-dynamic'");
+      expect(csp).toMatch(/'nonce-[^']+'/);
+      expect(csp).toContain("object-src 'none'");
+      // unsafe-inline in script-src is the exact string we're
+      // eliminating. style-src still has it; assert we didn't
+      // accidentally leave the script-src copy behind.
+      const scriptSrc = csp!
+        .split(";")
+        .map((d) => d.trim())
+        .find((d) => d.startsWith("script-src"))!;
+      expect(scriptSrc).not.toContain("'unsafe-inline'");
+    });
+
+    it("sets a CSP header on non-auth API responses too", async () => {
+      const req = buildReq({ path: "/api/bookings", token: null });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.headers.get("content-security-policy")).not.toBeNull();
+    });
+
+    it("emits a fresh nonce per request", async () => {
+      const req1 = buildReq({ path: "/bookings", token: { role: "MANAGER" } });
+      const req2 = buildReq({ path: "/bookings", token: { role: "MANAGER" } });
+
+      const res1 = (await middleware(req1)) as NextResponse;
+      const res2 = (await middleware(req2)) as NextResponse;
+
+      const nonce1 = res1.headers.get("content-security-policy")!.match(/'nonce-([^']+)'/)![1];
+      const nonce2 = res2.headers.get("content-security-policy")!.match(/'nonce-([^']+)'/)![1];
+
+      expect(nonce1).not.toBe(nonce2);
+    });
+
+    it("does NOT set a CSP header on the 411 early return (no content-length)", async () => {
+      const req = {
+        url: "http://localhost/api/bookings",
+        method: "POST",
+        headers: new Headers(),
+        nextUrl: { pathname: "/api/bookings" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).toBe(411);
+      // Early-return JSON responses skip CSP; browsers don't apply
+      // CSP to JSON in a way that matters.
+      expect(response.headers.get("content-security-policy")).toBeNull();
+    });
+
+    it("does NOT set a CSP header on the 413 early return (oversized body)", async () => {
+      const req = buildReq({
+        path: "/api/bookings",
+        method: "POST",
+        headers: { "content-length": "200000" },
+      });
+
+      const response = (await middleware(req)) as NextResponse;
+
+      expect(response.status).toBe(413);
+      expect(response.headers.get("content-security-policy")).toBeNull();
+    });
+  });
 });

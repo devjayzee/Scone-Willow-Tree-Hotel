@@ -1,35 +1,10 @@
 import type { NextConfig } from "next";
 
-// Content-Security-Policy — restrictive baseline for a first-party dashboard
-// with no third-party scripts. `'unsafe-inline'` on style-src is required by
-// shadcn/Radix primitives and react-big-calendar (both inject inline styles).
-// `'unsafe-inline'` on script-src is required by the Next.js App Router: it
-// bootstraps hydration via inline scripts, so `script-src 'self'` alone
-// breaks every interactive page (native form submits, dead buttons — took
-// prod login down on 2026-08-08). The real tightening is a per-request
-// nonce + 'strict-dynamic' generated in middleware — tracked as a follow-up.
-// Dev additionally needs 'unsafe-eval' for React Refresh.
-const SCRIPT_SRC =
-  process.env.NODE_ENV === "development"
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'";
-
-const CSP_DIRECTIVES = [
-  "default-src 'self'",
-  "img-src 'self' data: blob:",
-  "style-src 'self' 'unsafe-inline'",
-  SCRIPT_SRC,
-  "font-src 'self' data:",
-  "connect-src 'self' https://*.upstash.io",
-  // Block <object>, <embed>, <applet> plugin surfaces outright — we
-  // don't render any, and it's the standard tightening pair for
-  // script-src 'unsafe-inline' (#188).
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-].join("; ");
-
+// Content-Security-Policy is set per-request in `src/middleware.ts`
+// via `buildCsp` from `@/lib/security/csp` — the header needs a
+// fresh nonce on every request so `strict-dynamic` can restore
+// inline-XSS protection (#141). All other security headers stay
+// here because they're identical on every response.
 const SECURITY_HEADERS = [
   {
     key: "Strict-Transport-Security",
@@ -42,7 +17,6 @@ const SECURITY_HEADERS = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",
   },
-  { key: "Content-Security-Policy", value: CSP_DIRECTIVES },
 ];
 
 const nextConfig: NextConfig = {
