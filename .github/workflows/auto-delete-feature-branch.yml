@@ -1,0 +1,28 @@
+name: Auto-delete feature branch
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'development'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete head branch (skip development/main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" = "development" ] || [ "$HEAD_REF" = "main" ]; then
+            echo "Refusing to delete protected branch: $HEAD_REF"
+            exit 0
+          fi
+          if gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_REF" 2>/dev/null; then
+            echo "Deleted branch: $HEAD_REF"
+          else
+            echo "Branch $HEAD_REF already gone or not deletable"
+          fi
