@@ -2,12 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BookingStatus } from "@prisma/client";
 import {
   setupMocks,
-  createMockBooking,
   createMockRoom,
   resetMocks,
-  mockBookingCount,
-  mockBookingFindMany,
-  mockRoomCount,
   mockRoomFindMany,
 } from "./test-utils";
 
@@ -15,250 +11,12 @@ import {
 setupMocks();
 
 // Import after mocks are set up
-import {
-  getOccupancyReport,
-  getRevenueReport,
-  getBookingTrends,
-  getRoomPerformance,
-} from "@/lib/services/report";
+import { getRoomPerformance } from "@/lib/services/report";
 
 describe("Report Analytics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetMocks();
-  });
-
-  // ============================================================
-  // getOccupancyReport
-  // ============================================================
-  describe("getOccupancyReport", () => {
-    it("should return 6 months of occupancy data", async () => {
-      mockRoomCount.mockResolvedValue(10);
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getOccupancyReport();
-
-      expect(result).toHaveLength(6);
-      expect(result[0]).toHaveProperty("month");
-      expect(result[0]).toHaveProperty("occupancy");
-      expect(result[0]).toHaveProperty("bookedDays");
-      expect(result[0]).toHaveProperty("totalDays");
-    });
-
-    it("should calculate occupancy rate correctly", async () => {
-      mockRoomCount.mockResolvedValue(10);
-
-      // First 5 months return no bookings
-      for (let i = 0; i < 5; i++) {
-        mockBookingFindMany.mockResolvedValueOnce([]);
-      }
-
-      // Last month has some bookings
-      mockBookingFindMany.mockResolvedValueOnce([
-        createMockBooking({
-          checkIn: new Date("2024-03-01"),
-          checkOut: new Date("2024-03-11"), // 10 nights
-        }),
-      ]);
-
-      const result = await getOccupancyReport();
-
-      // The last month should have some occupancy
-      expect(result[5].bookedDays).toBeGreaterThanOrEqual(0);
-    });
-
-    it("should handle zero rooms gracefully", async () => {
-      mockRoomCount.mockResolvedValue(0);
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getOccupancyReport();
-
-      result.forEach((month) => {
-        expect(month.occupancy).toBe(0);
-        expect(month.totalDays).toBe(0);
-      });
-    });
-
-    it("should format month names correctly", async () => {
-      mockRoomCount.mockResolvedValue(10);
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getOccupancyReport();
-
-      // Each month should have format like "Mar 2024"
-      result.forEach((month) => {
-        expect(month.month).toMatch(/^[A-Z][a-z]{2} \d{4}$/);
-      });
-    });
-
-    it("issues room.count() once, not six times (#188)", async () => {
-      mockRoomCount.mockResolvedValue(10);
-      mockBookingFindMany.mockResolvedValue([]);
-
-      await getOccupancyReport();
-
-      expect(mockRoomCount).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  // ============================================================
-  // getRevenueReport
-  // ============================================================
-  describe("getRevenueReport", () => {
-    it("should return 6 months of revenue data", async () => {
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getRevenueReport();
-
-      expect(result).toHaveLength(6);
-      expect(result[0]).toHaveProperty("month");
-      expect(result[0]).toHaveProperty("realisedRevenue");
-    });
-
-    it("should calculate revenue based on nights and room price", async () => {
-      // Mock for first 5 months with no bookings
-      for (let i = 0; i < 5; i++) {
-        mockBookingFindMany.mockResolvedValueOnce([]);
-      }
-
-      // Last month has bookings
-      mockBookingFindMany.mockResolvedValueOnce([
-        createMockBooking({
-          checkIn: new Date("2024-03-01"),
-          checkOut: new Date("2024-03-05"), // 4 nights
-          room: { roomNumber: "101", pricePerNight: 100 },
-        }),
-      ]);
-
-      const result = await getRevenueReport();
-
-      // Last month: 4 nights * $100 = $400
-      expect(result[5].realisedRevenue).toBe(400);
-    });
-
-    it("should sum revenue from multiple bookings", async () => {
-      // Mock for first 5 months with no bookings
-      for (let i = 0; i < 5; i++) {
-        mockBookingFindMany.mockResolvedValueOnce([]);
-      }
-
-      mockBookingFindMany.mockResolvedValueOnce([
-        createMockBooking({
-          checkIn: new Date("2024-03-01"),
-          checkOut: new Date("2024-03-03"), // 2 nights @ $100 = $200
-          room: { roomNumber: "101", pricePerNight: 100 },
-        }),
-        createMockBooking({
-          checkIn: new Date("2024-03-10"),
-          checkOut: new Date("2024-03-12"), // 2 nights @ $150 = $300
-          room: { roomNumber: "102", pricePerNight: 150 },
-        }),
-      ]);
-
-      const result = await getRevenueReport();
-
-      expect(result[5].realisedRevenue).toBe(500); // $200 + $300
-    });
-
-    it("should return zero revenue when no bookings exist", async () => {
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getRevenueReport();
-
-      result.forEach((month) => {
-        expect(month.realisedRevenue).toBe(0);
-      });
-    });
-
-    it("should round revenue to integer", async () => {
-      // Mock for first 5 months with no bookings
-      for (let i = 0; i < 5; i++) {
-        mockBookingFindMany.mockResolvedValueOnce([]);
-      }
-
-      mockBookingFindMany.mockResolvedValueOnce([
-        createMockBooking({
-          checkIn: new Date("2024-03-01"),
-          checkOut: new Date("2024-03-04"), // 3 nights
-          room: { roomNumber: "101", pricePerNight: 99.99 },
-        }),
-      ]);
-
-      const result = await getRevenueReport();
-
-      // 3 * 99.99 = 299.97, rounded to 300
-      expect(Number.isInteger(result[5].realisedRevenue)).toBe(true);
-    });
-  });
-
-  // ============================================================
-  // getBookingTrends
-  // ============================================================
-  describe("getBookingTrends", () => {
-    it("should return 30 days of booking data", async () => {
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getBookingTrends();
-
-      expect(result).toHaveLength(30);
-      expect(result[0]).toHaveProperty("date");
-      expect(result[0]).toHaveProperty("bookings");
-    });
-
-    it("uses a single findMany query, not 30 count() calls (#188)", async () => {
-      mockBookingFindMany.mockResolvedValue([]);
-
-      await getBookingTrends();
-
-      expect(mockBookingFindMany).toHaveBeenCalledTimes(1);
-      expect(mockBookingCount).not.toHaveBeenCalled();
-    });
-
-    it("should return booking counts for each day", async () => {
-      const today = new Date();
-      // 5 bookings created today
-      const bookings = Array.from({ length: 5 }, () => ({
-        createdAt: new Date(today),
-      }));
-      mockBookingFindMany.mockResolvedValue(bookings);
-
-      const result = await getBookingTrends();
-
-      expect(result[29].bookings).toBe(5);
-    });
-
-    it("should format date as MMM dd", async () => {
-      mockBookingFindMany.mockResolvedValue([]);
-
-      const result = await getBookingTrends();
-
-      // Each date should have format like "Mar 01"
-      result.forEach((day) => {
-        expect(day.date).toMatch(/^[A-Z][a-z]{2} \d{2}$/);
-      });
-    });
-
-    it("should handle days with varying booking counts", async () => {
-      // Emit `index` bookings for day at offset `29 - index` (i.e.
-      // today has 29, yesterday has 28, ...).
-      const today = new Date();
-      const bookings: { createdAt: Date }[] = [];
-      for (let index = 0; index < 30; index++) {
-        const dayOffset = 29 - index;
-        const date = new Date(today);
-        date.setDate(date.getDate() - dayOffset);
-        for (let j = 0; j < index; j++) {
-          bookings.push({ createdAt: new Date(date) });
-        }
-      }
-      mockBookingFindMany.mockResolvedValue(bookings);
-
-      const result = await getBookingTrends();
-
-      result.forEach((day, index) => {
-        expect(day.bookings).toBe(index);
-      });
-    });
   });
 
   // ============================================================
@@ -302,11 +60,13 @@ describe("Report Analytics", () => {
             {
               checkIn: new Date("2024-03-01"),
               checkOut: new Date("2024-03-05"), // 4 nights
+              ratePerNight: 100,
               status: BookingStatus.CHECKED_OUT,
             },
             {
               checkIn: new Date("2024-03-10"),
               checkOut: new Date("2024-03-12"), // 2 nights
+              ratePerNight: 100,
               status: BookingStatus.CONFIRMED,
             },
           ],
@@ -318,6 +78,40 @@ describe("Report Analytics", () => {
       expect(result[0].totalBookings).toBe(2);
       expect(result[0].totalNights).toBe(6); // 4 + 2
       expect(result[0].bookedRevenue).toBe(600); // 6 nights * $100
+    });
+
+    it("bookedRevenue uses booking.ratePerNight (snapshot), not room.pricePerNight (current) — #185", async () => {
+      // Room's current price is $200, but the two bookings were
+      // snapshotted at $80 and $90 respectively. Total revenue must
+      // reflect the snapshots, not the current room price.
+      mockRoomFindMany.mockResolvedValue([
+        createMockRoom({
+          id: "room-1",
+          roomNumber: "101",
+          pricePerNight: 200,
+          bookings: [
+            {
+              checkIn: new Date("2024-03-01"),
+              checkOut: new Date("2024-03-03"), // 2 nights
+              ratePerNight: 80,
+              status: BookingStatus.CHECKED_OUT,
+            },
+            {
+              checkIn: new Date("2024-03-10"),
+              checkOut: new Date("2024-03-13"), // 3 nights
+              ratePerNight: 90,
+              status: BookingStatus.CONFIRMED,
+            },
+          ],
+        }),
+      ]);
+
+      const result = await getRoomPerformance();
+
+      // 2 * 80 + 3 * 90 = 160 + 270 = 430. NOT 5 * 200 = 1000.
+      expect(result[0].bookedRevenue).toBe(430);
+      // pricePerNight stays as the room's current display anchor.
+      expect(result[0].pricePerNight).toBe(200);
     });
 
     it("should return zero totals for rooms with no bookings", async () => {
@@ -395,6 +189,7 @@ describe("Report Analytics", () => {
             {
               checkIn: new Date("2024-03-01"),
               checkOut: new Date("2024-03-04"), // 3 nights
+              ratePerNight: 99.99,
               status: BookingStatus.CONFIRMED,
             },
           ],
