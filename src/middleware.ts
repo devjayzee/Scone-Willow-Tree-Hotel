@@ -191,12 +191,14 @@ const authMiddleware = withAuth(
       }
     }
 
-    // Forward the (possibly mutated) request headers so the outer
-    // middleware's x-nonce injection reaches RSCs and Next's script
-    // emitter (#141). Without `{ request: { headers } }`, Next uses
-    // the ORIGINAL request headers and never sees x-nonce, so
-    // strict-dynamic blocks its own chunk loader.
-    return NextResponse.next({ request: { headers: req.headers } });
+    // Fall through — the outer middleware owns the propagating
+    // response (with the cloned x-nonce headers). withAuth v4
+    // swallows a `NextResponse.next({ request: { headers } })`
+    // returned from here (next-auth issue #8023), so nonce propagation
+    // has to happen outside this wrapper. Returning undefined here
+    // means withAuth's own default `NextResponse.next()` fires — we
+    // discard that below and rebuild the response ourselves.
+    return undefined;
   },
   {
     callbacks: {
@@ -240,11 +242,24 @@ export default async function middleware(req: NextRequest) {
   }
 
   // Per-request CSP nonce (#141). Next reads the nonce from the
-  // request's `x-nonce` header when emitting hydration <script>
-  // tags — with strict-dynamic on, chunk scripts without a nonce
-  // get blocked. Mutating req.headers here (a mutable Web Headers
-  // instance) makes the value available to the downstream branches
-  // via `NextResponse.next({ request: { headers: req.headers } })`.
+  // request's `x-nonce` header when emitting <script> tags — with
+  // strict-dynamic on, chunk scripts without a nonce get blocked.
+  //
+  // TWO subtleties that took a rebase to figure out (see PR #216):
+  //
+  // 1. `NextResponse.next({ request: { headers } })` requires a NEW
+  //    Headers instance. Mutating req.headers in place and passing
+  //    the reference puts Next's internal request-context builder
+  //    into an inconsistent state → runtime TypeError when a page
+  //    later renders dynamically.
+  //
+  // 2. next-auth v4's withAuth wrapper SWALLOWS a `NextResponse.next({
+  //    request })` returned from its inner middleware (issue #8023).
+  //    So we can't propagate x-nonce through it. Workaround: run
+  //    withAuth for its side effect (redirects on auth failure /
+  //    role mismatch), then build the pass-through response OURSELVES
+  //    from the outer middleware with the cloned headers.
+  //
   // The 411/413/429 early returns above skip CSP entirely; they emit
   // JSON and browsers don't apply CSP to JSON meaningfully.
   const nonce = crypto.randomUUID();
@@ -252,7 +267,9 @@ export default async function middleware(req: NextRequest) {
     nonce,
     dev: process.env.NODE_ENV === "development",
   });
-  req.headers.set("x-nonce", nonce);
+
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
 
   let response: NextResponse;
 
@@ -261,14 +278,31 @@ export default async function middleware(req: NextRequest) {
   // calls to /login instead of returning a JSON 401.
   const path = req.nextUrl.pathname;
   if (path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
-    response = NextResponse.next({ request: { headers: req.headers } });
+    response = NextResponse.next({ request: { headers: requestHeaders } });
   } else {
     // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
     // have a real NextFetchEvent at this call site — NextAuth treats {} as
     // a stub. @ts-expect-error fails loudly if the upstream typing gap ever
     // closes, forcing us to revisit this shim.
     // @ts-expect-error next-auth/middleware withAuth typing gap
-    response = await authMiddleware(req, {} as NextFetchEvent);
+    const authResponse = (await authMiddleware(req, {} as NextFetchEvent)) as
+      | NextResponse
+      | undefined;
+
+    // withAuth returns a redirect on auth failure / role mismatch —
+    // honour it. Otherwise ignore withAuth's default next() response
+    // (see subtlety #2 above) and build our own with x-nonce.
+    if (
+      authResponse &&
+      authResponse.status >= 300 &&
+      authResponse.status < 400
+    ) {
+      response = authResponse;
+    } else {
+      response = NextResponse.next({
+        request: { headers: requestHeaders },
+      });
+    }
   }
 
   response.headers.set("Content-Security-Policy", csp);
