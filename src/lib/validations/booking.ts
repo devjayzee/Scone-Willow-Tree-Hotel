@@ -8,22 +8,20 @@ export const bookingStatusEnum = z.enum([
   "CANCELLED",
 ]);
 
-// Phone number validation (Australian format or international) - Required
+// Phone number validation (Australian format or international).
+// Extracted so `phoneSchema` and `optionalPhoneSchema` stay in sync —
+// Rule 3's "share field schemas within the file" applied (#189).
+const PHONE_REGEX = /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/;
+const PHONE_ERROR = "Please enter a valid phone number";
+
 const phoneSchema = z
   .string()
   .min(1, "Mobile number is required")
-  .regex(
-    /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/,
-    "Please enter a valid phone number"
-  );
+  .regex(PHONE_REGEX, PHONE_ERROR);
 
-// Optional phone number for updates
 const optionalPhoneSchema = z
   .string()
-  .regex(
-    /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/,
-    "Please enter a valid phone number"
-  )
+  .regex(PHONE_REGEX, PHONE_ERROR)
   .optional()
   .or(z.literal(""));
 
@@ -144,7 +142,6 @@ export const listBookingsQuerySchema = z.object({
   startDate: queryDateStringSchema.optional(),
   endDate: queryDateStringSchema.optional(),
 });
-export type ListBookingsQueryInput = z.infer<typeof listBookingsQuerySchema>;
 
 // PATCH /api/bookings/[id] action dispatcher. Discriminated union so `reason`
 // is only accepted alongside `action: "cancel"`.
@@ -164,4 +161,3 @@ export type BookingActionInput = z.infer<typeof bookingActionSchema>;
 // Inferred types from schemas
 export type CreateBookingSchemaInput = z.infer<typeof createBookingSchema>;
 export type UpdateBookingSchemaInput = z.infer<typeof updateBookingSchema>;
-export type UpdateBookingStatusInput = z.infer<typeof updateBookingStatusSchema>;
