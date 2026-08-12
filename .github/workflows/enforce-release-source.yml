@@ -1,0 +1,21 @@
+name: Enforce release source
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+jobs:
+  guard:
+    name: PR to main must come from development
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert head branch is development
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "development" ]; then
+            echo "::error::PRs to main must come from the 'development' branch (got: '$HEAD_REF'). Retarget this PR to 'development' first, then cut a release PR from development to main."
+            exit 1
+          fi
+          echo "OK: release PR from development"
