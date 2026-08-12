@@ -208,7 +208,7 @@ const authMiddleware = withAuth(
 );
 
 // Combined middleware
-export default async function middleware(req: NextRequest) {
+export default async function proxy(req: NextRequest) {
   // Body-size cap runs before anything else so an oversized payload never
   // touches auth, rate limiting, or the route handler.
   const oversized = enforceBodySizeCap(req);
