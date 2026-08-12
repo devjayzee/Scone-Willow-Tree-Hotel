@@ -106,7 +106,7 @@ describe("proxy", () => {
 
     for (const { path, role } of stafflikeCases) {
       it(`redirects ${path} to /bookings when token role is ${role}`, async () => {
-        const req = buildReq({ path, token: { role } });
+        const req = buildReq({ path, token: { id: "u-1", role } });
 
         const response = (await proxy(req)) as NextResponse;
 
@@ -118,7 +118,7 @@ describe("proxy", () => {
     }
 
     it("allows /rooms for MANAGER", async () => {
-      const req = buildReq({ path: "/rooms", token: { role: "MANAGER" } });
+      const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER" } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -129,7 +129,7 @@ describe("proxy", () => {
     it("allows /reports for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/reports",
-        token: { role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
       });
 
       const response = (await proxy(req)) as NextResponse;
@@ -138,7 +138,7 @@ describe("proxy", () => {
     });
 
     it("redirects /staff to /bookings when token role is MANAGER", async () => {
-      const req = buildReq({ path: "/staff", token: { role: "MANAGER" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "MANAGER" } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -149,7 +149,7 @@ describe("proxy", () => {
     });
 
     it("redirects /staff to /bookings when token role is STAFF", async () => {
-      const req = buildReq({ path: "/staff", token: { role: "STAFF" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF" } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -162,7 +162,7 @@ describe("proxy", () => {
     it("allows /staff for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/staff",
-        token: { role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
       });
 
       const response = (await proxy(req)) as NextResponse;
@@ -171,7 +171,7 @@ describe("proxy", () => {
     });
 
     it("redirects authenticated user from /login to /bookings", async () => {
-      const req = buildReq({ path: "/login", token: { role: "STAFF" } });
+      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -189,7 +189,7 @@ describe("proxy", () => {
 
     for (const path of recoveryPaths) {
       it(`redirects authenticated user from ${path} to /bookings`, async () => {
-        const req = buildReq({ path, token: { role: "STAFF" } });
+        const req = buildReq({ path, token: { id: "u-1", role: "STAFF" } });
 
         const response = (await proxy(req)) as NextResponse;
 
@@ -206,8 +206,27 @@ describe("proxy", () => {
 
         expect(response.headers.get("location")).toBeNull();
       });
+
+      it(`does NOT redirect to /bookings from ${path} when the token has been invalidated (id: null)`, async () => {
+        // auth.ts's jwt callback returns `{ ...token, id: null }` on
+        // expiry / tokenVersion bump / deactivation. NextAuth
+        // re-encodes that shape back to the cookie. If middleware
+        // treats a truthy-but-nulled token as authenticated it
+        // bounces the user to /bookings, whose layout gate
+        // (requireSession) then bounces back to /login → infinite
+        // loop. Requiring `token.id` breaks it.
+        const req = buildReq({
+          path,
+          token: { id: null, role: "STAFF" },
+        });
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.headers.get("location")).toBeNull();
+      });
     }
   });
+
 
   describe("credentials rate limit", () => {
     it("returns 429 when limiter reports success: false", async () => {
@@ -387,7 +406,7 @@ describe("proxy", () => {
       const req = buildReq({
         path: "/bookings",
         method: "GET",
-        token: { role: "STAFF" },
+        token: { id: "u-1", role: "STAFF" },
       });
       await proxy(req);
 
