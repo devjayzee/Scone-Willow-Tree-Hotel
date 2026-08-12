@@ -26,7 +26,7 @@ export async function GET(
     }
 
     if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only managers can view staff details");
+      throw new ForbiddenError("Only general managers can view staff details");
     }
 
     const { id } = await params;
@@ -51,7 +51,7 @@ export async function PUT(
       }
 
       if (session.user.role !== "GENERAL_MANAGER") {
-        throw new ForbiddenError("Only managers can update staff");
+        throw new ForbiddenError("Only general managers can update staff");
       }
 
       const { id } = await params;
@@ -84,7 +84,7 @@ export async function DELETE(
       }
 
       if (session.user.role !== "GENERAL_MANAGER") {
-        throw new ForbiddenError("Only managers can delete staff");
+        throw new ForbiddenError("Only general managers can delete staff");
       }
 
       const { id } = await params;

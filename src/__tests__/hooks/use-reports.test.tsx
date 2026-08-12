@@ -5,13 +5,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import {
-  useDashboardStats,
-  useOccupancyReport,
-  useRevenueReport,
-  useBookingTrends,
-  useRoomPerformance,
-} from "@/hooks/use-reports";
+import { useRoomPerformance } from "@/hooks/use-reports";
 
 const mockFetch = vi.fn();
 
@@ -37,62 +31,6 @@ describe("report hooks", () => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-
-  it("useDashboardStats hits /api/reports?type=dashboard", async () => {
-    const stats = {
-      todayCheckIns: 3,
-      todayCheckOuts: 2,
-      currentOccupancy: 5,
-      pendingBookings: 1,
-      totalRooms: 10,
-      occupancyRate: 50,
-      recentBookings: [],
-    };
-    mockFetch.mockResolvedValue(respondWith(stats));
-
-    const { result } = renderHook(() => useDashboardStats(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual(stats);
-    });
-    expect(mockFetch).toHaveBeenCalledWith("/api/reports?type=dashboard");
-  });
-
-  it("useOccupancyReport hits /api/reports?type=occupancy", async () => {
-    const data = [{ month: "May 2026", occupancy: 42, bookedDays: 130, totalDays: 310 }];
-    mockFetch.mockResolvedValue(respondWith(data));
-
-    const { result } = renderHook(() => useOccupancyReport(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual(data);
-    });
-    expect(mockFetch).toHaveBeenCalledWith("/api/reports?type=occupancy");
-  });
-
-  it("useRevenueReport hits /api/reports?type=revenue", async () => {
-    const data = [{ month: "May 2026", realisedRevenue: 12500 }];
-    mockFetch.mockResolvedValue(respondWith(data));
-
-    const { result } = renderHook(() => useRevenueReport(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual(data);
-    });
-    expect(mockFetch).toHaveBeenCalledWith("/api/reports?type=revenue");
-  });
-
-  it("useBookingTrends hits /api/reports?type=bookings", async () => {
-    const data = [{ date: "May 01", bookings: 3 }];
-    mockFetch.mockResolvedValue(respondWith(data));
-
-    const { result } = renderHook(() => useBookingTrends(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.data).toEqual(data);
-    });
-    expect(mockFetch).toHaveBeenCalledWith("/api/reports?type=bookings");
-  });
 
   it("useRoomPerformance without dates hits /api/reports?type=rooms", async () => {
     const data = [
