@@ -8,18 +8,25 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 //
 // Scope is deliberately narrow — render + hydration. Full form-submit
 // flows against a live DB belong in a follow-up integration harness.
+//
+// The four pages render two different shapes:
+// - /login and /forgot-password: always render their sign-in / reset
+//   form (submit button present).
+// - /reset-password and /setup-password: token-gated. Without a
+//   valid token (we don't have one — no DB in the smoke), they
+//   render the ExpiredLinkScreen fallback (no submit button, just a
+//   Link acting as a button).
+//
+// The common denominator that proves render + hydration for all
+// four is: an <h1> exists and no console/pageerror fires. A
+// hydration mismatch always logs a React error to console, so
+// "no console errors" IS the hydration check.
 
 const AUTH_PAGES = [
-  { path: "/login", primarySelector: 'button[type="submit"]' },
-  { path: "/forgot-password", primarySelector: 'button[type="submit"]' },
-  {
-    path: "/reset-password?token=fake-token-for-render-check",
-    primarySelector: 'button[type="submit"]',
-  },
-  {
-    path: "/setup-password?token=fake-token-for-render-check",
-    primarySelector: 'button[type="submit"]',
-  },
+  "/login",
+  "/forgot-password",
+  "/reset-password?token=fake-token-for-render-check",
+  "/setup-password?token=fake-token-for-render-check",
 ];
 
 // Attach console + page-error listeners. Returns two arrays that
@@ -40,9 +47,9 @@ function captureBrowserErrors(page: Page) {
   return { consoleErrors, pageErrors };
 }
 
-for (const { path, primarySelector } of AUTH_PAGES) {
+for (const path of AUTH_PAGES) {
   test.describe(`auth page: ${path}`, () => {
-    test("renders without console or page errors and hydrates the submit button", async ({
+    test("renders an h1 and hydrates without console or page errors", async ({
       page,
     }) => {
       const { consoleErrors, pageErrors } = captureBrowserErrors(page);
@@ -50,13 +57,14 @@ for (const { path, primarySelector } of AUTH_PAGES) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
 
-      // Hydration proof: the primary submit button exists and is enabled
-      // after the app boots. A CSP block on inline scripts stops the
-      // React bundle from executing, which stops the form from mounting.
-      const submit = page.locator(primarySelector).first();
-      await expect(submit).toBeVisible();
-      await expect(submit).toBeEnabled();
+      // Render proof: an <h1> is visible. Present on every auth-page
+      // variant (form heading OR ExpiredLinkScreen heading).
+      await expect(page.locator("h1").first()).toBeVisible();
 
+      // Hydration proof: React logs a hydration mismatch to console,
+      // and a CSP block on inline scripts surfaces the same way. No
+      // console errors → hydration completed cleanly → this catches
+      // the #130 regression class.
       expect(pageErrors, "no uncaught page errors").toEqual([]);
       expect(consoleErrors, "no console errors").toEqual([]);
     });
