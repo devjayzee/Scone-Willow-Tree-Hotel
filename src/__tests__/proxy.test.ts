@@ -42,11 +42,11 @@ vi.mock("@/lib/utils/get-client-ip", () => ({
   getClientIp: () => "203.0.113.7",
 }));
 
-// Force the middleware's lazy Upstash init so mockLimit gets a chance to run.
+// Force the proxy's lazy Upstash init so mockLimit gets a chance to run.
 process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
-import middleware from "@/middleware";
+import proxy from "@/proxy";
 import { NextResponse } from "next/server";
 
 type Token = {
@@ -79,10 +79,10 @@ function buildReq(opts: {
     headers,
     nextUrl: { pathname: opts.path },
     nextauth: { token: opts.token ?? null },
-  } as unknown as Parameters<typeof middleware>[0];
+  } as unknown as Parameters<typeof proxy>[0];
 }
 
-describe("middleware", () => {
+describe("proxy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Default: rate limit is available. Individual tests override.
@@ -106,9 +106,9 @@ describe("middleware", () => {
 
     for (const { path, role } of stafflikeCases) {
       it(`redirects ${path} to /bookings when token role is ${role}`, async () => {
-        const req = buildReq({ path, token: { role } });
+        const req = buildReq({ path, token: { id: "u-1", role } });
 
-        const response = (await middleware(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
 
         expect(response.status).toBe(307);
         expect(response.headers.get("location")).toBe(
@@ -118,9 +118,9 @@ describe("middleware", () => {
     }
 
     it("allows /rooms for MANAGER", async () => {
-      const req = buildReq({ path: "/rooms", token: { role: "MANAGER" } });
+      const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER" } });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       // NextResponse.next() has no redirect header
       expect(response.headers.get("location")).toBeNull();
@@ -129,18 +129,18 @@ describe("middleware", () => {
     it("allows /reports for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/reports",
-        token: { role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
     });
 
     it("redirects /staff to /bookings when token role is MANAGER", async () => {
-      const req = buildReq({ path: "/staff", token: { role: "MANAGER" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "MANAGER" } });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
@@ -149,9 +149,9 @@ describe("middleware", () => {
     });
 
     it("redirects /staff to /bookings when token role is STAFF", async () => {
-      const req = buildReq({ path: "/staff", token: { role: "STAFF" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF" } });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
@@ -162,18 +162,18 @@ describe("middleware", () => {
     it("allows /staff for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/staff",
-        token: { role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
     });
 
     it("redirects authenticated user from /login to /bookings", async () => {
-      const req = buildReq({ path: "/login", token: { role: "STAFF" } });
+      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
@@ -189,9 +189,9 @@ describe("middleware", () => {
 
     for (const path of recoveryPaths) {
       it(`redirects authenticated user from ${path} to /bookings`, async () => {
-        const req = buildReq({ path, token: { role: "STAFF" } });
+        const req = buildReq({ path, token: { id: "u-1", role: "STAFF" } });
 
-        const response = (await middleware(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
 
         expect(response.status).toBe(307);
         expect(response.headers.get("location")).toBe(
@@ -202,12 +202,31 @@ describe("middleware", () => {
       it(`lets an unauthenticated visitor through to ${path}`, async () => {
         const req = buildReq({ path, token: null });
 
-        const response = (await middleware(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.headers.get("location")).toBeNull();
+      });
+
+      it(`does NOT redirect to /bookings from ${path} when the token has been invalidated (id: null)`, async () => {
+        // auth.ts's jwt callback returns `{ ...token, id: null }` on
+        // expiry / tokenVersion bump / deactivation. NextAuth
+        // re-encodes that shape back to the cookie. If middleware
+        // treats a truthy-but-nulled token as authenticated it
+        // bounces the user to /bookings, whose layout gate
+        // (requireSession) then bounces back to /login → infinite
+        // loop. Requiring `token.id` breaks it.
+        const req = buildReq({
+          path,
+          token: { id: null, role: "STAFF" },
+        });
+
+        const response = (await proxy(req)) as NextResponse;
 
         expect(response.headers.get("location")).toBeNull();
       });
     }
   });
+
 
   describe("credentials rate limit", () => {
     it("returns 429 when limiter reports success: false", async () => {
@@ -223,7 +242,7 @@ describe("middleware", () => {
         method: "POST",
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
       const data = await response.json();
 
       expect(response.status).toBe(429);
@@ -244,7 +263,7 @@ describe("middleware", () => {
         method: "POST",
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       // Not a 429 — the wrapped auth middleware runs next and returns .next()
       expect(response.status).not.toBe(429);
@@ -256,7 +275,7 @@ describe("middleware", () => {
         method: "GET",
       });
 
-      await middleware(req);
+      await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
     });
@@ -267,7 +286,7 @@ describe("middleware", () => {
         method: "POST",
       });
 
-      await middleware(req);
+      await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
     });
@@ -281,7 +300,7 @@ describe("middleware", () => {
         headers: { "content-length": "200000" },
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
       const data = await response.json();
 
       expect(response.status).toBe(413);
@@ -297,7 +316,7 @@ describe("middleware", () => {
         headers: { "content-length": "1024" },
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.status).not.toBe(413);
     });
@@ -309,7 +328,7 @@ describe("middleware", () => {
         headers: { "content-length": "999999" },
       });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.status).not.toBe(413);
     });
@@ -326,7 +345,7 @@ describe("middleware", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
       const data = await response.json();
 
       expect(response.status).toBe(411);
@@ -347,7 +366,7 @@ describe("middleware", () => {
       });
 
       const req = buildReq({ path: "/api/bookings", method: "GET" });
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
       const data = await response.json();
 
       expect(response.status).toBe(429);
@@ -366,7 +385,7 @@ describe("middleware", () => {
       });
 
       const req = buildReq({ path: "/api/bookings", method: "GET" });
-      await middleware(req);
+      await proxy(req);
 
       // Falls back to `ip:<clientIp>` when no token — clientIp mocked to 203.0.113.7
       expect(mockLimit).toHaveBeenCalledWith("ip:203.0.113.7");
@@ -377,7 +396,7 @@ describe("middleware", () => {
         path: "/api/auth/session",
         method: "GET",
       });
-      await middleware(req);
+      await proxy(req);
 
       // /api/auth/* skips the api limiter branch entirely
       expect(mockGetToken).not.toHaveBeenCalled();
@@ -387,9 +406,9 @@ describe("middleware", () => {
       const req = buildReq({
         path: "/bookings",
         method: "GET",
-        token: { role: "STAFF" },
+        token: { id: "u-1", role: "STAFF" },
       });
-      await middleware(req);
+      await proxy(req);
 
       expect(mockGetToken).not.toHaveBeenCalled();
     });
@@ -412,7 +431,7 @@ describe("middleware", () => {
         });
 
         const req = buildReq({ path, method });
-        const response = (await middleware(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
         const data = await response.json();
 
         expect(response.status).toBe(429);
@@ -431,7 +450,7 @@ describe("middleware", () => {
         });
 
         const req = buildReq({ path, method });
-        const response = (await middleware(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
 
         expect(response.status).not.toBe(429);
       });
@@ -442,7 +461,7 @@ describe("middleware", () => {
         path: "/api/auth/forgot-password",
         method: "POST",
       });
-      await middleware(req);
+      await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
     });
@@ -452,14 +471,14 @@ describe("middleware", () => {
         path: "/api/auth/rate-limit-status",
         method: "GET",
       });
-      await middleware(req);
+      await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
     });
 
     it("does not rate-limit NextAuth internals (/api/auth/session)", async () => {
       const req = buildReq({ path: "/api/auth/session", method: "GET" });
-      await middleware(req);
+      await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
     });
@@ -474,7 +493,7 @@ describe("middleware", () => {
       });
 
       const req = buildReq({ path: "/api/bookings", method: "GET" });
-      await middleware(req);
+      await proxy(req);
 
       // Only the general api limiter fires — one call, keyed by userId, not IP.
       expect(mockLimit).toHaveBeenCalledTimes(1);
@@ -488,7 +507,7 @@ describe("middleware", () => {
     it("does not redirect unauthenticated /api/bookings", async () => {
       const req = buildReq({ path: "/api/bookings", token: null });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
     });
@@ -496,7 +515,7 @@ describe("middleware", () => {
     it("does not redirect unauthenticated /api/reports", async () => {
       const req = buildReq({ path: "/api/reports", token: null });
 
-      const response = (await middleware(req)) as NextResponse;
+      const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
     });

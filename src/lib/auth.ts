@@ -18,7 +18,7 @@ if (!process.env.NEXTAUTH_SECRET) {
 }
 
 // Per-email login rate limiter. Complements the IP-keyed limiter in
-// middleware.ts so that distributed brute-force attempts (many IPs, one
+// proxy.ts so that distributed brute-force attempts (many IPs, one
 // account) still hit a per-account cap.
 let emailRateLimiter: Ratelimit | null = null;
 
