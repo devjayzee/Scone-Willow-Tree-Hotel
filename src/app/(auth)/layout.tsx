@@ -1,5 +1,11 @@
 import Image from "next/image";
 
+// Force dynamic rendering so the per-request nonce from middleware
+// (#141) reaches Next's <script> emitter. Static prerender bakes
+// the HTML at build time — no request → no nonce → strict-dynamic
+// blocks every chunk on load.
+export const dynamic = "force-dynamic";
+
 export default function AuthLayout({
   children,
 }: {
