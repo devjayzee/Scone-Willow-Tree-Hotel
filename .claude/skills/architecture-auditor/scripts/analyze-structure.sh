@@ -114,12 +114,15 @@ echo "loading.tsx files:   $LOADING_STATES"
 echo "not-found.tsx files: $NOT_FOUND"
 echo ""
 
-# Check for middleware
-echo "--- Middleware ---"
-if [ -f "$SRC_PATH/middleware.ts" ] || [ -f "middleware.ts" ]; then
-    echo "Middleware: Present"
+# Check for middleware / proxy (Next 16 renamed the file convention;
+# accept both to stay compatible with older Next projects).
+echo "--- Middleware / Proxy ---"
+if [ -f "$SRC_PATH/proxy.ts" ] || [ -f "proxy.ts" ]; then
+    echo "Proxy (Next 16+): Present"
+elif [ -f "$SRC_PATH/middleware.ts" ] || [ -f "middleware.ts" ]; then
+    echo "Middleware (pre-Next-16): Present"
 else
-    echo "Middleware: Not found"
+    echo "Middleware / Proxy: Not found"
 fi
 echo ""
 
