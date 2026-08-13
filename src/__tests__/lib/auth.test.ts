@@ -376,6 +376,16 @@ describe("Auth - JWT callback", () => {
   it("should populate token on initial sign in", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
 
+    // The callback also re-reads the row after the sign-in branch to
+    // rehydrate mutable fields — the DB must agree with the freshly
+    // returned user for the token to survive.
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 0,
+      isActive: true,
+      role: "STAFF",
+      firstName: "John",
+    });
+
     const result = await jwtCallback({
       token: {},
       user: mockUser,
@@ -395,7 +405,12 @@ describe("Auth - JWT callback", () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
 
     // User's tokenVersion in DB is now 1 (password changed)
-    mockFindUnique.mockResolvedValue({ tokenVersion: 1, isActive: true });
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 1,
+      isActive: true,
+      role: "STAFF",
+      firstName: "John",
+    });
 
     const result = await jwtCallback({
       token: { id: "user-123", tokenVersion: 0 }, // Old tokenVersion
@@ -410,7 +425,12 @@ describe("Auth - JWT callback", () => {
   it("should invalidate token when user is deactivated", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
 
-    mockFindUnique.mockResolvedValue({ tokenVersion: 0, isActive: false });
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 0,
+      isActive: false,
+      role: "STAFF",
+      firstName: "John",
+    });
 
     const result = await jwtCallback({
       token: { id: "user-123", tokenVersion: 0 },
@@ -440,7 +460,12 @@ describe("Auth - JWT callback", () => {
   it("should keep token valid when tokenVersion matches", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
 
-    mockFindUnique.mockResolvedValue({ tokenVersion: 0, isActive: true });
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 0,
+      isActive: true,
+      role: "STAFF",
+      firstName: "John",
+    });
 
     const result = await jwtCallback({
       token: { id: "user-123", tokenVersion: 0, role: "STAFF" },
@@ -450,6 +475,48 @@ describe("Auth - JWT callback", () => {
     } as any);
 
     expect(result.id).toBe("user-123");
+  });
+
+  it("rehydrates role and firstName from the DB on subsequent requests so mutable user fields are never trusted as a JWT cache", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+
+    // Simulate a stale JWT: user was STAFF at login, has since been
+    // promoted to GENERAL_MANAGER and renamed in the DB. No
+    // tokenVersion bump — the invariant is that role/firstName drift
+    // is closed by the callback's re-read, not by a manual bump.
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 0,
+      isActive: true,
+      role: "GENERAL_MANAGER",
+      firstName: "Johnny",
+    });
+
+    const result = (await jwtCallback({
+      token: {
+        id: "user-123",
+        tokenVersion: 0,
+        role: "STAFF",
+        firstName: "John",
+      },
+      user: undefined,
+      account: null,
+      trigger: "update",
+    } as any)) as { id: string; role: string; firstName: string };
+
+    expect(result.id).toBe("user-123");
+    expect(result.role).toBe("GENERAL_MANAGER");
+    expect(result.firstName).toBe("Johnny");
+
+    // Confirm the widened select — the whole fix depends on this shape.
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { id: "user-123" },
+      select: {
+        tokenVersion: true,
+        isActive: true,
+        role: true,
+        firstName: true,
+      },
+    });
   });
 
   it("sets token.expiresAt ~30 days out on initial sign in with remember: true (#145)", async () => {
@@ -513,7 +580,12 @@ describe("Auth - JWT callback", () => {
 
   it("passes through legacy tokens without token.expiresAt (#145 backward compat)", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
-    mockFindUnique.mockResolvedValue({ tokenVersion: 0, isActive: true });
+    mockFindUnique.mockResolvedValue({
+      tokenVersion: 0,
+      isActive: true,
+      role: "STAFF",
+      firstName: "John",
+    });
 
     const result = await jwtCallback({
       token: { id: "user-123", tokenVersion: 0, role: "STAFF" },
