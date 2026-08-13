@@ -41,7 +41,6 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
     setDeleteDialogOpen,
   } = useRoomManagement({ initialRooms, fetchTime });
 
-  // Use session role if available (for real-time role changes), fallback to prop
   const canManage = session?.user?.role === "GENERAL_MANAGER" || isManager;
 
   return (
