@@ -7,7 +7,12 @@
 
 services:
   runner:
-    image: myoung34/github-runner:2.328.0-ubuntu-jammy
+    # Pinned to a specific version for reproducibility. Bump when GitHub
+    # deprecates the current version — check the latest at
+    # https://hub.docker.com/r/myoung34/github-runner/tags
+    # GitHub deprecates runner versions roughly every 2 months; AUTO_UPDATE
+    # (below) keeps the runner binary current within a pinned base image.
+    image: myoung34/github-runner:2.336.0-ubuntu-jammy
     restart: always
     environment:
       # Pulled from ./.env (git-ignored). See ./.env.example for the shape.
@@ -17,7 +22,10 @@ services:
       RUNNER_SCOPE: repo
       LABELS: self-hosted,linux,x64,docker
       EPHEMERAL: "true"
-      DISABLE_AUTO_UPDATE: "true"
+      # Auto-update the runner binary when GitHub deprecates the current
+      # version. Without this, containers crash-loop once GitHub stops
+      # accepting the pinned version — happens every ~2 months.
+      DISABLE_AUTO_UPDATE: "false"
     volumes:
       # Cache npm + Playwright browsers across ephemeral runs. Docker volume
       # (not bind mount) — bind mounts on macOS pay a VirtioFS tax.
