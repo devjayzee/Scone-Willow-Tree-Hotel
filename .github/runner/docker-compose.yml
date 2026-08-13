@@ -1,0 +1,41 @@
+# Self-hosted GitHub Actions runners for this repo.
+# See ./README.md for setup, operational commands, and troubleshooting.
+#
+# Two ephemeral runner containers. Each accepts one job, then exits and is
+# recreated by Docker's restart policy — matches GitHub-hosted state
+# isolation. Caches persist in a named volume across runs for speed.
+
+services:
+  runner:
+    # Pinned to a specific version for reproducibility. Bump when GitHub
+    # deprecates the current version — check the latest at
+    # https://hub.docker.com/r/myoung34/github-runner/tags
+    # GitHub deprecates runner versions roughly every 2 months; AUTO_UPDATE
+    # (below) keeps the runner binary current within a pinned base image.
+    image: myoung34/github-runner:2.336.0-ubuntu-jammy
+    restart: always
+    environment:
+      # Pulled from ./.env (git-ignored). See ./.env.example for the shape.
+      RUNNER_NAME_PREFIX: swth-mac
+      ACCESS_TOKEN: ${GITHUB_PAT}
+      REPO_URL: https://github.com/devjayzee/Scone-Willow-Tree-Hotel
+      RUNNER_SCOPE: repo
+      LABELS: self-hosted,linux,x64,docker
+      EPHEMERAL: "true"
+      # Auto-update the runner binary when GitHub deprecates the current
+      # version. Without this, containers crash-loop once GitHub stops
+      # accepting the pinned version — happens every ~2 months.
+      DISABLE_AUTO_UPDATE: "false"
+    volumes:
+      # Cache npm + Playwright browsers across ephemeral runs. Docker volume
+      # (not bind mount) — bind mounts on macOS pay a VirtioFS tax.
+      - runner-cache:/home/runner/.cache
+      - runner-npm:/home/runner/.npm
+    deploy:
+      # Two replicas = 2 jobs run in parallel. Bump to 4 to match hosted
+      # parity if wall time hurts (needs ~12GB Docker Desktop RAM though).
+      replicas: 2
+
+volumes:
+  runner-cache:
+  runner-npm:
