@@ -7,10 +7,10 @@ on:
 
 jobs:
   guard:
-    name: PR to main must come from development
+    name: PR to main must come from development or hotfix/*
     runs-on: ubuntu-latest
     steps:
-      - name: Assert head branch is development
+      - name: Assert head branch is development or hotfix/*
         env:
           HEAD_REF: ${{ github.head_ref }}
           PR_ACTOR: ${{ github.event.pull_request.user.login }}
@@ -23,8 +23,19 @@ jobs:
             echo "OK: dependabot PR — security updates may fast-track to main"
             exit 0
           fi
+          # hotfix/* branches off main go directly back into main so a
+          # targeted prod fix can ship without carrying whatever
+          # unrelated in-flight work is currently sitting on development.
+          # After merge, merge main back into development to bring the
+          # fix forward.
+          case "$HEAD_REF" in
+            hotfix/*)
+              echo "OK: hotfix PR — direct-to-main path"
+              exit 0
+              ;;
+          esac
           if [ "$HEAD_REF" != "development" ]; then
-            echo "::error::PRs to main must come from the 'development' branch (got: '$HEAD_REF'). Retarget this PR to 'development' first, then cut a release PR from development to main."
+            echo "::error::PRs to main must come from 'development' or a 'hotfix/*' branch (got: '$HEAD_REF'). Retarget this PR to 'development' first, then cut a release PR — or rename the branch to 'hotfix/<name>' if this is a targeted production fix."
             exit 1
           fi
           echo "OK: release PR from development"
