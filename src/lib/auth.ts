@@ -149,23 +149,38 @@ export const authOptions: NextAuthOptions = {
         return { ...token, id: null };
       }
 
-      // On subsequent requests, validate tokenVersion against database
-      // This ensures sessions are invalidated when password changes
+      // On subsequent requests, re-read the user row. Two jobs:
+      //   1. tokenVersion / isActive gate — invalidate the session on
+      //      password rotation or deactivation.
+      //   2. Rehydrate mutable fields (role, firstName) so the JWT is
+      //      never trusted as a cache for anything that can be changed
+      //      in the DB. This is why writers to `role` / `firstName` do
+      //      NOT need to bump tokenVersion: the next session poll picks
+      //      up the change automatically. Adding a new mutable field
+      //      that the app displays or authorizes against? Widen the
+      //      select and the assignment below — do not reach for
+      //      tokenVersion.
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { tokenVersion: true, isActive: true },
+          select: {
+            tokenVersion: true,
+            isActive: true,
+            role: true,
+            firstName: true,
+          },
         });
 
-        // Invalidate session if user not found, deactivated, or tokenVersion changed
         if (
           !dbUser ||
           !dbUser.isActive ||
           dbUser.tokenVersion !== token.tokenVersion
         ) {
-          // Return empty token to force re-authentication
           return { ...token, id: null };
         }
+
+        token.role = dbUser.role;
+        token.firstName = dbUser.firstName;
       }
 
       return token;
