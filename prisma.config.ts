@@ -10,7 +10,12 @@ export default defineConfig({
     seed: "npx tsx prisma/seed.ts",
   },
   datasource: {
-    url: env("DATABASE_URL"),
-    directUrl: env("DIRECT_URL"),
+    // Prisma 7's migrate engine reads ONLY `datasource.url` from this
+    // config. A `directUrl` key here is silently ignored (not part of
+    // the v7 PrismaConfig schema). So point `url` at DIRECT_URL — the
+    // session-mode connection that supports advisory locks — and the
+    // runtime PrismaClient in src/lib/prisma.ts continues to use
+    // DATABASE_URL (the transaction pooler) via the pg adapter.
+    url: env("DIRECT_URL"),
   },
 });
