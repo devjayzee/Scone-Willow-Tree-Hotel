@@ -164,11 +164,26 @@ plan template lives in `plans/README.md`.
 - **Feature branches** (`feat/*`, `fix/*`, `refactor/*`, `chore/*`, `test/*`,
   `docs/*`) branch off `development`, PR into `development`, and are
   auto-deleted on merge by `.github/workflows/auto-delete-feature-branch.yml`.
-- **Release PRs** promote `development` → `main`. Only `development` may PR
-  to `main` — enforced by `.github/workflows/enforce-release-source.yml`
-  (feature-branch-to-main PRs fail CI). After a release merge, `development`
-  is preserved; merge `main` back into `development` to bring the release
-  commit forward before the next feature.
+- **Release PRs** promote `development` → `main`. `enforce-release-source.yml`
+  fails any PR to `main` whose head is not `development`, `hotfix/*`, or
+  Dependabot. `development` is preserved through the merge.
+- **Hotfix branches** (`hotfix/<name>`) branch off `main`, fix a targeted
+  prod issue, and PR directly to `main` — bypassing `development` so
+  in-flight integration work isn't dragged into the incident fix.
+- **Dependabot** — `.github/dependabot.yml` targets `development` for
+  weekly version updates. Security-update PRs always target `main` (a
+  GitHub-side limitation — `target-branch` doesn't apply to security PRs),
+  and the guard exempts `dependabot[bot]` so those land straight to `main`.
+- **After any `main` advance** (release PR, hotfix PR, or Dependabot
+  security PR), sync locally:
+  ```
+  git checkout main && git pull
+  git checkout development && git pull
+  git merge main --no-edit
+  git push origin development
+  ```
+  Keeps the two branches in step and prevents lockfile conflicts on the
+  next release.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore(scope):`, `test:`, `docs:`.
 - PRs merge as merge commits (squash and rebase disabled at the repo level
   to preserve per-commit history).
