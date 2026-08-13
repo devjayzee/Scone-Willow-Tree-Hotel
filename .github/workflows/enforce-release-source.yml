@@ -8,7 +8,8 @@ on:
 jobs:
   guard:
     name: PR to main must come from development or hotfix/*
-    runs-on: ubuntu-latest
+    # Runner switchable via `vars.RUNNER` — see `.github/runner/README.md`.
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - name: Assert head branch is development or hotfix/*
         env:
