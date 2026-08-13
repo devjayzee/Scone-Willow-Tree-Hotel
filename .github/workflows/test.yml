@@ -54,6 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event.pull_request.draft == false || github.event_name == 'push'
+    env:
+      # Placeholders — prisma.config.ts now uses env() which throws
+      # if these are missing at config-load time. The values are never
+      # actually used by generate/typecheck (no DB connection needed).
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -69,6 +75,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event.pull_request.draft == false || github.event_name == 'push'
+    env:
+      # Placeholders — see typecheck job comment.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
