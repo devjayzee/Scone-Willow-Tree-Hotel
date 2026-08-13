@@ -179,10 +179,14 @@ export async function updateStaff(
   }
 
   // Build update data. GMs cannot set another user's password directly
-  // (#188) — rotation goes through /reset-password. Removing this
-  // branch also removes account-takeover risk from the staff-edit
-  // path and keeps the only tokenVersion-incrementing writes inside
-  // password-reset-service where they belong.
+  // (#188) — rotation goes through /reset-password, which is also the
+  // only writer that bumps tokenVersion (to revoke stolen JWTs after a
+  // credential change). Role and isActive changes intentionally do NOT
+  // bump tokenVersion: the jwt callback in @/lib/auth rehydrates role
+  // (and firstName) from the DB on every session poll, so demotion /
+  // promotion / rename take effect within the poll interval without
+  // forcing a re-login. Deactivation is caught by the same callback's
+  // isActive check. Do not add a tokenVersion write here.
   const updateData: {
     firstName?: string;
     lastName?: string;
