@@ -57,7 +57,7 @@ describe("bookingToPDFData", () => {
     });
   });
 
-  it("reads booking.ratePerNight, NOT booking.room.pricePerNight (#185)", () => {
+  it("reads booking.ratePerNight, NOT booking.room.pricePerNight", () => {
     const result = bookingToPDFData(
       makeBooking({
         ratePerNight: "80.00",

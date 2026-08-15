@@ -29,10 +29,10 @@ declare module "next-auth/jwt" {
     role: string;
     firstName: string;
     tokenVersion: number;
-    /** Persisted remember-device choice (#145). */
+    /** Persisted remember-device choice. */
     remember?: boolean;
     /**
-     * Per-login expiry in seconds since epoch (#145). Optional for
+     * Per-login expiry in seconds since epoch. Optional for
      * backward compatibility with tokens issued before this feature
      * shipped — those fall through to NextAuth's own maxAge check.
      */

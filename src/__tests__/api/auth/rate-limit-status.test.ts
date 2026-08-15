@@ -79,7 +79,7 @@ describe("GET /api/auth/rate-limit-status", () => {
     expect(data.limited).toBe(true);
   });
 
-  it("returns a soft-limited response without calling the service when the gate denies (#188)", async () => {
+  it("returns a soft-limited response without calling the service when the gate denies", async () => {
     mockGetRateLimitStatusLimiter.mockReturnValue({
       limit: async () => ({ success: false, limit: 60, remaining: 0, reset: 0 }),
     } as unknown as null);

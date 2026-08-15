@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/select";
 import type { Staff, Role } from "@/types/staff";
 
-// Password rotation is handled by the /reset-password flow (#188) —
-// GMs cannot set another user's password directly through the staff
-// edit dialog. Create flow issues an email setup invite per #144.
+// Password rotation is handled by the /reset-password flow — GMs
+// cannot set another user's password directly through the staff edit
+// dialog. Create flow issues an email setup invite.
 
 interface StaffFormData {
   firstName: string;
@@ -68,7 +68,7 @@ export function StaffDialog({
     if (open) {
       if (staff) {
         // Editing existing staff
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- Form hydration on dialog open. `key`-prop remount would work but is a larger API change than the audit budget covers.
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Form hydration on dialog open. A `key`-prop remount is the alternative refactor.
         setFormData({
           firstName: staff.firstName,
           lastName: staff.lastName,
@@ -76,7 +76,7 @@ export function StaffDialog({
           role: staff.role,
         });
       } else {
-        // Creating new staff — no password collected; invite email carries the setup link (#144).
+        // Creating new staff — no password collected; invite email carries the setup link.
         setFormData({
           firstName: "",
           lastName: "",

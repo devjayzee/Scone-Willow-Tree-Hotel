@@ -3,7 +3,7 @@
 import type { Staff, Role } from "@/types/staff";
 
 /**
- * Create payload — no password (#144). Staff receive an invite email
+ * Create payload — no password. Staff receive an invite email
  * and set their own on /setup-password.
  */
 export interface CreateStaffData {

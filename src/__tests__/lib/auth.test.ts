@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 // Mock bcrypt. Default `getRounds` returns the current cost so tests that
-// don't care about rehash-on-login (#71) don't accidentally trigger it.
+// don't care about rehash-on-login don't accidentally trigger it.
 vi.mock("bcryptjs", () => ({
   default: {
     compare: vi.fn(),
@@ -110,7 +110,7 @@ describe("Auth - authorize function", () => {
     });
   });
 
-  it("returns user.remember: true when credentials.remember is '1' (#145)", async () => {
+  it("returns user.remember: true when credentials.remember is '1'", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -124,7 +124,7 @@ describe("Auth - authorize function", () => {
     expect(result.remember).toBe(true);
   });
 
-  it("returns user.remember: false when credentials.remember is '0' (#145)", async () => {
+  it("returns user.remember: false when credentials.remember is '0'", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -138,7 +138,7 @@ describe("Auth - authorize function", () => {
     expect(result.remember).toBe(false);
   });
 
-  it("returns user.remember: false when credentials.remember is omitted (#145)", async () => {
+  it("returns user.remember: false when credentials.remember is omitted", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -185,7 +185,7 @@ describe("Auth - authorize function", () => {
     ).rejects.toThrow("Invalid email or password");
   });
 
-  // Regression guard for #66 (timing-based user enumeration): the short-circuit
+  // Regression guard for timing-based user enumeration: the short-circuit
   // branches must still invoke bcrypt.compare so their wall time matches the
   // wrong-password branch. Assert both the invocation and the exact args, so
   // a future refactor can't skip the compare or pass the wrong password
@@ -256,11 +256,11 @@ describe("Auth - authorize function", () => {
     ).rejects.toThrow(expectedError);
   });
 
-  // Transparent bcrypt-cost migration (#71): a successful login with a
+  // Transparent bcrypt-cost migration: a successful login with a
   // cost < BCRYPT_COST hash should trigger a re-hash + prisma.user.update,
   // so old users get upgraded on their next visit without changing their
   // password.
-  it("rehashes the password to cost 12 on successful login when stored hash is cost 10 (#71)", async () => {
+  it("rehashes the password to cost 12 on successful login when stored hash is cost 10", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -278,7 +278,7 @@ describe("Auth - authorize function", () => {
     });
   });
 
-  it("does NOT rehash when the stored hash is already at cost 12 (#71)", async () => {
+  it("does NOT rehash when the stored hash is already at cost 12", async () => {
     const authorize = getAuthorize();
     mockFindUnique.mockResolvedValue(mockUser);
     vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
@@ -329,7 +329,7 @@ describe("Auth - per-email rate limit", () => {
     expect(mockRateLimit).toHaveBeenCalledWith("user@example.com");
   });
 
-  it("looks up the DB row via the normalized email so mixed-case input matches lowercased rows (fix #142)", async () => {
+  it("looks up the DB row via the normalized email so mixed-case input matches lowercased rows", async () => {
     const authorize = getAuthorize();
     mockRateLimit.mockResolvedValue({ success: true });
     mockFindUnique.mockResolvedValue({
@@ -519,7 +519,7 @@ describe("Auth - JWT callback", () => {
     });
   });
 
-  it("sets token.expiresAt ~30 days out on initial sign in with remember: true (#145)", async () => {
+  it("sets token.expiresAt ~30 days out on initial sign in with remember: true", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
     const before = Math.floor(Date.now() / 1000);
 
@@ -538,7 +538,7 @@ describe("Auth - JWT callback", () => {
     expect(result.expiresAt).toBeLessThanOrEqual(after + thirtyDays);
   });
 
-  it("sets token.expiresAt ~12 hours out on initial sign in with remember: false (#145)", async () => {
+  it("sets token.expiresAt ~12 hours out on initial sign in with remember: false", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
     const before = Math.floor(Date.now() / 1000);
 
@@ -557,7 +557,7 @@ describe("Auth - JWT callback", () => {
     expect(result.expiresAt).toBeLessThanOrEqual(after + twelveHours);
   });
 
-  it("invalidates the token when now > token.expiresAt (#145)", async () => {
+  it("invalidates the token when now > token.expiresAt", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
     const oneSecondAgo = Math.floor(Date.now() / 1000) - 1;
 
@@ -578,7 +578,7 @@ describe("Auth - JWT callback", () => {
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 
-  it("passes through legacy tokens without token.expiresAt (#145 backward compat)", async () => {
+  it("passes through legacy tokens without token.expiresAt (backward compat)", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
     mockFindUnique.mockResolvedValue({
       tokenVersion: 0,
@@ -625,7 +625,7 @@ describe("Auth - Session callback", () => {
     });
   });
 
-  it("reflects token.expiresAt in session.expires (#145)", async () => {
+  it("reflects token.expiresAt in session.expires", async () => {
     const sessionCallback = authOptions.callbacks!.session!;
     const expiresAtSeconds = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
 
@@ -650,7 +650,7 @@ describe("Auth - Configuration", () => {
     expect(authOptions.session?.strategy).toBe("jwt");
   });
 
-  it("sets the cookie-lifetime ceiling to 30 days for remember-device (#145)", () => {
+  it("sets the cookie-lifetime ceiling to 30 days for remember-device", () => {
     // Per-user actual duration (12h vs 30d) is enforced inside the jwt
     // callback via token.expiresAt; session.maxAge is the ceiling that
     // both flows share so unchecked-remember tokens can invalidate on
@@ -658,7 +658,7 @@ describe("Auth - Configuration", () => {
     expect(authOptions.session?.maxAge).toBe(30 * 24 * 60 * 60);
   });
 
-  it("rotates the JWT every hour of activity (#67)", () => {
+  it("rotates the JWT every hour of activity", () => {
     expect(authOptions.session?.updateAge).toBe(60 * 60);
   });
 
@@ -666,7 +666,7 @@ describe("Auth - Configuration", () => {
     expect(authOptions.pages?.signIn).toBe("/login");
   });
 
-  it("throws at module load when NEXTAUTH_SECRET is missing (#70)", async () => {
+  it("throws at module load when NEXTAUTH_SECRET is missing", async () => {
     vi.resetModules();
     vi.stubEnv("NEXTAUTH_SECRET", "");
 

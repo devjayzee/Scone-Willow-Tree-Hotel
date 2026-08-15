@@ -2,7 +2,7 @@ import { getServerSession, type Session } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 
-// Server-side session gate for dashboard pages and layouts (#181).
+// Server-side session gate for dashboard pages and layouts.
 //
 // Middleware's withAuth uses getToken() internally, which decodes the JWE
 // but does NOT invoke the NextAuth jwt callback — so the revocation /

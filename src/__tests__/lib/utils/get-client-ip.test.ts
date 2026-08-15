@@ -55,7 +55,7 @@ describe("getClientIp", () => {
   });
 
   describe("off Vercel (VERCEL unset)", () => {
-    it("IGNORES x-real-ip — attacker-controllable off the Vercel edge (#188)", () => {
+    it("IGNORES x-real-ip — attacker-controllable off the Vercel edge", () => {
       // Both headers present; x-real-ip must be discarded so a client
       // can't spoof a rate-limit-key of their choosing.
       const req = buildRequest({
