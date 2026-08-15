@@ -31,7 +31,7 @@ export interface Booking {
   checkOut: string;
   checkOutTime?: string | null;
   bondDeposit?: string | number | null;
-  // Per-night rate snapshotted at booking creation (#185). Decimal
+  // Per-night rate snapshotted at booking creation. Decimal
   // serialized like bondDeposit — string or number over the wire.
   ratePerNight: string | number;
   status: BookingStatus;

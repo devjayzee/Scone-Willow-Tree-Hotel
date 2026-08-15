@@ -8,8 +8,7 @@ import { AuthApiError } from "@/hooks/auth";
 // One-shot form submits against public unauthenticated endpoints with no
 // cache/invalidation surface. The 404 → invalidToken branch is form-local
 // state, not server state worth caching. A useMutation wrapper would add
-// ceremony without buying anything. Decision approved in the #127
-// auth-redesign thread.
+// ceremony without buying anything.
 /**
  * Shared token-and-password form engine for `useResetPasswordForm` and
  * `useSetupPasswordForm`. The two flows differ only in which API endpoint

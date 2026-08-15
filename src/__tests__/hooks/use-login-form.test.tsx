@@ -190,7 +190,7 @@ describe("useLoginForm", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("passes remember: '1' to signIn when the checkbox is on (#145)", async () => {
+  it("passes remember: '1' to signIn when the checkbox is on", async () => {
     mockFetchStatus.mockResolvedValue({
       limited: false,
       remaining: 5,

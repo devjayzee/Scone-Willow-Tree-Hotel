@@ -11,7 +11,7 @@ export const BCRYPT_COST = 12;
  * Pre-generated bcrypt hash at BCRYPT_COST of a discarded random string.
  * Used in `authorize()` to equalize wall-clock time between the
  * unknown-email / deactivated-account branches and the wrong-password
- * branch (#66). Cost must match BCRYPT_COST so timing stays balanced
+ * branch. Cost must match BCRYPT_COST so timing stays balanced
  * for freshly-created users.
  */
 export const DUMMY_PASSWORD_HASH =
@@ -20,7 +20,7 @@ export const DUMMY_PASSWORD_HASH =
 /**
  * Session lifetime for a normal (unchecked) login — 12h accommodates
  * hotel double / overnight shifts while halving the leaked-token window
- * vs. the pre-#67 24h default.
+ * vs. the previous 24h default.
  */
 export const SESSION_MAX_AGE_STANDARD = 12 * 60 * 60;
 

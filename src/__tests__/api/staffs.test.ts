@@ -195,7 +195,7 @@ describe("Staffs API", () => {
       expect(mockCreateStaff).not.toHaveBeenCalled();
     });
 
-    it("creates staff for GENERAL_MANAGER and schedules the invite email via after() (#144)", async () => {
+    it("creates staff for GENERAL_MANAGER and schedules the invite email via after()", async () => {
       mockGetServerSession.mockResolvedValue(gmSession);
       const created = { id: "new-staff", ...validCreateInput };
       mockCreateStaff.mockResolvedValue({
@@ -262,7 +262,7 @@ describe("Staffs API", () => {
       expect(mockCreateStaff).not.toHaveBeenCalled();
     });
 
-    it("returns 429 when the staff-invite rate limiter denies (#182)", async () => {
+    it("returns 429 when the staff-invite rate limiter denies", async () => {
       mockGetServerSession.mockResolvedValue(gmSession);
       mockGetStaffInviteRateLimiter.mockReturnValue({
         limit: async () => ({ success: false, limit: 5, remaining: 0, reset: 0 }),
@@ -277,7 +277,7 @@ describe("Staffs API", () => {
       expect(mockAfterCallbacks).toHaveLength(0);
     });
 
-    it("returns 400 when INVITE_DOMAIN_ALLOWLIST blocks the recipient (#182)", async () => {
+    it("returns 400 when INVITE_DOMAIN_ALLOWLIST blocks the recipient", async () => {
       mockGetServerSession.mockResolvedValue(gmSession);
       process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.com";
 
