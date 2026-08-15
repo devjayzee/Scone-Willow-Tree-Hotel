@@ -18,7 +18,6 @@ export default async function RoomsPage() {
   // Fetch rooms server-side
   const rooms = await getAllRooms();
 
-  // Convert Prisma Decimal to number for client serialization
   const serializedRooms: Room[] = rooms.map((room) => ({
     id: room.id,
     roomNumber: room.roomNumber,
