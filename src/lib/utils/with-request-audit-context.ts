@@ -3,7 +3,7 @@ import { getClientIp } from "@/lib/utils/get-client-ip";
 
 /**
  * Wrap a route handler body so every `createAuditLog` call inside it
- * picks up the caller's IP and User-Agent via AsyncLocalStorage (#118).
+ * picks up the caller's IP and User-Agent via AsyncLocalStorage.
  * Read-only routes don't need this; use only on mutating handlers.
  *
  * ```ts

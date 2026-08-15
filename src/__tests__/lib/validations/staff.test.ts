@@ -72,9 +72,9 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    // password removed from createStaffSchema in #144 — new staff receive an
+    // password removed from createStaffSchema — new staff receive an
     // email invite and set their own password on /setup-password.
-    it("ignores an incoming password field (invite flow, #144)", () => {
+    it("ignores an incoming password field (invite flow)", () => {
       const result = createStaffSchema.safeParse({
         ...validStaff,
         password: "anything",
@@ -111,7 +111,7 @@ describe("Staff Validation", () => {
       });
     });
 
-    it("normalizes email to trimmed lowercase (fix #142)", () => {
+    it("normalizes email to trimmed lowercase", () => {
       const result = createStaffSchema.safeParse({
         ...validStaff,
         email: "  Jane@Example.COM \n",
@@ -170,7 +170,7 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(true);
     });
 
-    it("strips password from update payloads — rotation goes through /reset-password (#188)", () => {
+    it("strips password from update payloads — rotation goes through /reset-password", () => {
       const result = updateStaffSchema.safeParse({
         firstName: "Jane",
         password: "AnyValidP@ss123",
@@ -214,7 +214,7 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("normalizes email to trimmed lowercase when provided (fix #142)", () => {
+    it("normalizes email to trimmed lowercase when provided", () => {
       const result = updateStaffSchema.safeParse({
         email: "  Jane@Example.COM \n",
       });
@@ -231,7 +231,7 @@ describe("Staff Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("ignores an incoming password field entirely (#188)", () => {
+    it("ignores an incoming password field entirely", () => {
       // password is not in the schema; zod silently drops it on non-strict
       // parse. The strong-password rule stays enforced by the reset flow.
       const result = updateStaffSchema.safeParse({

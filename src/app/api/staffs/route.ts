@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         throw new ForbiddenError("Only general managers can create staff");
       }
 
-      // Per-user cap on invite creation (#182). Tightens the generic
+      // Per-user cap on invite creation. Tightens the generic
       // 120/min API limit for this specific endpoint so a compromised or
       // published GM credential can't spray outbound invites through the
       // verified Resend domain. No-op when Upstash isn't configured.
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
         return handleApiError(validation.error, "creating staff");
       }
 
-      // Optional recipient-domain gate (#182): unset env → no-op. When set
+      // Optional recipient-domain gate: unset env → no-op. When set
       // on the demo deployment, blocks invites to arbitrary domains.
       if (!isAllowedRecipientDomain(validation.data.email)) {
         throw new ValidationError(
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
 
       // Send the invite AFTER the response — response is snappy, mailer
       // failure logs but doesn't 500 (the resend endpoint covers
-      // recovery). Same pattern as forgot-password (#139). The raw
+      // recovery). Same pattern as forgot-password. The raw
       // token stays server-side; only the email carries it.
       const { subject, text, html } = inviteSetupEmail({
         firstName: staff.firstName,

@@ -11,7 +11,7 @@ vi.mock("next-auth/middleware", () => ({
 }));
 
 // Mock next-auth/jwt — apiRateLimitMiddleware reads the token to key the
-// per-user API limit (#116). Individual tests override to simulate presence
+// per-user API limit. Individual tests override to simulate presence
 // or absence of a session.
 const mockGetToken = vi.fn();
 vi.mock("next-auth/jwt", () => ({
@@ -57,7 +57,7 @@ type Token = {
 // Minimal NextRequest shim — the middleware only reads .headers, .method,
 // .nextUrl.pathname, .url, and .nextauth.token. Defaults a
 // `content-length: "0"` header on body-carrying methods so the
-// enforceBodySizeCap (#188) doesn't 411 tests that aren't exercising it;
+// enforceBodySizeCap doesn't 411 tests that aren't exercising it;
 // the body-size-cap suite overrides this explicitly.
 function buildReq(opts: {
   path: string;
@@ -292,7 +292,7 @@ describe("proxy", () => {
     });
   });
 
-  describe("body-size cap (#117)", () => {
+  describe("body-size cap", () => {
     it("returns 413 when POST content-length exceeds the cap", async () => {
       const req = buildReq({
         path: "/api/bookings",
@@ -333,7 +333,7 @@ describe("proxy", () => {
       expect(response.status).not.toBe(413);
     });
 
-    it("returns 411 when a POST omits Content-Length (chunked bypass, #188)", async () => {
+    it("returns 411 when a POST omits Content-Length (chunked bypass)", async () => {
       // Bypass buildReq's default content-length by constructing the
       // request inline — this test is explicitly about the missing
       // header case.
@@ -355,7 +355,7 @@ describe("proxy", () => {
     });
   });
 
-  describe("per-user API rate limit (#116)", () => {
+  describe("per-user API rate limit", () => {
     it("returns 429 when the api limiter says the caller is over quota", async () => {
       mockGetToken.mockResolvedValue({ id: "user-abc" });
       mockLimit.mockResolvedValue({
@@ -414,7 +414,7 @@ describe("proxy", () => {
     });
   });
 
-  describe("auth-endpoint rate limit (#140)", () => {
+  describe("auth-endpoint rate limit", () => {
     const limitedRoutes = [
       { path: "/api/auth/reset-password", method: "POST" },
       { path: "/api/auth/setup-password", method: "POST" },
@@ -501,7 +501,7 @@ describe("proxy", () => {
     });
   });
 
-  describe("non-auth API paths skip withAuth (#117 companion)", () => {
+  describe("non-auth API paths skip withAuth", () => {
     // Non-auth API routes handle their own session check in the handler
     // (Rule 4). Middleware must NOT 302 unauthenticated API calls to /login.
     it("does not redirect unauthenticated /api/bookings", async () => {

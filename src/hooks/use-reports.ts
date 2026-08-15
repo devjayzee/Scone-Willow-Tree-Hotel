@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { RoomPerformanceData } from "@/types/report";
 
 // Only the room-performance surface survives after the dead-slice
-// sweep (#189). Dashboard / occupancy / revenue / booking-trends
+// sweep. Dashboard / occupancy / revenue / booking-trends
 // hooks were unconsumed.
 export const reportKeys = {
   all: ["reports"] as const,

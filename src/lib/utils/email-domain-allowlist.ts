@@ -1,4 +1,4 @@
-// Optional recipient-domain gate for outbound invite emails (#182).
+// Optional recipient-domain gate for outbound invite emails.
 //
 // When INVITE_DOMAIN_ALLOWLIST is set to a comma-separated list of
 // hostnames, isAllowedRecipientDomain returns true only for emails whose
