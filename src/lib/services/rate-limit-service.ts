@@ -47,7 +47,7 @@ export const getLoginRateLimiter = makeRateLimiter({
 });
 
 /**
- * Per-user (or per-IP fallback) limiter for non-auth /api/* routes (#116).
+ * Per-user (or per-IP fallback) limiter for non-auth /api/* routes.
  * Bucket: 120 requests / 1-minute sliding window — bursty operator UX (a
  * dashboard load fires ~5 parallel calls) fits under this ceiling; sustained
  * abuse gets throttled.
@@ -70,8 +70,8 @@ export const getForgotPasswordRateLimiter = makeRateLimiter({
 });
 
 /**
- * IP-keyed limiter for reset-password / setup-password / invite/[token]
- * (#140). Bucket: 10 / 15 min. Excludes forgot-password (self-limits with
+ * IP-keyed limiter for reset-password / setup-password / invite/[token].
+ * Bucket: 10 / 15 min. Excludes forgot-password (self-limits with
  * dual-key trick) and rate-limit-status (called twice per login attempt as
  * UX sugar — would 429 users mid-troubleshoot). Defense-in-depth: tokens
  * are 43-char base64url (~256 bits), so this is CPU/log-spam protection,
@@ -83,7 +83,7 @@ export const getAuthEndpointRateLimiter = makeRateLimiter({
 });
 
 /**
- * Per-user limiter for `POST /api/staffs` (#182). Bucket: 5 / 1 h. The
+ * Per-user limiter for `POST /api/staffs`. Bucket: 5 / 1 h. The
  * generic apiRateLimiter (120 / 1 min) is too loose here because a
  * compromised GM account can spray outbound invites from the verified
  * Resend domain. 5 / hour is enough for a normal hiring push and low
@@ -96,8 +96,8 @@ export const getStaffInviteRateLimiter = makeRateLimiter({
 });
 
 /**
- * IP-keyed cap on the public `GET /api/auth/rate-limit-status` endpoint
- * (#188). Bucket: 60 / 1 min — generous enough for the login page's
+ * IP-keyed cap on the public `GET /api/auth/rate-limit-status` endpoint.
+ * Bucket: 60 / 1 min — generous enough for the login page's
  * ~2 pre-checks per attempt without any UX hit, but enough to blunt a
  * flood that would otherwise burn Upstash quota. Enforced softly: on
  * denial the route returns the same `LoginRateLimitStatus` shape it

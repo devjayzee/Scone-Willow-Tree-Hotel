@@ -106,7 +106,7 @@ describe("rate-limit-service", () => {
     });
   });
 
-  describe("getApiRateLimiter (#116)", () => {
+  describe("getApiRateLimiter", () => {
     it("returns a singleton across calls", () => {
       const a = getApiRateLimiter();
       const b = getApiRateLimiter();

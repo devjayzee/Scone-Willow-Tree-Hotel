@@ -79,7 +79,7 @@ export async function createAuditLog(
   entityId: string,
   details?: AuditDetails
 ): Promise<void> {
-  // Merge request-scoped forensics from AsyncLocalStorage (#118). Route
+  // Merge request-scoped forensics from AsyncLocalStorage. Route
   // handlers wrap their body in `runWithAuditContext` to make ipAddress /
   // userAgent implicitly available without threading them through every
   // service function.
