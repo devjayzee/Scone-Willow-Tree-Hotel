@@ -28,7 +28,7 @@ export function useCreateStaff() {
         lastName: newStaffData.lastName,
         email: newStaffData.email,
         role: newStaffData.role,
-        // Invited users are inactive until they set a password (#144).
+        // Invited users are inactive until they set a password.
         isActive: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

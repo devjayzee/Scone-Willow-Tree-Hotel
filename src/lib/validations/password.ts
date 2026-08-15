@@ -133,7 +133,7 @@ export function checkPasswordStrength(password: string): {
  * Uses `crypto.getRandomValues` (Web Crypto — available in Node 20+ and
  * edge) for both character selection and shuffling. `Math.random` is
  * not cryptographically secure and its outputs are predictable given
- * seed state (#119).
+ * seed state.
  */
 export function generatePassword(): string {
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
