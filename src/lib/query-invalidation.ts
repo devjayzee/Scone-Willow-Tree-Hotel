@@ -17,7 +17,7 @@ import { QueryClient } from "@tanstack/react-query";
  * `-keys.ts` files under `src/hooks/`).
  * `src/__tests__/lib/query-invalidation.test.ts` enforces this at test
  * time — if any factory's `all` array is renamed, the drift guard fires
- * so the invalidation call never silently no-ops again (#183).
+ * so the invalidation call never silently no-ops again.
  */
 const CACHE_RELATIONSHIPS = {
   bookings: ["calendar", "reports"],

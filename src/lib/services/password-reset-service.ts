@@ -215,8 +215,8 @@ export type DeferSend = (task: () => Promise<void>) => void;
 /**
  * Orchestrates the full forgot-password flow — rate limiting, token
  * issuance, deferred mailer dispatch — so the route stays a thin
- * parse/serialize wrapper (Rule 1, #146). Deferring the send is the
- * timing-enumeration protection from #139: known and unknown emails
+ * parse/serialize wrapper (Rule 1). Deferring the send is the
+ * timing-enumeration protection: known and unknown emails
  * take comparable time because the Resend HTTP call runs post-response.
  *
  * @throws RateLimitError when either the `ip:` or `email:` bucket is

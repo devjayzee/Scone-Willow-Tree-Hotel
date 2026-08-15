@@ -1,4 +1,4 @@
-// Loud fail if the app base URL is missing (#143). NEXTAUTH_URL is
+// Loud fail if the app base URL is missing. NEXTAUTH_URL is
 // already required by NextAuth itself (OAuth callbacks, post-login
 // redirects) — this makes the failure surface at module load instead of
 // as an unusable "undefined/reset-password?..." link in a delivered email.

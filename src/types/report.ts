@@ -3,7 +3,7 @@
  * `bookedRevenue` counts CONFIRMED + CHECKED_IN + CHECKED_OUT — includes
  * money on the books for future confirmed stays. Disambiguated from
  * `RevenueData.realisedRevenue` which only counts started/completed
- * stays (#186).
+ * stays.
  */
 export interface RoomPerformanceData {
   id: string;

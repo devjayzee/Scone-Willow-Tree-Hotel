@@ -1,13 +1,13 @@
 import "@testing-library/jest-dom";
 import { vi } from "vitest";
 
-// auth.ts asserts NEXTAUTH_SECRET at module scope (#70). Any test that
+// auth.ts asserts NEXTAUTH_SECRET at module scope. Any test that
 // imports `authOptions` directly or transitively needs a truthy value; the
 // content doesn't matter — unit tests don't verify real JWTs.
 process.env.NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET || "test-nextauth-secret-not-used-in-real-crypto";
 
-// email/app-url.ts asserts NEXTAUTH_URL at module scope (#143). Same
+// email/app-url.ts asserts NEXTAUTH_URL at module scope. Same
 // pattern as NEXTAUTH_SECRET above — tests that transitively import an
 // email template need a truthy value. The app-url test itself deletes
 // this in a beforeEach so it can exercise the missing-env branch.

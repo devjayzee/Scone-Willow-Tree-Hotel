@@ -61,13 +61,13 @@ describe("invalidateWithRelated", () => {
     expect(qc.invalidateQueries).toHaveBeenCalledTimes(1);
   });
 
-  it("staffs invalidates only itself (was silently no-op before #183)", () => {
+  it("staffs invalidates only itself (was previously a silent no-op)", () => {
     invalidateWithRelated(qc.client, "staffs");
     expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["staffs"] });
     expect(qc.invalidateQueries).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts every key factory's all[0] as a valid primary key — drift guard (#183)", () => {
+  it("accepts every key factory's all[0] as a valid primary key — drift guard", () => {
     // If any factory renames its `all` array (e.g. staffKeys.all: ["staffs"]
     // becomes ["staff"]) without a matching update in
     // CACHE_RELATIONSHIPS, the corresponding call below fails to

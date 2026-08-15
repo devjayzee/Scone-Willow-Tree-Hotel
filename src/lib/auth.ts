@@ -12,7 +12,7 @@ import {
 } from "@/lib/constants/auth";
 import { normalizeEmail } from "@/lib/validations/email";
 
-// Fail loud at server boot instead of on the first sign-in attempt (#70).
+// Fail loud at server boot instead of on the first sign-in attempt.
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required — set it in .env");
 }
@@ -84,7 +84,7 @@ export const authOptions: NextAuthOptions = {
 
         // Run a dummy compare against the same-cost hash on the two
         // short-circuit branches so the failure paths cost the same wall
-        // time as the wrong-password path (#66).
+        // time as the wrong-password path.
         if (!user || !user.isActive) {
           await bcrypt.compare(credentials.password, DUMMY_PASSWORD_HASH);
           throw new Error(invalidCredentialsError);
@@ -99,9 +99,9 @@ export const authOptions: NextAuthOptions = {
           throw new Error(invalidCredentialsError);
         }
 
-        // Transparent bcrypt-cost upgrade (#71): if the stored hash was made
+        // Transparent bcrypt-cost upgrade: if the stored hash was made
         // at a lower cost than the current baseline, re-hash on successful
-        // login and write back. Keeps the #66 timing equalization tight for
+        // login and write back. Keeps the timing equalization tight for
         // old users too. Do NOT increment tokenVersion — this is an
         // algorithm upgrade, not a credential change; existing JWTs stay valid.
         if (bcrypt.getRounds(user.password) < BCRYPT_COST) {
@@ -138,7 +138,7 @@ export const authOptions: NextAuthOptions = {
           (user.remember ? SESSION_MAX_AGE_REMEMBER : SESSION_MAX_AGE_STANDARD);
       }
 
-      // Custom per-login expiry (#145). The session cookie's own maxAge is
+      // Custom per-login expiry. The session cookie's own maxAge is
       // set to the remember-me ceiling so both flows share one cookie
       // config; the actual per-user duration is enforced here. Legacy
       // tokens without expiresAt fall through to NextAuth's own maxAge.
@@ -198,7 +198,7 @@ export const authOptions: NextAuthOptions = {
         session.user.firstName = token.firstName;
       }
 
-      // Reflect the per-user expiry (#145) so the client sees the real
+      // Reflect the per-user expiry so the client sees the real
       // remaining lifetime instead of the cookie's 30-day ceiling.
       if (typeof token.expiresAt === "number") {
         session.expires = new Date(token.expiresAt * 1000).toISOString();
@@ -212,7 +212,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: "jwt",
-    // Cookie-lifetime ceiling — the remember-me window (#145). The
+    // Cookie-lifetime ceiling — the remember-me window. The
     // actual per-user duration (12h vs 30d) is enforced inside the jwt
     // callback via token.expiresAt, so an unchecked-remember session
     // becomes an invalid-token cookie after 12h even though the cookie
