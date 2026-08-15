@@ -106,7 +106,7 @@ describe("Booking Mutations", () => {
       expect(mockBookingCreate).not.toHaveBeenCalled();
     });
 
-    it("retries the create on a bookingRef P2002 collision (#188)", async () => {
+    it("retries the create on a bookingRef P2002 collision", async () => {
       mockBookingFindFirst.mockResolvedValue(null);
       mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
       const successful = createMockBooking({ bookingRef: "BK-20240320-002" });
@@ -120,7 +120,7 @@ describe("Booking Mutations", () => {
       expect(result.bookingRef).toBe("BK-20240320-002");
     });
 
-    it("throws ConflictError when all retries collide (#188)", async () => {
+    it("throws ConflictError when all retries collide", async () => {
       mockBookingFindFirst.mockResolvedValue(null);
       mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
       mockBookingCreate
@@ -134,7 +134,7 @@ describe("Booking Mutations", () => {
       expect(mockBookingCreate).toHaveBeenCalledTimes(3);
     });
 
-    it("snapshots the room's current pricePerNight onto booking.ratePerNight (#185)", async () => {
+    it("snapshots the room's current pricePerNight onto booking.ratePerNight", async () => {
       mockBookingFindFirst.mockResolvedValue(null);
       mockRoomFindUnique.mockResolvedValue({
         id: "room-1",
@@ -160,7 +160,7 @@ describe("Booking Mutations", () => {
       );
     });
 
-    it("re-throws non-collision Prisma errors without retry (#188)", async () => {
+    it("re-throws non-collision Prisma errors without retry", async () => {
       mockBookingFindFirst.mockResolvedValue(null);
       mockRoomFindUnique.mockResolvedValue({ id: "room-1", roomNumber: "101" });
       const other = new Prisma.PrismaClientKnownRequestError("boom", {
@@ -214,7 +214,7 @@ describe("Booking Mutations", () => {
       status: "CONFIRMED",
     });
 
-    it("never touches ratePerNight on update — snapshot semantics (#185)", async () => {
+    it("never touches ratePerNight on update — snapshot semantics", async () => {
       mockBookingFindUnique.mockResolvedValue(existingBooking);
       mockBookingUpdate.mockResolvedValue(existingBooking);
 

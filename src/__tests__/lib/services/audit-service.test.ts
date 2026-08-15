@@ -137,7 +137,7 @@ describe("Audit Service", () => {
       ).resolves.toBeUndefined();
     });
 
-    // #118 — createAuditLog reads request forensics from AsyncLocalStorage
+    // createAuditLog reads request forensics from AsyncLocalStorage
     // set by `runWithAuditContext` at the route handler.
     it("merges ipAddress and userAgent from the ambient audit context", async () => {
       const { runWithAuditContext } = await import(
