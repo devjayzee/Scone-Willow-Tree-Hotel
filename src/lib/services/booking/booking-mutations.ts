@@ -65,7 +65,7 @@ export async function createBooking(
   }
 
   // Verify room exists — also fetch the current price so we can
-  // snapshot it onto Booking.ratePerNight below (#185).
+  // snapshot it onto Booking.ratePerNight below.
   const room = await prisma.room.findUnique({
     where: { id: data.roomId },
     select: { id: true, roomNumber: true, pricePerNight: true },
@@ -103,7 +103,7 @@ export async function createBooking(
           checkOut: checkOutDate,
           checkOutTime: data.checkOutTime || null,
           bondDeposit: data.bondDeposit ?? null,
-          // Snapshot the room's current rate onto the booking (#185).
+          // Snapshot the room's current rate onto the booking.
           // Reports read this field, not room.pricePerNight, so a
           // later room re-price doesn't retroactively change history.
           ratePerNight: room.pricePerNight,
@@ -120,7 +120,7 @@ export async function createBooking(
   }
   if (!booking) {
     // Exhausted retries — surface a ConflictError so the caller sees a
-    // domain error instead of an unmapped Prisma exception (#188).
+    // domain error instead of an unmapped Prisma exception.
     throw new ConflictError(
       "Could not allocate a unique booking reference — try again",
     );

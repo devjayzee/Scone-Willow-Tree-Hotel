@@ -13,7 +13,7 @@ import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context"
 import { logger } from "@/lib/logger";
 
 // POST /api/staffs/[id]/resend-invite — reissue a setup invite for an
-// inactive staff member (#144). The previous token is voided by
+// inactive staff member. The previous token is voided by
 // issueSetupTokenForUser as a side effect, so the old email link 404s
 // immediately.
 export async function POST(

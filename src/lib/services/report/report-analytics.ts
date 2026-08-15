@@ -50,7 +50,7 @@ export async function getRoomPerformance(
     let totalNights = 0;
     let totalRevenue = 0;
 
-    // Revenue uses each booking's own ratePerNight snapshot (#185).
+    // Revenue uses each booking's own ratePerNight snapshot.
     // room.pricePerNight below is the room's *current* rate — kept as
     // a display anchor on the row, not used in the sum.
     room.bookings.forEach((booking) => {

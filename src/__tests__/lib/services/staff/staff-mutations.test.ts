@@ -32,7 +32,7 @@ describe("Staff Mutations", () => {
   });
 
   // ============================================================
-  // createStaff (invite flow — #144)
+  // createStaff (invite flow)
   // ============================================================
   describe("createStaff", () => {
     const validInput = {
@@ -42,7 +42,7 @@ describe("Staff Mutations", () => {
       role: "STAFF" as const,
     };
 
-    it("creates an inactive staff with a per-user random placeholder hash and issues a setup token (#188)", async () => {
+    it("creates an inactive staff with a per-user random placeholder hash and issues a setup token", async () => {
       const createdStaff = createMockStaff({
         id: "new-staff",
         firstName: "Jane",
@@ -135,7 +135,7 @@ describe("Staff Mutations", () => {
   });
 
   // ============================================================
-  // resendInvite (#144)
+  // resendInvite
   // ============================================================
   describe("resendInvite", () => {
     it("issues a fresh setup token and returns the invited user projection", async () => {
@@ -281,7 +281,7 @@ describe("Staff Mutations", () => {
       expect(mockUserFindUnique).toHaveBeenCalledTimes(1);
     });
 
-    it("never hashes a password or touches tokenVersion — password rotation lives on /reset-password (#188)", async () => {
+    it("never hashes a password or touches tokenVersion — password rotation lives on /reset-password", async () => {
       mockUserFindUnique.mockResolvedValue(existingStaff);
       mockUserUpdate.mockResolvedValue(existingStaff);
 
