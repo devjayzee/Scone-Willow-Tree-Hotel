@@ -266,7 +266,8 @@ export const config = {
     "/setup-password",
     // Match all API routes (not just /api/auth/*) so the body-size cap
     // above fires for /api/bookings, /api/staffs, etc. Non-auth API paths
-    // skip withAuth via the branch in `middleware()` above.
+    // skip withAuth via the early return in `proxy()` at the top of this
+    // file.
     "/api/:path*",
     "/bookings/:path*",
     "/rooms/:path*",
