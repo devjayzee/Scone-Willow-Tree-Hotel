@@ -133,7 +133,7 @@ jobs:
       # Cache Playwright's browsers separately from npm — ~200MB and
       # invalidated only by the Playwright version, not package-lock.
       - name: Playwright browsers cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -144,7 +144,7 @@ jobs:
       - run: npm run test:smoke
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
