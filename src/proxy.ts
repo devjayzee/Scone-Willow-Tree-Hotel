@@ -13,7 +13,7 @@ import {
 // 3), but a 100 MB payload still hits `request.json()` before validation
 // fires — an attacker-controlled memory-pressure surface on the event loop.
 // Vercel enforces 4.5 MB out of the box; this is defence-in-depth for
-// self-hosted deployments (#117).
+// self-hosted deployments.
 const MAX_BODY_BYTES = 100_000;
 
 // Auth pages reachable without a session; signed-in users get bounced to
@@ -36,7 +36,7 @@ function enforceBodySizeCap(req: NextRequest): NextResponse | null {
   const contentLength = req.headers.get("content-length");
   // Missing content-length on a body-carrying method typically means
   // Transfer-Encoding: chunked, which sidesteps the size check
-  // entirely (#188). Force clients to declare a length so the cap
+  // entirely. Force clients to declare a length so the cap
   // applies uniformly. Vercel's 4.5 MB cap is still the real backstop.
   if (contentLength === null) {
     return NextResponse.json(
@@ -54,7 +54,7 @@ function enforceBodySizeCap(req: NextRequest): NextResponse | null {
 }
 
 /**
- * Rate-limit non-auth /api/* routes (#116). Keyed per authenticated user
+ * Rate-limit non-auth /api/* routes. Keyed per authenticated user
  * (userId from the JWT); falls back to client IP when there's no token
  * (rare — those routes reject via getServerSession before doing real
  * work, but the limiter still protects against unauthenticated flood).
@@ -89,7 +89,7 @@ async function apiRateLimitMiddleware(
   );
 }
 
-// Paths under /api/auth/** that we own and want IP-rate-limited (#140).
+// Paths under /api/auth/** that we own and want IP-rate-limited.
 // forgot-password self-limits (dual key needs the body); rate-limit-status
 // is a UX pre-check called ~2x per login attempt and intentionally left
 // unlimited; NextAuth internals and the credentials callback are handled
@@ -176,7 +176,7 @@ const authMiddleware = withAuth(
     // back to the cookie. `!!token` is truthy for the nulled shape,
     // which used to loop: middleware would send an invalidated user
     // from /login → /bookings → requireSession redirects to /login →
-    // repeat. Requiring token.id breaks the loop (#181 follow-up).
+    // repeat. Requiring token.id breaks the loop.
     if (PUBLIC_AUTH_PATHS.has(path) && token?.id) {
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
@@ -229,7 +229,7 @@ export default async function proxy(req: NextRequest) {
     return rateLimitResponse;
   }
 
-  // IP-keyed limit on the reset/setup/invite auth endpoints (#140)
+  // IP-keyed limit on the reset/setup/invite auth endpoints
   const authEndpointRateLimitResponse =
     await authEndpointRateLimitMiddleware(req);
   if (authEndpointRateLimitResponse) {
@@ -266,7 +266,8 @@ export const config = {
     "/setup-password",
     // Match all API routes (not just /api/auth/*) so the body-size cap
     // above fires for /api/bookings, /api/staffs, etc. Non-auth API paths
-    // skip withAuth via the branch in `middleware()` above.
+    // skip withAuth via the early return in `proxy()` at the top of this
+    // file.
     "/api/:path*",
     "/bookings/:path*",
     "/rooms/:path*",

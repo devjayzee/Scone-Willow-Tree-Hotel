@@ -24,7 +24,7 @@ export interface BookingPDFData {
 /**
  * Convert a persisted Booking object to the PDF-facing shape.
  *
- * Reads booking.ratePerNight (snapshotted at booking creation, #185)
+ * Reads booking.ratePerNight (snapshotted at booking creation)
  * rather than booking.room.pricePerNight — so a customer printing
  * their registration two years later sees the rate they were
  * actually charged, not whatever the room costs today.

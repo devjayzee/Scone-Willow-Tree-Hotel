@@ -8,7 +8,7 @@ import { reportsQuerySchema } from "@/lib/validations/report";
 
 // GET /api/reports?type=rooms — room-performance table for the reports
 // page. The dashboard / occupancy / revenue / bookings type variants
-// and their hooks were removed as unconsumed (#189).
+// and their hooks were removed as unconsumed.
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);

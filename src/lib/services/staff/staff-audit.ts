@@ -11,7 +11,7 @@ import type { UpdateStaffSchemaInput } from "@/lib/validations/staff";
  * Classify what changed on a staff update and write the matching audit entries.
  * Fires nothing when performedBy is undefined. Branches on role /
  * active-status / general — password rotation lives on the
- * /reset-password flow (#188), not this path.
+ * /reset-password flow, not this path.
  */
 export async function logStaffUpdateAudits(
   id: string,

@@ -80,7 +80,7 @@ describe("Report Analytics", () => {
       expect(result[0].bookedRevenue).toBe(600); // 6 nights * $100
     });
 
-    it("bookedRevenue uses booking.ratePerNight (snapshot), not room.pricePerNight (current) — #185", async () => {
+    it("bookedRevenue uses booking.ratePerNight (snapshot), not room.pricePerNight (current)", async () => {
       // Room's current price is $200, but the two bookings were
       // snapshotted at $80 and $90 respectively. Total revenue must
       // reflect the snapshots, not the current room price.

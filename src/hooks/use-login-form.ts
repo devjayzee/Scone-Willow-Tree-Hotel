@@ -12,7 +12,7 @@ const LIMITER_DISABLED_REMAINING = 999;
 // Login runs pre-session against next-auth's signIn (not a normal API
 // mutation), with a rate-limit pre-check as UX sugar. Nothing to cache,
 // nothing to invalidate — a useMutation wrapper would add ceremony without
-// buying anything. Decision approved in the #127 auth-redesign thread.
+// buying anything.
 /**
  * Login form state + submit orchestration. Page becomes presentational.
  */

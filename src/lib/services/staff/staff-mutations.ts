@@ -19,7 +19,7 @@ import { staffSelectFieldsMinimal } from "./staff-constants";
 import { logStaffUpdateAudits } from "./staff-audit";
 
 /**
- * Create a new staff member via the invite flow (#144).
+ * Create a new staff member via the invite flow.
  *
  * The account is created inactive with a placeholder password hash;
  * consumeSetupToken flips isActive to true and sets the real password
@@ -50,7 +50,7 @@ export async function createStaff(
     throw new ConflictError("Email already exists");
   }
 
-  // Per-user random placeholder hash (#188). Previously all pending
+  // Per-user random placeholder hash. Previously all pending
   // invitees shared DUMMY_PASSWORD_HASH; if a GM flipped `isActive` on
   // a pending user, they'd have collapsed one of the two "can't log
   // in" defences onto a value known to every reader of this repo. A
@@ -95,7 +95,7 @@ export async function createStaff(
 }
 
 /**
- * Reissue a setup invite (#144). issueSetupTokenForUser voids any prior
+ * Reissue a setup invite. issueSetupTokenForUser voids any prior
  * unused SETUP token for this user by design, so the old link 404s the
  * moment this succeeds.
  *
@@ -178,11 +178,15 @@ export async function updateStaff(
     }
   }
 
-  // Build update data. GMs cannot set another user's password directly
-  // (#188) — rotation goes through /reset-password. Removing this
-  // branch also removes account-takeover risk from the staff-edit
-  // path and keeps the only tokenVersion-incrementing writes inside
-  // password-reset-service where they belong.
+  // Build update data. GMs cannot set another user's password directly:
+  // rotation goes through /reset-password, which is also the
+  // only writer that bumps tokenVersion (to revoke stolen JWTs after a
+  // credential change). Role and isActive changes intentionally do NOT
+  // bump tokenVersion: the jwt callback in @/lib/auth rehydrates role
+  // (and firstName) from the DB on every session poll, so demotion /
+  // promotion / rename take effect within the poll interval without
+  // forcing a re-login. Deactivation is caught by the same callback's
+  // isActive check. Do not add a tokenVersion write here.
   const updateData: {
     firstName?: string;
     lastName?: string;

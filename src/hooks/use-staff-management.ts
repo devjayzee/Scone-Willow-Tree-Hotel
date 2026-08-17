@@ -65,7 +65,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
     async (formData: StaffFormData) => {
       if (selectedStaff) {
         // Update existing staff. Password rotation is deliberately
-        // absent from this payload (#188) — rotation happens via the
+        // absent from this payload — rotation happens via the
         // /reset-password flow.
         await updateMutation.mutateAsync({
           id: selectedStaff.id,
@@ -77,7 +77,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
           },
         });
       } else {
-        // Create new staff — invite flow, no password sent (#144).
+        // Create new staff — invite flow, no password sent.
         await createMutation.mutateAsync({
           firstName: formData.firstName,
           lastName: formData.lastName,
@@ -116,7 +116,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
     [toggleActiveMutation]
   );
 
-  // Resend a setup invite to an inactive staff member (#144).
+  // Resend a setup invite to an inactive staff member.
   const resendInvite = useCallback(
     async (staff: Staff) => {
       await resendInviteMutation.mutateAsync(staff.id);
