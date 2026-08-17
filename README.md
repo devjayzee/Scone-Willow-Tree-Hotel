@@ -1,36 +1,121 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Willow Tree Hotel
 
-## Getting Started
+Hotel management system built for the Willow Tree Hotel (Scone, NSW):
+bookings, rooms, staff, calendar, and reports behind a role-gated dashboard.
 
-First, run the development server:
+> **Status:** pre-launch. The app is under active development for a working
+> boutique hotel. A public demo and screenshots are pending the current UI
+> redesign.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+<!-- TODO(readme): live demo — add once the public URL + demo credentials are ready
+## Live demo
+
+**URL:** https://...
+**Credentials:** `demo@example.com` / `<password>` (read-only tour)
+-->
+
+<!-- TODO(readme): hero screenshot — add once the redesigned dashboard is stable
+![Bookings dashboard](docs/screenshots/hero.png)
+-->
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router) + React 19 + TypeScript 5 |
+| Database | PostgreSQL via Prisma 7 |
+| Auth | NextAuth 4 (credentials + Prisma adapter), role-based |
+| Server state | TanStack Query 5 |
+| Validation | Zod 4 |
+| UI | shadcn/ui (Radix + CVA) + Tailwind 4 |
+| Rate limiting | Upstash Redis (edge) |
+| Testing | Vitest 4 + jsdom + Testing Library |
+| Deploy | Vercel |
+
+## Notable engineering
+
+Highlights of design decisions worth reading past the surface. Each bullet
+links to the current implementation on `main`.
+
+- **Timing-attack-hardened forgot-password.** Response time and body are
+  identical whether the email exists or not, closing a common user-enumeration
+  vector. See
+  [`src/lib/services/password-reset-service.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/lib/services/password-reset-service.ts).
+- **`AsyncLocalStorage` audit context.** Every mutation runs inside a
+  per-request store carrying user id, IP, and user-agent, so services can
+  audit without threading a context object through every call. See
+  [`src/lib/utils/with-request-audit-context.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/lib/utils/with-request-audit-context.ts).
+- **Layered architecture enforced by lint.** Route handlers only auth + parse;
+  services own all Prisma access. Rules live in
+  [`.claude/rules/`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/tree/main/.claude/rules)
+  and are machine-enforced via
+  [`eslint.config.mjs`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/eslint.config.mjs).
+- **Edge-proxy defence in depth.** Body-size cap, credential-login rate
+  limit, and per-user API rate limit all run before any handler is reached.
+  See
+  [`src/proxy.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/proxy.ts).
+- **Session revocation via `tokenVersion` bump.** JWT sessions can be
+  invalidated server-side without waiting for cookie expiry — the `jwt`
+  callback nulls `token.id` when the DB version has advanced. See
+  [`src/lib/auth.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/lib/auth.ts).
+
+## Architecture
+
+Every API request follows the same three-layer flow:
+
+```mermaid
+flowchart LR
+    C[Client component] -->|TanStack Query hook| R[Route handler]
+    R -->|auth check + zod parse| S[Service]
+    S -->|Prisma singleton| DB[(PostgreSQL)]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Route handlers** do the session check and Zod `safeParse`, then delegate
+  to exactly one service call and end with `handleApiError`. No business
+  logic, no direct Prisma.
+- **Services** own all Prisma access and throw domain errors
+  (`NotFoundError`, `ConflictError`, `ForbiddenError`, …). HTTP- and
+  session-free.
+- **Client components** never `fetch` directly — they call TanStack Query
+  hooks under `src/hooks/`, which call the API routes.
+- **Server components** (dashboard pages) fetch initial data and serialize
+  Prisma entities (`Date` → ISO string, `Decimal` → string) before handing
+  them to `'use client'` leaves.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+<!-- TODO(readme): secondary screenshots — calendar, staff, reports — add alongside hero -->
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local setup
 
-## Learn More
+```bash
+git clone https://github.com/devjayzee/Scone-Willow-Tree-Hotel.git
+cd Scone-Willow-Tree-Hotel
+npm install
+cp .env.example .env  # fill in required vars — see below
+npx prisma migrate dev
+npx prisma db seed
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Required environment variables are documented in `.env.example`:
+`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `UPSTASH_REDIS_REST_URL`,
+`UPSTASH_REDIS_REST_TOKEN`. Optional: `RESEND_API_KEY` + `EMAIL_FROM` for
+transactional email (unset → emails log to console).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Testing & CI
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run test:run` — Vitest single run
+- `npm run test:coverage` — coverage report
+- `npm run lint` — ESLint (also enforces the architectural rules above)
+- `npm run typecheck` — `tsc --noEmit`
 
-## Deploy on Vercel
+The same suite runs on every pull request via GitHub Actions.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Contact
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by [@devjayzee17](https://github.com/devjayzee17). Reach out via
+GitHub.
+
+## License
+
+All rights reserved. This repository is public as a portfolio piece; not
+licensed for redistribution or use in other projects.
