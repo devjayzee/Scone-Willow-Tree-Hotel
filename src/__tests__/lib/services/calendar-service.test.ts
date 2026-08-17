@@ -145,7 +145,7 @@ describe("Calendar Service", () => {
       expect(result).toEqual([]);
     });
 
-    it("uses the overlap predicate when only start date is provided (#187)", async () => {
+    it("uses the overlap predicate when only start date is provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const startDate = new Date("2024-03-01T00:00:00Z");
@@ -162,7 +162,7 @@ describe("Calendar Service", () => {
       );
     });
 
-    it("uses the overlap predicate when only end date is provided (#187)", async () => {
+    it("uses the overlap predicate when only end date is provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const endDate = new Date("2024-03-31T23:59:59Z");
@@ -179,7 +179,7 @@ describe("Calendar Service", () => {
       );
     });
 
-    it("uses the overlap predicate when both dates are provided (#187)", async () => {
+    it("uses the overlap predicate when both dates are provided", async () => {
       mockBookingFindMany.mockResolvedValue([]);
 
       const startDate = new Date("2024-03-01T00:00:00Z");
@@ -319,7 +319,7 @@ describe("Calendar Service", () => {
       expect(result[2].title).toBe("Room 102 - Guest Two");
     });
 
-    it("includes bookings that straddle the window edge (#187)", async () => {
+    it("includes bookings that straddle the window edge", async () => {
       // Booking Jan 28 → Feb 5 queried with window [Feb 1, Feb 28].
       // Under the old containment predicate (`checkIn >= Feb 1`) this
       // was silently dropped even though the guest is in-house on

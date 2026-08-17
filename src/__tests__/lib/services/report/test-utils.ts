@@ -49,7 +49,7 @@ export function createMockBooking(
     // Default matches the room's default pricePerNight below so tests
     // that don't care about the snapshot vs current distinction keep
     // producing intuitive numbers. Tests that DO care set both fields
-    // to distinct values (#185).
+    // to distinct values.
     ratePerNight: overrides.ratePerNight ?? 100,
     status: overrides.status ?? BookingStatus.CONFIRMED,
     createdAt: overrides.createdAt ?? new Date("2024-02-15"),

@@ -7,7 +7,8 @@ on:
 jobs:
   delete:
     if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'development'
-    runs-on: ubuntu-latest
+    # Runner switchable via `vars.RUNNER` — see `.github/runner/README.md`.
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
     steps:

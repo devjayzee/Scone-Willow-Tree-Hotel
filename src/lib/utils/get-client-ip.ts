@@ -19,7 +19,7 @@
  *
  * The Vercel/off-Vercel switch is driven by the platform-injected `VERCEL`
  * env var (`"1"` on Vercel, unset otherwise). Do NOT use
- * `NEXT_PUBLIC_VERCEL_ENV` — that's exposed to the client bundle (#188).
+ * `NEXT_PUBLIC_VERCEL_ENV` — that's exposed to the client bundle.
  */
 export function getClientIp(req: Request): string {
   if (process.env.VERCEL === "1") {

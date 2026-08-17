@@ -4,9 +4,9 @@ import { emailSchema } from "./email";
 // Role enum for validation
 const roleEnum = z.enum(["GENERAL_MANAGER", "MANAGER", "STAFF"]);
 
-// Schema for creating a new staff member (#144). No password — new staff
+// Schema for creating a new staff member. No password — new staff
 // are invited via email and set their own on the /setup-password page.
-// 100-char cap on names (#184) bounds render + storage cost; genuine
+// 100-char cap on names bounds render + storage cost; genuine
 // full names sit well under.
 export const createStaffSchema = z.object({
   firstName: z
@@ -22,7 +22,7 @@ export const createStaffSchema = z.object({
 });
 
 // Schema for updating a staff member (all fields optional).
-// Password rotation is deliberately NOT accepted here (#188) — GMs
+// Password rotation is deliberately NOT accepted here — GMs
 // cannot set another user's password directly; rotation goes through
 // the /reset-password flow.
 export const updateStaffSchema = z.object({

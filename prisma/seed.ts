@@ -168,6 +168,7 @@ async function main() {
       guestEmail: guests[i].email,
       checkIn: fullBookingStart,
       checkOut: fullBookingEnd,
+      ratePerNight: createdRooms[i].pricePerNight,
       status: BookingStatus.CONFIRMED,
       createdById: manager.id,
     });
@@ -182,6 +183,7 @@ async function main() {
     guestEmail: guests[8].email,
     checkIn: addDays(today, -1),
     checkOut: addDays(today, 2),
+    ratePerNight: createdRooms[0].pricePerNight,
     status: BookingStatus.CHECKED_IN,
     createdById: manager.id,
   });
@@ -194,6 +196,7 @@ async function main() {
     guestEmail: guests[9].email,
     checkIn: today,
     checkOut: addDays(today, 2),
+    ratePerNight: createdRooms[1].pricePerNight,
     status: BookingStatus.CHECKED_IN,
     createdById: manager.id,
   });
@@ -207,6 +210,7 @@ async function main() {
     guestEmail: guests[10].email,
     checkIn: addDays(today, 10),
     checkOut: addDays(today, 13),
+    ratePerNight: createdRooms[2].pricePerNight,
     status: BookingStatus.CONFIRMED,
     createdById: staff.id,
   });
@@ -219,6 +223,7 @@ async function main() {
     guestEmail: guests[11].email,
     checkIn: addDays(today, 10),
     checkOut: addDays(today, 12),
+    ratePerNight: createdRooms[5].pricePerNight,
     status: BookingStatus.CONFIRMED,
     createdById: staff.id,
   });
@@ -232,6 +237,7 @@ async function main() {
     guestEmail: "past1@email.com",
     checkIn: addDays(today, -7),
     checkOut: addDays(today, -4),
+    ratePerNight: createdRooms[3].pricePerNight,
     status: BookingStatus.CHECKED_OUT,
     createdById: manager.id,
   });
@@ -244,6 +250,7 @@ async function main() {
     guestEmail: "past2@email.com",
     checkIn: addDays(today, -5),
     checkOut: addDays(today, -2),
+    ratePerNight: createdRooms[4].pricePerNight,
     status: BookingStatus.CHECKED_OUT,
     createdById: manager.id,
   });

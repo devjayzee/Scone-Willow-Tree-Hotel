@@ -368,7 +368,7 @@ describe("Password Reset Service", () => {
     });
   });
 
-  describe("requestPasswordReset (#146)", () => {
+  describe("requestPasswordReset", () => {
     const activeUserRow = {
       id: "u1",
       email: "jane@example.com",
