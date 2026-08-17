@@ -10,7 +10,7 @@ export const mockUserCreate = vi.fn();
 export const mockUserUpdate = vi.fn();
 export const mockUserDelete = vi.fn();
 
-// password-reset-service mock (#144 — createStaff / resendInvite call this)
+// password-reset-service mock (createStaff / resendInvite call this)
 export const mockIssueSetupTokenForUser = vi.fn();
 
 // Setup mocks — call this at the top of each test file, before importing services.

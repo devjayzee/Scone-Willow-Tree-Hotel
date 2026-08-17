@@ -7,7 +7,6 @@ import { forgotPasswordApi } from "@/hooks/auth";
 // One-shot form submit against a public unauthenticated endpoint with no
 // cache/invalidation surface (nothing to refetch, no cross-hook sharing).
 // A useMutation wrapper would add ceremony without buying anything.
-// Decision approved in the #127 auth-redesign thread.
 /**
  * Forgot-password form state + submit. `sent` flips on 200 regardless of
  * whether the email exists — the API never reveals account existence.

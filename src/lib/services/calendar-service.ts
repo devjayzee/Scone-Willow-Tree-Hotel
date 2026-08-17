@@ -18,8 +18,8 @@ export async function getCalendarEvents(
   // Build where clause for active bookings.
   // Predicate is a standard overlap: booking.checkOut > start AND
   // booking.checkIn < end. Containment (checkIn >= start AND
-  // checkOut <= end) would drop any stay straddling a window edge
-  // (#187). Strict gt/lt matches hotel semantics — a booking whose
+  // checkOut <= end) would drop any stay straddling a window edge.
+  // Strict gt/lt matches hotel semantics — a booking whose
   // checkOut lands exactly on the window start isn't in-house during
   // the window, and vice versa.
   const where: {

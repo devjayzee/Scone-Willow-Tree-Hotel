@@ -10,7 +10,7 @@ export const bookingStatusEnum = z.enum([
 
 // Phone number validation (Australian format or international).
 // Extracted so `phoneSchema` and `optionalPhoneSchema` stay in sync —
-// Rule 3's "share field schemas within the file" applied (#189).
+// Rule 3's "share field schemas within the file" applied.
 const PHONE_REGEX = /^(\+?61|0)?[2-478](\d{8}|\d{4}\s?\d{4})$|^\+?[1-9]\d{6,14}$/;
 const PHONE_ERROR = "Please enter a valid phone number";
 
