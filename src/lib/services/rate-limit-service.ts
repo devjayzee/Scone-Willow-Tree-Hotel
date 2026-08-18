@@ -124,6 +124,19 @@ export const getRateLimitStatusLimiter = makeRateLimiter({
   prefix: "ratelimit:rate-limit-status",
 });
 
+/**
+ * Per-user limiter for `/api/auth/session`. NextAuth hits
+ * `prisma.user.findUnique` on every call and the session provider polls
+ * at refetchInterval=60s, so an unlimited endpoint means any signed-in
+ * client can drive unbounded DB reads by opening a script or many tabs.
+ * Bucket: 60 / 1 min per user — allows ~60 tabs polling every 60s
+ * comfortably, throttles scripted floods at 1/s.
+ */
+export const getSessionEndpointRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(60, "1 m"),
+  prefix: "ratelimit:session-endpoint",
+});
+
 export type { LoginRateLimitStatus };
 
 /**
