@@ -2,6 +2,22 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import type { LoginRateLimitStatus } from "@/types/auth";
 
+// Fail loud at server boot when Upstash is unconfigured in production.
+// Without this guard the factories below silently return null and every
+// call site treats null as "skip", leaving login / API / forgot-password
+// endpoints with no rate limiting at all — a documented default that
+// invited unlimited online password guessing. Dev workflows are
+// unchanged: Upstash stays optional locally.
+if (
+  process.env.NODE_ENV === "production" &&
+  (!process.env.UPSTASH_REDIS_REST_URL ||
+    !process.env.UPSTASH_REDIS_REST_TOKEN)
+) {
+  throw new Error(
+    "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production.",
+  );
+}
+
 /**
  * Per-process singleton factories for Upstash-backed rate limiters. Vercel
  * edge + serverless runtimes each get their own module graph — instances are
