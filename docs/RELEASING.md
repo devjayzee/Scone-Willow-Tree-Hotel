@@ -7,8 +7,7 @@ checklist covers the failure classes automation can't see —
 visual regressions, missing content, subtle UX breakage.
 
 The immediate reason we run this: PR #130's `script-src 'self'` CSP
-outage shipped because every verification was `curl`-based. The audit
-at `audits/auth-feature-audit-2026-08-09.md` §A1 tracked it. Do this
+outage shipped because every verification was `curl`-based. Do this
 manually on release PRs even after Playwright lands — it's cheap and
 catches a different class of bug.
 
