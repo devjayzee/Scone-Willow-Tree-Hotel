@@ -21,7 +21,7 @@ catches a different class of bug.
    - `/forgot-password`
    - `/reset-password?token=fake-token-for-render-check`
    - `/setup-password?token=fake-token-for-render-check`
-4. Sign in with the demo GM account (`manager@hotel.com` / `REDACTED`).
+4. Sign in with the demo GM account (`manager@hotel.com` / your `SEED_MANAGER_PASSWORD` value).
    - After sign-in, click through the four dashboard tabs:
      `/bookings`, `/calendar`, `/rooms`, `/reports`, `/staff`.
    - Confirm each renders and no console errors appear.

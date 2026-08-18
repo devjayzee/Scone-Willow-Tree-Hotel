@@ -11,17 +11,25 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  // Refuse to run against production databases (#182). Seed hashes
-  // policy-violating passwords (REDACTED / REDACTED) and wipes bookings
-  // + rooms via deleteMany — accidental prod invocation would both
-  // destroy live data and plant weak credentials in it. Explicit
-  // escape hatch for the first-time demo seed: set ALLOW_PROD_SEED=1.
+  // Refuse to run against production databases (#182). Seed plants
+  // policy-violating weak passwords and wipes bookings + rooms via
+  // deleteMany — accidental prod invocation would both destroy live
+  // data and plant weak credentials in it. Explicit escape hatch for
+  // the first-time demo seed: set ALLOW_PROD_SEED=1.
   if (
     process.env.NODE_ENV === "production" &&
     process.env.ALLOW_PROD_SEED !== "1"
   ) {
     throw new Error(
       "Refusing to seed with NODE_ENV=production. Set ALLOW_PROD_SEED=1 to override (destructive).",
+    );
+  }
+
+  const managerPassword = process.env.SEED_MANAGER_PASSWORD;
+  const staffPassword = process.env.SEED_STAFF_PASSWORD;
+  if (!managerPassword || !staffPassword) {
+    throw new Error(
+      "SEED_MANAGER_PASSWORD and SEED_STAFF_PASSWORD must both be set. See .env.example.",
     );
   }
 
@@ -32,7 +40,7 @@ async function main() {
   console.log("Cleared existing bookings");
 
   // Create General Manager
-  const hashedPassword = await bcrypt.hash("REDACTED", BCRYPT_COST);
+  const hashedPassword = await bcrypt.hash(managerPassword, BCRYPT_COST);
   const manager = await prisma.user.upsert({
     where: { email: "manager@hotel.com" },
     update: {},
@@ -47,13 +55,13 @@ async function main() {
   console.log("Created manager:", manager.email);
 
   // Create Staff
-  const staffPassword = await bcrypt.hash("REDACTED", BCRYPT_COST);
+  const hashedStaffPassword = await bcrypt.hash(staffPassword, BCRYPT_COST);
   const staff = await prisma.user.upsert({
     where: { email: "staff@hotel.com" },
     update: {},
     create: {
       email: "staff@hotel.com",
-      password: staffPassword,
+      password: hashedStaffPassword,
       firstName: "Front Desk",
       lastName: "Staff",
       role: Role.STAFF,
