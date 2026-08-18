@@ -117,5 +117,4 @@ GitHub.
 
 ## License
 
-All rights reserved. This repository is public as a portfolio piece; not
-licensed for redistribution or use in other projects.
+MIT — see [LICENSE](LICENSE).

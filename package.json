@@ -1,6 +1,17 @@
 {
-  "name": "hotel-management",
+  "name": "scone-willow-tree-hotel",
   "version": "0.1.0",
+  "description": "Hotel management system for the Willow Tree Hotel (Scone, NSW): bookings, rooms, staff, calendar, and reports behind a role-gated dashboard.",
+  "homepage": "https://github.com/devjayzee/Scone-Willow-Tree-Hotel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devjayzee/Scone-Willow-Tree-Hotel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/devjayzee/Scone-Willow-Tree-Hotel/issues"
+  },
+  "license": "MIT",
+  "author": "Jerome Zarate",
   "private": true,
   "engines": {
     "node": "20.x"
