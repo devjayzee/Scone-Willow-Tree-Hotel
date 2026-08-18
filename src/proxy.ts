@@ -7,6 +7,7 @@ import {
   getApiRateLimiter,
   getAuthEndpointRateLimiter,
   getLoginRateLimiter,
+  getSessionEndpointRateLimiter,
 } from "@/lib/services/rate-limit-service";
 
 // Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
@@ -132,6 +133,40 @@ async function authEndpointRateLimitMiddleware(
   );
 }
 
+/**
+ * Per-user rate limit on `/api/auth/session`. That endpoint runs a
+ * prisma.user.findUnique on every call and the session provider polls
+ * every 60s; unbounded, any signed-in client can drive DB reads at
+ * will. Per-user key with an IP fallback for the rare unauthenticated
+ * caller, matching the pattern in `apiRateLimitMiddleware`.
+ */
+async function sessionEndpointRateLimitMiddleware(
+  req: NextRequest,
+): Promise<NextResponse | null> {
+  if (req.nextUrl.pathname !== "/api/auth/session") return null;
+
+  const limiter = getSessionEndpointRateLimiter();
+  if (!limiter) return null;
+
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
+
+  const { success, limit, remaining, reset } = await limiter.limit(key);
+  if (success) return null;
+
+  return NextResponse.json(
+    { error: "Too many requests. Please slow down." },
+    {
+      status: 429,
+      headers: {
+        "X-RateLimit-Limit": limit.toString(),
+        "X-RateLimit-Remaining": remaining.toString(),
+        "X-RateLimit-Reset": reset.toString(),
+      },
+    },
+  );
+}
+
 // Rate limiting middleware for auth endpoints
 async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
@@ -227,6 +262,15 @@ export default async function proxy(req: NextRequest) {
   const rateLimitResponse = await rateLimitMiddleware(req);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  // Per-user cap on /api/auth/session (NextAuth's session poll endpoint
+  // hits Prisma every call; must run before apiRateLimitMiddleware's
+  // /api/auth/** short-circuit).
+  const sessionEndpointRateLimitResponse =
+    await sessionEndpointRateLimitMiddleware(req);
+  if (sessionEndpointRateLimitResponse) {
+    return sessionEndpointRateLimitResponse;
   }
 
   // IP-keyed limit on the reset/setup/invite auth endpoints

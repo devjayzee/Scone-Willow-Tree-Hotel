@@ -281,8 +281,10 @@ describe("proxy", () => {
     });
 
     it("does not rate-limit other paths", async () => {
+      // Use /api/auth/csrf (not /api/auth/session) — session has its own
+      // per-user limiter now, which would trip mockLimit.
       const req = buildReq({
-        path: "/api/auth/session",
+        path: "/api/auth/csrf",
         method: "POST",
       });
 
@@ -392,8 +394,10 @@ describe("proxy", () => {
     });
 
     it("does not touch the api limiter for /api/auth/*", async () => {
+      // Use /api/auth/csrf (not /api/auth/session) because the session
+      // endpoint has its own per-user limiter which also reads the token.
       const req = buildReq({
-        path: "/api/auth/session",
+        path: "/api/auth/csrf",
         method: "GET",
       });
       await proxy(req);
@@ -476,8 +480,11 @@ describe("proxy", () => {
       expect(mockLimit).not.toHaveBeenCalled();
     });
 
-    it("does not rate-limit NextAuth internals (/api/auth/session)", async () => {
-      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+    it("does not rate-limit NextAuth internals (/api/auth/csrf)", async () => {
+      // /api/auth/session has its own per-user limiter (covered by the
+      // 'session-endpoint rate limit' describe below); csrf and other
+      // NextAuth internals remain unlimited by the auth-endpoint limiter.
+      const req = buildReq({ path: "/api/auth/csrf", method: "GET" });
       await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
@@ -518,6 +525,68 @@ describe("proxy", () => {
       const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
+    });
+  });
+
+  describe("session-endpoint rate limit", () => {
+    it("returns 429 when a signed-in user is over quota", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: false,
+        limit: 60,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.error).toMatch(/too many requests/i);
+      // Per-user key
+      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+    });
+
+    it("keys on IP when the request is unauthenticated", async () => {
+      mockGetToken.mockResolvedValue(null);
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 60,
+        remaining: 59,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      await proxy(req);
+
+      expect(mockLimit).toHaveBeenCalledWith("ip:203.0.113.7");
+    });
+
+    it("passes through when under quota", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 60,
+        remaining: 59,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+
+      // Not a 429; falls through to withAuth (mocked as passthrough)
+      expect(response.status).not.toBe(429);
+    });
+
+    it("does not touch the session limiter for other /api/auth/* paths", async () => {
+      const req = buildReq({ path: "/api/auth/csrf", method: "GET" });
+      await proxy(req);
+
+      // Session-endpoint middleware short-circuits on the exact path check
+      // before calling getToken or the limiter.
+      expect(mockGetToken).not.toHaveBeenCalled();
+      expect(mockLimit).not.toHaveBeenCalled();
     });
   });
 });
