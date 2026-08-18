@@ -48,6 +48,9 @@ next-env.d.ts
 /plans/*
 !/plans/README.md
 
+# internal audits and post-mortems — kept out of the public repo
+/audits/
+
 # personal Claude Code settings (per-machine, not shared)
 .claude/settings.local.json
 
