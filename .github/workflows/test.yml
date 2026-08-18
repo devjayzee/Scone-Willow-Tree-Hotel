@@ -116,12 +116,18 @@ jobs:
       #   throws at module load when NODE_ENV=production (which
       #   `next build` sets) and either is missing. Placeholders keep
       #   the guard happy without sending real mail.
+      # - UPSTASH_REDIS_REST_URL / _TOKEN: src/lib/services/rate-limit-service.ts
+      #   throws at module load when NODE_ENV=production and either is
+      #   missing. Placeholders keep the guard happy; the smoke never
+      #   actually hits Upstash.
       NEXTAUTH_SECRET: ci-smoke-secret-placeholder-32-chars-ok
       NEXTAUTH_URL: http://localhost:3000
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
       RESEND_API_KEY: ci-smoke-resend-placeholder
       EMAIL_FROM: ci-smoke@example.invalid
+      UPSTASH_REDIS_REST_URL: https://ci-smoke-upstash.placeholder.invalid
+      UPSTASH_REDIS_REST_TOKEN: ci-smoke-upstash-token-placeholder
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
