@@ -7,7 +7,9 @@ import {
   getApiRateLimiter,
   getAuthEndpointRateLimiter,
   getLoginRateLimiter,
+  getSessionEndpointRateLimiter,
 } from "@/lib/services/rate-limit-service";
+import { logger } from "@/lib/logger";
 
 // Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
 // 3), but a 100 MB payload still hits `request.json()` before validation
@@ -132,6 +134,56 @@ async function authEndpointRateLimitMiddleware(
   );
 }
 
+/**
+ * Per-user rate limit on `/api/auth/session`. That endpoint runs a
+ * prisma.user.findUnique on every call and the session provider polls
+ * every 60s; unbounded, any signed-in client can drive DB reads at
+ * will. Per-user key with an IP fallback for the rare unauthenticated
+ * caller, matching the pattern in `apiRateLimitMiddleware`.
+ */
+async function sessionEndpointRateLimitMiddleware(
+  req: NextRequest,
+): Promise<NextResponse | null> {
+  if (req.nextUrl.pathname !== "/api/auth/session") return null;
+
+  const limiter = getSessionEndpointRateLimiter();
+  if (!limiter) return null;
+
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
+
+  // Fail open on Upstash transport errors. Session polling should never
+  // 500 the app (the session provider surfaces any non-JSON response as
+  // a CLIENT_FETCH_ERROR in the browser console, breaking smoke tests
+  // and hydration). The underlying protection — the DB read in the jwt
+  // callback — still runs and still requires a valid token; skipping
+  // this cap during an Upstash outage is strictly less protective, not
+  // a bypass.
+  let result;
+  try {
+    result = await limiter.limit(key);
+  } catch (err) {
+    logger.warn("session-endpoint rate limiter unreachable — failing open", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+
+  if (result.success) return null;
+
+  return NextResponse.json(
+    { error: "Too many requests. Please slow down." },
+    {
+      status: 429,
+      headers: {
+        "X-RateLimit-Limit": result.limit.toString(),
+        "X-RateLimit-Remaining": result.remaining.toString(),
+        "X-RateLimit-Reset": result.reset.toString(),
+      },
+    },
+  );
+}
+
 // Rate limiting middleware for auth endpoints
 async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | null> {
   const path = req.nextUrl.pathname;
@@ -227,6 +279,15 @@ export default async function proxy(req: NextRequest) {
   const rateLimitResponse = await rateLimitMiddleware(req);
   if (rateLimitResponse) {
     return rateLimitResponse;
+  }
+
+  // Per-user cap on /api/auth/session (NextAuth's session poll endpoint
+  // hits Prisma every call; must run before apiRateLimitMiddleware's
+  // /api/auth/** short-circuit).
+  const sessionEndpointRateLimitResponse =
+    await sessionEndpointRateLimitMiddleware(req);
+  if (sessionEndpointRateLimitResponse) {
+    return sessionEndpointRateLimitResponse;
   }
 
   // IP-keyed limit on the reset/setup/invite auth endpoints
