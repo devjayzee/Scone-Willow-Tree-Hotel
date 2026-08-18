@@ -9,6 +9,7 @@ import {
   getLoginRateLimiter,
   getSessionEndpointRateLimiter,
 } from "@/lib/services/rate-limit-service";
+import { logger } from "@/lib/logger";
 
 // Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
 // 3), but a 100 MB payload still hits `request.json()` before validation
@@ -151,17 +152,33 @@ async function sessionEndpointRateLimitMiddleware(
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
 
-  const { success, limit, remaining, reset } = await limiter.limit(key);
-  if (success) return null;
+  // Fail open on Upstash transport errors. Session polling should never
+  // 500 the app (the session provider surfaces any non-JSON response as
+  // a CLIENT_FETCH_ERROR in the browser console, breaking smoke tests
+  // and hydration). The underlying protection — the DB read in the jwt
+  // callback — still runs and still requires a valid token; skipping
+  // this cap during an Upstash outage is strictly less protective, not
+  // a bypass.
+  let result;
+  try {
+    result = await limiter.limit(key);
+  } catch (err) {
+    logger.warn("session-endpoint rate limiter unreachable — failing open", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+
+  if (result.success) return null;
 
   return NextResponse.json(
     { error: "Too many requests. Please slow down." },
     {
       status: 429,
       headers: {
-        "X-RateLimit-Limit": limit.toString(),
-        "X-RateLimit-Remaining": remaining.toString(),
-        "X-RateLimit-Reset": reset.toString(),
+        "X-RateLimit-Limit": result.limit.toString(),
+        "X-RateLimit-Remaining": result.remaining.toString(),
+        "X-RateLimit-Reset": result.reset.toString(),
       },
     },
   );

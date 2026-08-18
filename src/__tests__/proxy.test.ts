@@ -42,6 +42,12 @@ vi.mock("@/lib/utils/get-client-ip", () => ({
   getClientIp: () => "203.0.113.7",
 }));
 
+// Silence the logger — the session-endpoint fail-open path warns on
+// Upstash transport errors, and we don't want the CI log flooded.
+vi.mock("@/lib/logger", () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
 // Force the proxy's lazy Upstash init so mockLimit gets a chance to run.
 process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
@@ -587,6 +593,23 @@ describe("proxy", () => {
       // before calling getToken or the limiter.
       expect(mockGetToken).not.toHaveBeenCalled();
       expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("fails open when the limiter throws a transport error", async () => {
+      // Regression: PR #260 first attempt at S3 crashed the smoke test
+      // because the CI placeholder Upstash URL doesn't resolve.
+      // Session polling should never 500 the app on Upstash outages.
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockRejectedValue(
+        new Error("getaddrinfo ENOTFOUND ci-smoke-upstash.placeholder.invalid"),
+      );
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+
+      // Passes through to withAuth (mocked passthrough) — not a 429, not a 500
+      expect(response.status).not.toBe(429);
+      expect(response.status).not.toBe(500);
     });
   });
 });
