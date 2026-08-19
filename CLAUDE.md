@@ -14,7 +14,7 @@ staff, calendar, and reports behind a role-gated dashboard.
   project-wide decision, not a per-component one.
 - **Server state:** TanStack Query 5 (query-key factories)
 - **UI:** shadcn/ui (Radix + CVA) + Tailwind 4, lucide-react icons, sonner toasts
-- **Rate limiting:** Upstash Redis (login attempts, in middleware)
+- **Rate limiting:** Upstash Redis via seven limiters in `rate-limit-service.ts` (login, api, forgot-password, auth-endpoint, staff-invite, rate-limit-status, session-endpoint), applied in `src/proxy.ts` and at the route level
 - **Testing:** Vitest 4 + jsdom + Testing Library
 
 ## Commands
@@ -67,15 +67,21 @@ src/
 ├── lib/
 │   ├── services/              one *-service.ts per domain + audit-service.ts
 │   ├── validations/           zod schemas per domain
-│   ├── constants/  utils/     shared constants and helpers
+│   ├── constants/             shared constants
+│   ├── utils/                 shared helpers, including utils/pdf/ (guest-registration PDF)
+│   ├── email/                 outbound email adapters + templates (resend + dev fallback)
 │   ├── auth.ts                NextAuth authOptions
+│   ├── auth-guard.ts          requireSession(role?) helper for dashboard pages
 │   ├── prisma.ts              Prisma client singleton
 │   ├── errors.ts              AppError + NotFound/Conflict/Validation/Unauthorized/Forbidden/BusinessRule errors
 │   └── api-error-handler.ts   handleApiError(error, context) → NextResponse
 ├── types/                     domain types + next-auth.d.ts (session augmentation)
 ├── __tests__/                 mirrors src/ structure (api/, hooks/, lib/)
-└── middleware.ts              withAuth route protection + Upstash login rate limit (5 / 15 min)
+└── proxy.ts                   body-size cap + rate limits + withAuth (renamed from middleware.ts for Next 16)
 ```
+
+Playwright end-to-end smokes live at the repo root under `e2e/` (auth
+pages only for now — see `.github/workflows/test.yml` Smoke job).
 
 ## Shared infrastructure (already wired — reuse, never duplicate)
 
@@ -98,7 +104,7 @@ touching its `paths:`). Summary:
 | 1 | API routes delegate | `.claude/rules/api-route-delegation.md` | auth → zod `safeParse` → one service call → `handleApiError`; no Prisma/logic in routes |
 | 2 | Services own Prisma | `.claude/rules/service-layer.md` | `import prisma from "@/lib/prisma"` only in services; throw domain errors; HTTP/session-free |
 | 3 | Zod inputs, typed wire | `.claude/rules/validation-schemas.md` | schemas + `z.infer` inputs in `lib/validations/`; serialized response types in `src/types/` |
-| 4 | Auth at the boundary | `.claude/rules/auth-guard.md` | every handler checks session; role gates inline (`ForbiddenError`); middleware protects pages |
+| 4 | Auth at the boundary | `.claude/rules/auth-guard.md` | every handler checks session; role gates inline (`ForbiddenError`); `src/proxy.ts` mirrors the page-side gates |
 | 5 | TanStack server state | `.claude/rules/server-state-tanstack.md` | per-domain hook modules; key factories; no `fetch`/server-`useState` in components |
 | 6 | Form patterns | `.claude/rules/form-patterns.md` | custom `use-<domain>-form.ts` hooks + presentational steps; NO react-hook-form |
 | 7 | RSC boundary | `.claude/rules/rsc-boundary.md` | pages stay server components; serialize before crossing to `'use client'` leaves |
@@ -115,14 +121,18 @@ Additional conventions (no rule file yet):
 - **Prisma schema style:** `cuid()` ids, camelCase fields (no `@map`), money as
   `Decimal @db.Decimal(10, 2)`, enums for statuses, explicit relation names for
   multiple relations to the same model (`"CreatedBy"`).
-- **Dashboard pages** opt out of static prerender per data volatility and
-  serialize Prisma entities (`Date` → ISO string, `Decimal` → string) before
-  passing them to `*-client.tsx` components. Two acceptable patterns:
-  - `export const dynamic = "force-dynamic"` for pages whose data changes
-    constantly (bookings, calendar).
-  - `export const revalidate = <seconds>` for pages whose data is
-    slower-moving; pick the window from actual change rate (rooms/staff:
-    300s, reports: 60s).
+- **Dashboard pages** opt out of static prerender and serialize Prisma
+  entities (`Date` → ISO string, `Decimal` → string) before passing them
+  to `*-client.tsx` components. Always use `export const dynamic =
+  "force-dynamic"` — even on pages whose data changes slowly. Do NOT
+  reach for `export const revalidate = <seconds>` on a dashboard page:
+  it silently serves an anonymous ISR-cached artifact if nothing else in
+  the render path is dynamic, which leaked authenticated report data
+  between users before it was fixed (see the comment at
+  `src/app/(dashboard)/reports/page.tsx:6-11`). `force-dynamic` costs a
+  fresh render per request but makes the auth boundary explicit; the
+  latency saving from ISR isn't worth the leak risk on a role-gated
+  dashboard.
 
 ## Agents & skills
 
@@ -187,8 +197,9 @@ plan template lives in `plans/README.md`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore(scope):`, `test:`, `docs:`.
 - PRs merge as merge commits (squash and rebase disabled at the repo level
   to preserve per-commit history).
-- CI (`.github/workflows/test.yml`) runs the Vitest suite; `prisma generate`
-  must run before tests.
+- CI (`.github/workflows/test.yml`) runs four parallel jobs on every PR:
+  Lint, Typecheck, Vitest, and a Playwright Smoke against the built
+  app. `prisma generate` runs before the Vitest and Smoke jobs.
 - Never commit `.env`. Never push directly to `main` — enforced client-side
   by `.githooks/pre-push`. New checkouts need one-time setup:
   `git config core.hooksPath .githooks`. Emergency bypass:
