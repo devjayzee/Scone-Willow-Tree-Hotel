@@ -9,13 +9,10 @@ import type { Room } from "@/types/room";
 export const dynamic = "force-dynamic";
 
 export default async function RoomsPage() {
-  // Track when data was fetched for cache freshness
   const fetchTime = Date.now();
 
-  const session = await requireSession(["MANAGER", "GENERAL_MANAGER"]);
-  const isManager = session.user.role === "GENERAL_MANAGER";
+  await requireSession("GENERAL_MANAGER");
 
-  // Fetch rooms server-side
   const rooms = await getAllRooms();
 
   const serializedRooms: Room[] = rooms.map((room) => ({
@@ -27,10 +24,6 @@ export default async function RoomsPage() {
   }));
 
   return (
-    <RoomsClient
-      initialRooms={serializedRooms}
-      isManager={isManager}
-      fetchTime={fetchTime}
-    />
+    <RoomsClient initialRooms={serializedRooms} fetchTime={fetchTime} />
   );
 }

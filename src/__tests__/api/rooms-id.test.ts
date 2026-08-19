@@ -60,8 +60,32 @@ describe("Rooms [id] API", () => {
       expect(mockGetRoomById).not.toHaveBeenCalled();
     });
 
-    it("returns room for any authenticated user (STAFF ok)", async () => {
+    it("returns 403 when user is STAFF (GM-only endpoint)", async () => {
+      // GET /api/rooms/[id] tightened to GENERAL_MANAGER — see
+      // plans/fix-rooms-page-gm-only.md.
       mockGetServerSession.mockResolvedValue(staffSession);
+
+      const response = await GET(req, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.code).toBe("FORBIDDEN");
+      expect(mockGetRoomById).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 when user is MANAGER (GM-only endpoint)", async () => {
+      mockGetServerSession.mockResolvedValue(managerSession);
+
+      const response = await GET(req, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.code).toBe("FORBIDDEN");
+      expect(mockGetRoomById).not.toHaveBeenCalled();
+    });
+
+    it("returns room for GENERAL_MANAGER", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
       mockGetRoomById.mockResolvedValue({ id: "room-1", roomNumber: "101" });
 
       const response = await GET(req, { params });
