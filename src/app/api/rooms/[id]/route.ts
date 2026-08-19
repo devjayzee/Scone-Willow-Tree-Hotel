@@ -9,7 +9,8 @@ import {
   ForbiddenError,
 } from "@/lib/api-error-handler";
 
-// GET /api/rooms/[id] - Get a single room
+// GET /api/rooms/[id] - Get a single room (GENERAL_MANAGER only —
+// same rationale as GET /api/rooms above).
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,6 +19,10 @@ export async function GET(
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       throw new UnauthorizedError();
+    }
+
+    if (session.user.role !== "GENERAL_MANAGER") {
+      throw new ForbiddenError("Only general managers can view rooms");
     }
 
     const { id } = await params;

@@ -123,8 +123,25 @@ describe("proxy", () => {
       });
     }
 
-    it("allows /rooms for MANAGER", async () => {
+    it("redirects /rooms to /bookings when token role is MANAGER", async () => {
+      // /rooms tightened to GENERAL_MANAGER-only — every mutation on
+      // the page is GM-gated at the API, so MANAGER got a page where
+      // every action 403'd. See plans/fix-rooms-page-gm-only.md.
       const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER" } });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        "http://localhost/bookings",
+      );
+    });
+
+    it("allows /rooms for GENERAL_MANAGER", async () => {
+      const req = buildReq({
+        path: "/rooms",
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
+      });
 
       const response = (await proxy(req)) as NextResponse;
 
