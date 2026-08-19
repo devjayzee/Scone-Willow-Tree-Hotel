@@ -66,18 +66,18 @@ Current role gates (keep this list true when adding gates):
 | Action | Required role |
 |---|---|
 | Staff CRUD (`/api/staffs/**`) | `GENERAL_MANAGER` |
-| Room mutations (`POST /api/rooms`, `PUT`/`DELETE /api/rooms/[id]`) | `GENERAL_MANAGER` |
+| Room CRUD (`GET`/`POST /api/rooms`, `GET`/`PUT`/`DELETE /api/rooms/[id]`) | `GENERAL_MANAGER` |
 | Delete booking (`DELETE /api/bookings/[id]`) | `GENERAL_MANAGER` |
 | Reports (`GET /api/reports`) | `MANAGER` or `GENERAL_MANAGER` |
-| Room reads (`GET /api/rooms`, `GET /api/rooms/[id]`) | any authenticated user |
+| Room availability (`GET /api/rooms/available`) | any authenticated user (booking form) |
 | Everything else | any authenticated user |
 
 **Page-level (server-side `requireSession` in each page + layout):**
 
 | Path | Required role |
 |---|---|
-| `/rooms`, `/reports` | `MANAGER` or `GENERAL_MANAGER` |
-| `/staff` | `GENERAL_MANAGER` |
+| `/reports` | `MANAGER` or `GENERAL_MANAGER` |
+| `/rooms`, `/staff` | `GENERAL_MANAGER` |
 | Every other dashboard page | any authenticated user (layout gate) |
 
 Middleware's role redirects in `src/proxy.ts` are the fast-path UX

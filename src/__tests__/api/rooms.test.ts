@@ -66,8 +66,8 @@ describe("Rooms API", () => {
       expect(data.code).toBe("UNAUTHORIZED");
     });
 
-    it("should return rooms when authenticated", async () => {
-      mockGetServerSession.mockResolvedValue(mockStaffSession);
+    it("should return rooms when authenticated as GENERAL_MANAGER", async () => {
+      mockGetServerSession.mockResolvedValue(mockManagerSession);
       const mockRooms = [
         { id: "room-1", roomNumber: "101" },
         { id: "room-2", roomNumber: "102" },
@@ -81,18 +81,40 @@ describe("Rooms API", () => {
       expect(data).toEqual(mockRooms);
     });
 
-    it("should allow any authenticated user to view rooms", async () => {
+    it("should return 403 when authenticated as STAFF", async () => {
+      // GET /api/rooms tightened to GENERAL_MANAGER — MANAGER/STAFF
+      // flows that need room data use GET /api/rooms/available. See
+      // plans/fix-rooms-page-gm-only.md.
       mockGetServerSession.mockResolvedValue(mockStaffSession);
-      mockGetAllRooms.mockResolvedValue([]);
 
       const response = await GET();
+      const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(mockGetAllRooms).toHaveBeenCalled();
+      expect(response.status).toBe(403);
+      expect(data.code).toBe("FORBIDDEN");
+      expect(mockGetAllRooms).not.toHaveBeenCalled();
+    });
+
+    it("should return 403 when authenticated as MANAGER", async () => {
+      const mockMgrSession = {
+        user: {
+          id: "user-mgr",
+          email: "mgr@example.com",
+          role: "MANAGER",
+        },
+      };
+      mockGetServerSession.mockResolvedValue(mockMgrSession);
+
+      const response = await GET();
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.code).toBe("FORBIDDEN");
+      expect(mockGetAllRooms).not.toHaveBeenCalled();
     });
 
     it("should handle service errors", async () => {
-      mockGetServerSession.mockResolvedValue(mockStaffSession);
+      mockGetServerSession.mockResolvedValue(mockManagerSession);
       mockGetAllRooms.mockRejectedValue(new Error("Database error"));
 
       const response = await GET();

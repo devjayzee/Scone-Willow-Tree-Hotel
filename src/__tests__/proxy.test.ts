@@ -42,6 +42,12 @@ vi.mock("@/lib/utils/get-client-ip", () => ({
   getClientIp: () => "203.0.113.7",
 }));
 
+// Silence the logger — the session-endpoint fail-open path warns on
+// Upstash transport errors, and we don't want the CI log flooded.
+vi.mock("@/lib/logger", () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
 // Force the proxy's lazy Upstash init so mockLimit gets a chance to run.
 process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
@@ -117,8 +123,25 @@ describe("proxy", () => {
       });
     }
 
-    it("allows /rooms for MANAGER", async () => {
+    it("redirects /rooms to /bookings when token role is MANAGER", async () => {
+      // /rooms tightened to GENERAL_MANAGER-only — every mutation on
+      // the page is GM-gated at the API, so MANAGER got a page where
+      // every action 403'd. See plans/fix-rooms-page-gm-only.md.
       const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER" } });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe(
+        "http://localhost/bookings",
+      );
+    });
+
+    it("allows /rooms for GENERAL_MANAGER", async () => {
+      const req = buildReq({
+        path: "/rooms",
+        token: { id: "u-1", role: "GENERAL_MANAGER" },
+      });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -281,8 +304,10 @@ describe("proxy", () => {
     });
 
     it("does not rate-limit other paths", async () => {
+      // Use /api/auth/csrf (not /api/auth/session) — session has its own
+      // per-user limiter now, which would trip mockLimit.
       const req = buildReq({
-        path: "/api/auth/session",
+        path: "/api/auth/csrf",
         method: "POST",
       });
 
@@ -392,8 +417,10 @@ describe("proxy", () => {
     });
 
     it("does not touch the api limiter for /api/auth/*", async () => {
+      // Use /api/auth/csrf (not /api/auth/session) because the session
+      // endpoint has its own per-user limiter which also reads the token.
       const req = buildReq({
-        path: "/api/auth/session",
+        path: "/api/auth/csrf",
         method: "GET",
       });
       await proxy(req);
@@ -476,8 +503,11 @@ describe("proxy", () => {
       expect(mockLimit).not.toHaveBeenCalled();
     });
 
-    it("does not rate-limit NextAuth internals (/api/auth/session)", async () => {
-      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+    it("does not rate-limit NextAuth internals (/api/auth/csrf)", async () => {
+      // /api/auth/session has its own per-user limiter (covered by the
+      // 'session-endpoint rate limit' describe below); csrf and other
+      // NextAuth internals remain unlimited by the auth-endpoint limiter.
+      const req = buildReq({ path: "/api/auth/csrf", method: "GET" });
       await proxy(req);
 
       expect(mockLimit).not.toHaveBeenCalled();
@@ -518,6 +548,85 @@ describe("proxy", () => {
       const response = (await proxy(req)) as NextResponse;
 
       expect(response.headers.get("location")).toBeNull();
+    });
+  });
+
+  describe("session-endpoint rate limit", () => {
+    it("returns 429 when a signed-in user is over quota", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: false,
+        limit: 60,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.error).toMatch(/too many requests/i);
+      // Per-user key
+      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+    });
+
+    it("keys on IP when the request is unauthenticated", async () => {
+      mockGetToken.mockResolvedValue(null);
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 60,
+        remaining: 59,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      await proxy(req);
+
+      expect(mockLimit).toHaveBeenCalledWith("ip:203.0.113.7");
+    });
+
+    it("passes through when under quota", async () => {
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockResolvedValue({
+        success: true,
+        limit: 60,
+        remaining: 59,
+        reset: Date.now() + 60_000,
+      });
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+
+      // Not a 429; falls through to withAuth (mocked as passthrough)
+      expect(response.status).not.toBe(429);
+    });
+
+    it("does not touch the session limiter for other /api/auth/* paths", async () => {
+      const req = buildReq({ path: "/api/auth/csrf", method: "GET" });
+      await proxy(req);
+
+      // Session-endpoint middleware short-circuits on the exact path check
+      // before calling getToken or the limiter.
+      expect(mockGetToken).not.toHaveBeenCalled();
+      expect(mockLimit).not.toHaveBeenCalled();
+    });
+
+    it("fails open when the limiter throws a transport error", async () => {
+      // Regression: PR #260 first attempt at S3 crashed the smoke test
+      // because the CI placeholder Upstash URL doesn't resolve.
+      // Session polling should never 500 the app on Upstash outages.
+      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockLimit.mockRejectedValue(
+        new Error("getaddrinfo ENOTFOUND ci-smoke-upstash.placeholder.invalid"),
+      );
+
+      const req = buildReq({ path: "/api/auth/session", method: "GET" });
+      const response = (await proxy(req)) as NextResponse;
+
+      // Passes through to withAuth (mocked passthrough) — not a 429, not a 500
+      expect(response.status).not.toBe(429);
+      expect(response.status).not.toBe(500);
     });
   });
 });
