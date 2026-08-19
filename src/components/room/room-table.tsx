@@ -16,15 +16,9 @@ interface RoomTableProps {
   rooms: Room[];
   onEdit: (room: Room) => void;
   onDelete: (room: Room) => void;
-  isManager: boolean;
 }
 
-export function RoomTable({
-  rooms,
-  onEdit,
-  onDelete,
-  isManager,
-}: RoomTableProps) {
+export function RoomTable({ rooms, onEdit, onDelete }: RoomTableProps) {
   // Use shared pagination hook
   const {
     currentPage,
@@ -97,7 +91,7 @@ export function RoomTable({
               <span className="font-semibold text-gray-900 text-lg">
                 Room {room.roomNumber}
               </span>
-              {isManager && renderActionMenu(room)}
+              {renderActionMenu(room)}
             </div>
 
             {/* Details */}
@@ -133,9 +127,7 @@ export function RoomTable({
               <th scope="col" className="text-left px-6 py-3">Capacity</th>
               <th scope="col" className="text-left px-6 py-3">Price</th>
               <th scope="col" className="text-left px-6 py-3">Description</th>
-              {isManager && (
-                <th scope="col" className="text-right px-6 py-3">Actions</th>
-              )}
+              <th scope="col" className="text-right px-6 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -155,30 +147,28 @@ export function RoomTable({
                 <td className="px-6 py-4 text-gray-500 text-sm">
                   {room.description || "—"}
                 </td>
-                {isManager && (
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEdit(room)}
-                        className="h-8 w-8 text-gray-400 hover:text-gray-600"
-                        aria-label={`Edit Room ${room.roomNumber}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDelete(room)}
-                        className="h-8 w-8 text-gray-400 hover:text-red-600"
-                        aria-label={`Delete Room ${room.roomNumber}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                )}
+                <td className="px-6 py-4">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEdit(room)}
+                      className="h-8 w-8 text-gray-400 hover:text-gray-600"
+                      aria-label={`Edit Room ${room.roomNumber}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(room)}
+                      className="h-8 w-8 text-gray-400 hover:text-red-600"
+                      aria-label={`Delete Room ${room.roomNumber}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>

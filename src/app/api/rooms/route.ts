@@ -9,12 +9,19 @@ import {
   ForbiddenError,
 } from "@/lib/api-error-handler";
 
-// GET /api/rooms - Get all rooms
+// GET /api/rooms - Get all rooms (GENERAL_MANAGER only — the /rooms
+// page is GM-only; booking/calendar pages fetch rooms server-side via
+// the service. MANAGER/STAFF flows that need room data at runtime use
+// GET /api/rooms/available (kept open to any authenticated user).
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       throw new UnauthorizedError();
+    }
+
+    if (session.user.role !== "GENERAL_MANAGER") {
+      throw new ForbiddenError("Only general managers can view rooms");
     }
 
     const rooms = await getAllRooms();

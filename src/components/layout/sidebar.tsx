@@ -30,7 +30,7 @@ const navigation = [
     name: "Rooms",
     href: "/rooms",
     icon: BedDouble,
-    roles: ["GENERAL_MANAGER", "MANAGER"],
+    roles: ["GENERAL_MANAGER"],
   },
   {
     name: "Reports",
