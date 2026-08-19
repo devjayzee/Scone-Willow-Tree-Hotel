@@ -5,7 +5,11 @@ import { getAvailableRooms } from "@/lib/services/room-service";
 import { availableRoomsQuerySchema } from "@/lib/validations/room";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
 
-// GET /api/rooms/available - Get available rooms for given dates
+// GET /api/rooms/available - Get available rooms for given dates.
+// Deliberately open to any authenticated user: the booking form (used by
+// MANAGER and STAFF) queries this endpoint to populate the room-picker
+// for a check-in/check-out window. Room CRUD lives at GET/POST/PUT/DELETE
+// /api/rooms and is GENERAL_MANAGER-only.
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);

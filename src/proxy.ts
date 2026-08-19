@@ -234,15 +234,18 @@ const authMiddleware = withAuth(
     }
 
     // Routes that require MANAGER or GENERAL_MANAGER role
-    const managerPaths = ["/rooms", "/reports"];
+    const managerPaths = ["/reports"];
     if (managerPaths.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER" && token?.role !== "MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
     }
 
-    // Routes that require GENERAL_MANAGER role only
-    const generalManagerOnlyPaths = ["/staff"];
+    // Routes that require GENERAL_MANAGER role only. /rooms is GM-only
+    // because every mutation on the page (create/update/delete room) is
+    // gated to GM at the API. MANAGER/STAFF who need room data at
+    // runtime (booking form) use /api/rooms/available, which is open.
+    const generalManagerOnlyPaths = ["/staff", "/rooms"];
     if (generalManagerOnlyPaths.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
