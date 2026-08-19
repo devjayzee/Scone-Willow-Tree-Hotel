@@ -1,6 +1,5 @@
 "use client";
 
-import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RoomTable } from "@/components/room/room-table";
@@ -13,13 +12,10 @@ import type { Room } from "@/types/room";
 
 interface RoomsClientProps {
   initialRooms: Room[];
-  isManager: boolean;
   fetchTime?: number;
 }
 
-export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientProps) {
-  const { data: session } = useSession();
-
+export function RoomsClient({ initialRooms, fetchTime }: RoomsClientProps) {
   const {
     filteredRooms,
     error,
@@ -41,8 +37,6 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
     setDeleteDialogOpen,
   } = useRoomManagement({ initialRooms, fetchTime });
 
-  const canManage = session?.user?.role === "GENERAL_MANAGER" || isManager;
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -51,15 +45,13 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
           <h1 className="text-2xl font-bold text-navy">Hotel Rooms</h1>
           <p className="text-muted-foreground">Manage your hotel room inventory</p>
         </div>
-        {canManage && (
-          <Button
-            onClick={openAddDialog}
-            className="bg-navy hover:bg-navy-dark text-cream"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Room
-          </Button>
-        )}
+        <Button
+          onClick={openAddDialog}
+          className="bg-navy hover:bg-navy-dark text-cream"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Room
+        </Button>
       </div>
 
       {/* Search and Refresh */}
@@ -97,7 +89,6 @@ export function RoomsClient({ initialRooms, isManager, fetchTime }: RoomsClientP
           rooms={filteredRooms}
           onEdit={openEditDialog}
           onDelete={openDeleteDialog}
-          isManager={canManage}
         />
       )}
 
