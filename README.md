@@ -37,9 +37,11 @@ bookings, rooms, staff, calendar, and reports behind a role-gated dashboard.
 Highlights of design decisions worth reading past the surface. Each bullet
 links to the current implementation on `main`.
 
-- **Timing-attack-hardened forgot-password.** Response time and body are
-  identical whether the email exists or not, closing a common user-enumeration
-  vector. See
+- **Timing-attack-hardened forgot-password.** Body is identical whether the
+  email exists or not, and response time is near-identical: the expensive
+  step (the Resend HTTP call) is deferred past the response either way, so
+  the only delta for a known email is a couple of local DB writes, not a
+  network round-trip. Closes a common user-enumeration vector. See
   [`src/lib/services/password-reset-service.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/lib/services/password-reset-service.ts).
 - **`AsyncLocalStorage` audit context.** Every mutation runs inside a
   per-request store carrying user id, IP, and user-agent, so services can
