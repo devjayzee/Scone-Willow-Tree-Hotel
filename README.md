@@ -112,7 +112,7 @@ The same suite runs on every pull request via GitHub Actions.
 
 ## Contact
 
-Built by [@devjayzee17](https://github.com/devjayzee17). Reach out via
+Built by [@devjayzee](https://github.com/devjayzee). Reach out via
 GitHub.
 
 ## License
