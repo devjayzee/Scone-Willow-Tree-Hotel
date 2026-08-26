@@ -28,7 +28,7 @@ export default async function CalendarPage() {
     id: room.id,
     roomNumber: room.roomNumber,
     capacity: room.capacity,
-    pricePerNight: Number(room.pricePerNight),
+    pricePerNight: room.pricePerNight.toString(),
     description: room.description,
   }));
 
