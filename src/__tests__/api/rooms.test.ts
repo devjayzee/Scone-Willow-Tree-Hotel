@@ -180,6 +180,10 @@ describe("Rooms API", () => {
 
       expect(response.status).toBe(201);
       expect(data.roomNumber).toBe("201");
+      expect(mockCreateRoom).toHaveBeenCalledWith(
+        expect.objectContaining(validRoomInput),
+        "user-2",
+      );
     });
 
     it("should return 400 for invalid input", async () => {
