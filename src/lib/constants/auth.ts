@@ -33,3 +33,24 @@ export const SESSION_MAX_AGE_STANDARD = 12 * 60 * 60;
  * token.expiresAt.
  */
 export const SESSION_MAX_AGE_REMEMBER = 30 * 24 * 60 * 60;
+
+/**
+ * How often the session re-signs itself (NextAuth `updateAge`), keeping
+ * the token's expiry rolling forward on an active session.
+ */
+export const SESSION_UPDATE_AGE = 60 * 60;
+
+/**
+ * `useSession`'s client-side poll interval, in seconds. Load-bearing:
+ * `getSessionEndpointRateLimiter` (`rate-limit-service.ts`) is sized at
+ * this same number of requests/minute *because* every signed-in tab
+ * polls at this interval — the two must move together, so both import
+ * this constant rather than repeating the literal.
+ */
+export const SESSION_POLL_INTERVAL_SECONDS = 60;
+
+/** How long a forgot-password reset link stays valid. */
+export const RESET_TOKEN_TTL_MINUTES = 30;
+
+/** How long a new-staff invite / setup link stays valid. */
+export const SETUP_TOKEN_TTL_HOURS = 72;

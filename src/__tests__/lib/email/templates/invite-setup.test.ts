@@ -8,7 +8,7 @@ async function loadTemplate() {
   vi.resetModules();
   const [{ inviteSetupEmail }, { SETUP_TOKEN_TTL_HOURS }] = await Promise.all([
     import("@/lib/email/templates/invite-setup"),
-    import("@/lib/services/password-reset-service"),
+    import("@/lib/constants/auth"),
   ]);
   return { inviteSetupEmail, SETUP_TOKEN_TTL_HOURS };
 }

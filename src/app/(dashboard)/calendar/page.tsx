@@ -3,6 +3,10 @@ import { getCalendarEvents } from "@/lib/services/calendar-service";
 import { getAllRooms } from "@/lib/services/room-service";
 import { CalendarClient } from "@/components/calendar/calendar-client";
 import { startOfMonth, endOfMonth, addMonths } from "date-fns";
+import {
+  CALENDAR_PREFETCH_MONTHS_BACK,
+  CALENDAR_PREFETCH_MONTHS_AHEAD,
+} from "@/lib/constants/calendar";
 
 // Disable caching - always fetch fresh data
 export const dynamic = "force-dynamic";
@@ -15,8 +19,8 @@ export default async function CalendarPage() {
 
   // Fetch initial data for a wider range (3 months back, 6 months ahead)
   const today = new Date();
-  const start = startOfMonth(addMonths(today, -3));
-  const end = endOfMonth(addMonths(today, 6));
+  const start = startOfMonth(addMonths(today, -CALENDAR_PREFETCH_MONTHS_BACK));
+  const end = endOfMonth(addMonths(today, CALENDAR_PREFETCH_MONTHS_AHEAD));
 
   const [events, rooms] = await Promise.all([
     getCalendarEvents(start, end),

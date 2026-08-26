@@ -1,4 +1,4 @@
-import { RESET_TOKEN_TTL_MINUTES } from "@/lib/services/password-reset-service";
+import { RESET_TOKEN_TTL_MINUTES } from "@/lib/constants/auth";
 import { APP_BASE_URL } from "@/lib/email/app-url";
 import { escapeHtml } from "@/lib/email/escape-html";
 
@@ -48,7 +48,7 @@ export function passwordResetEmail(input: {
 </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f0e8d8;">
-<span style="display:none;font-size:1px;color:#f0e8d8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Set a new password for your Willow Tree booking account. This link expires in 30 minutes.</span>
+<span style="display:none;font-size:1px;color:#f0e8d8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Set a new password for your Willow Tree booking account. This link expires in ${RESET_TOKEN_TTL_MINUTES} minutes.</span>
 <span style="display:none;font-size:1px;color:#f0e8d8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">&#8203;&#847;&zwnj;&nbsp;&#8199;&#65279;&#8203;&#847;&zwnj;&nbsp;&#8199;&#65279;&#8203;&#847;&zwnj;&nbsp;&#8199;&#65279;&#8203;&#847;&zwnj;&nbsp;&#8199;&#65279;</span>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f0e8d8;">
