@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useState } from "react";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { useAvailableRooms } from "@/hooks/room";
 import type { CreateBookingInput, Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
@@ -56,7 +56,7 @@ export function useBookingForm({
       dispatch({ type: "HYDRATE", booking: initialBooking });
     } else {
       const today = format(new Date(), "yyyy-MM-dd");
-      const tomorrow = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
+      const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
       dispatch({ type: "SEED_DATES", today, tomorrow });
     }
   }, [open, initialBooking]);

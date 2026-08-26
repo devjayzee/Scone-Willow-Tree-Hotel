@@ -5,6 +5,10 @@
 
 import { format, addDays, parseISO } from "date-fns";
 import type { Booking } from "@/types/booking";
+import {
+  DEFAULT_CHECK_IN_TIME,
+  DEFAULT_CHECK_OUT_TIME,
+} from "@/lib/constants/booking";
 
 export interface GuestDetails {
   guestName: string;
@@ -38,9 +42,9 @@ export const INITIAL_BOOKING_FORM_STATE: BookingFormState = {
   additionalGuests: "",
   roomId: "",
   checkIn: "",
-  checkInTime: "14:00",
+  checkInTime: DEFAULT_CHECK_IN_TIME,
   checkOut: "",
-  checkOutTime: "10:00",
+  checkOutTime: DEFAULT_CHECK_OUT_TIME,
   bondDeposit: "",
   notes: "",
   error: "",
@@ -85,9 +89,9 @@ export function bookingFormReducer(
         additionalGuests: b.additionalGuests || "",
         roomId: b.roomId,
         checkIn: format(new Date(b.checkIn), "yyyy-MM-dd"),
-        checkInTime: b.checkInTime || "14:00",
+        checkInTime: b.checkInTime || DEFAULT_CHECK_IN_TIME,
         checkOut: format(new Date(b.checkOut), "yyyy-MM-dd"),
-        checkOutTime: b.checkOutTime || "10:00",
+        checkOutTime: b.checkOutTime || DEFAULT_CHECK_OUT_TIME,
         bondDeposit: b.bondDeposit?.toString() || "",
         notes: b.notes || "",
         error: "",

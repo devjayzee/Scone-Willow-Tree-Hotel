@@ -1,6 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import type { LoginRateLimitStatus } from "@/types/auth";
+import { SESSION_POLL_INTERVAL_SECONDS } from "@/lib/constants/auth";
 
 // Fail loud at server boot when Upstash is unconfigured in production.
 // Without this guard the factories below silently return null and every
@@ -60,6 +61,17 @@ function makeRateLimiter(config: {
 export const getLoginRateLimiter = makeRateLimiter({
   limiter: Ratelimit.slidingWindow(5, "15 m"),
   prefix: "ratelimit:login",
+});
+
+/**
+ * Per-email login rate limiter, used inside `authorize()`. Complements
+ * the IP-keyed `getLoginRateLimiter` so that distributed brute-force
+ * attempts (many IPs, one account) still hit a per-account cap.
+ * Bucket: 10 / 15 min.
+ */
+export const getLoginEmailRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(10, "15 m"),
+  prefix: "ratelimit:login-email",
 });
 
 /**
@@ -133,7 +145,7 @@ export const getRateLimitStatusLimiter = makeRateLimiter({
  * comfortably, throttles scripted floods at 1/s.
  */
 export const getSessionEndpointRateLimiter = makeRateLimiter({
-  limiter: Ratelimit.slidingWindow(60, "1 m"),
+  limiter: Ratelimit.slidingWindow(SESSION_POLL_INTERVAL_SECONDS, "1 m"),
   prefix: "ratelimit:session-endpoint",
 });
 
