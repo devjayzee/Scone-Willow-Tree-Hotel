@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
 import {
   startOfMonth,
   endOfMonth,
@@ -11,11 +11,10 @@ import {
   isSameMonth,
   isSameDay,
   isToday,
-  isBefore,
 } from "date-fns";
 import { ChevronRight } from "lucide-react";
 import { getRoomColor } from "@/lib/constants/room-colors";
-import { SLIDE_ANIMATION_MS } from "@/lib/constants/calendar";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import type { CalendarEvent } from "@/types/calendar";
 
 interface MobileCalendarProps {
@@ -24,34 +23,17 @@ interface MobileCalendarProps {
   onSelectEvent?: (event: CalendarEvent) => void;
 }
 
+function hasMonthChanged(previous: Date, current: Date): boolean {
+  return !isSameMonth(previous, current);
+}
+
 export function MobileCalendar({
   date,
   events,
   onSelectEvent,
 }: MobileCalendarProps) {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
-  const prevDateRef = useRef<Date>(date);
-
-  // Detect navigation direction and trigger animation
-  useEffect(() => {
-    const prevDate = prevDateRef.current;
-    if (prevDate && !isSameMonth(prevDate, date)) {
-      const direction = isBefore(date, prevDate) ? "right" : "left";
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Animation trigger derived from `date` prop change plus a timer-based reset. Refactoring to a `key`-prop remount would lose scroll/focus state.
-      setSlideDirection(direction);
-      setIsAnimating(true);
-
-      const timer = setTimeout(() => {
-        setIsAnimating(false);
-        setSlideDirection(null);
-      }, SLIDE_ANIMATION_MS);
-
-      return () => clearTimeout(timer);
-    }
-    prevDateRef.current = date;
-  }, [date]);
+  const animationClass = useSlideDirection(date, hasMonthChanged);
 
   // Get calendar grid days (includes prev/next month days to fill the grid)
   const calendarDays = useMemo(() => {
@@ -92,14 +74,6 @@ export function MobileCalendar({
 
   const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  // Animation class based on direction
-  const getAnimationClass = () => {
-    if (!isAnimating || !slideDirection) return "";
-    return slideDirection === "left"
-      ? "animate-slide-in-right"
-      : "animate-slide-in-left";
-  };
-
   return (
     <div className="space-y-4">
       {/* Calendar Grid */}
@@ -118,7 +92,7 @@ export function MobileCalendar({
         </div>
 
         {/* Calendar Days with Animation */}
-        <div className={`grid grid-cols-7 ${getAnimationClass()}`} role="rowgroup">
+        <div className={`grid grid-cols-7 ${animationClass}`} role="rowgroup">
           {calendarDays.map((day, index) => {
             const isCurrentMonth = isSameMonth(day, date);
             const isSelected = selectedDate && isSameDay(day, selectedDate);

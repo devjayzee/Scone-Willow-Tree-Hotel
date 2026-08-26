@@ -2,6 +2,7 @@ import { requireSession } from "@/lib/auth-guard";
 import { getAllRooms } from "@/lib/services/room-service";
 import { RoomsClient } from "@/components/room/rooms-client";
 import type { Room } from "@/types/room";
+import { serializeRoom } from "@/lib/utils/serialize";
 
 // requireSession() reads cookies, which forces dynamic rendering — the
 // declaration is here so future readers don't wonder why the page isn't
@@ -15,13 +16,7 @@ export default async function RoomsPage() {
 
   const rooms = await getAllRooms();
 
-  const serializedRooms: Room[] = rooms.map((room) => ({
-    id: room.id,
-    roomNumber: room.roomNumber,
-    capacity: room.capacity,
-    pricePerNight: room.pricePerNight.toString(),
-    description: room.description,
-  }));
+  const serializedRooms: Room[] = rooms.map(serializeRoom);
 
   return (
     <RoomsClient initialRooms={serializedRooms} fetchTime={fetchTime} />

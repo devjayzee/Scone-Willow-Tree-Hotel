@@ -4,6 +4,7 @@ import { getAllRooms } from "@/lib/services/room-service";
 import { BookingsClient } from "@/components/booking/bookings-client";
 import type { Booking } from "@/types/booking";
 import type { RoomSummary } from "@/types/room";
+import { serializeRoom } from "@/lib/utils/serialize";
 
 // Disable caching - always fetch fresh data
 export const dynamic = "force-dynamic";
@@ -58,13 +59,7 @@ export default async function BookingsPage() {
   }));
 
   // Serialize rooms for client component
-  const serializedRooms: RoomSummary[] = rooms.map((room) => ({
-    id: room.id,
-    roomNumber: room.roomNumber,
-    capacity: room.capacity,
-    pricePerNight: room.pricePerNight.toString(),
-    description: room.description,
-  }));
+  const serializedRooms: RoomSummary[] = rooms.map(serializeRoom);
 
   return (
     <BookingsClient
