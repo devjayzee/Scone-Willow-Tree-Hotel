@@ -10,6 +10,9 @@ import {
   getChangedFields,
 } from "./audit-service";
 
+// Number of recent bookings to include when fetching a room's detail view.
+const RECENT_BOOKINGS_LIMIT = 10;
+
 // Utility function to sort rooms numerically by room number
 export function sortRoomsByNumber<T extends { roomNumber: string }>(rooms: T[]): T[] {
   return [...rooms].sort((a, b) => {
@@ -32,7 +35,7 @@ export async function getRoomById(id: string) {
     include: {
       bookings: {
         orderBy: { checkIn: "desc" },
-        take: 10,
+        take: RECENT_BOOKINGS_LIMIT,
         select: {
           id: true,
           bookingRef: true,

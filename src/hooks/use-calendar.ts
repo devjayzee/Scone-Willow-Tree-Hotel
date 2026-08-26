@@ -2,6 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CalendarEvent } from "@/types/calendar";
+import { ALL_ROOMS } from "@/lib/constants/calendar";
 
 // Query key factory for calendar
 export const calendarKeys = {
@@ -21,7 +22,7 @@ async function fetchCalendarEvents(
 
   if (startDate) params.append("start", startDate);
   if (endDate) params.append("end", endDate);
-  if (roomId && roomId !== "all") params.append("roomId", roomId);
+  if (roomId && roomId !== ALL_ROOMS) params.append("roomId", roomId);
 
   const response = await fetch(`/api/calendar?${params.toString()}`);
   if (!response.ok) {

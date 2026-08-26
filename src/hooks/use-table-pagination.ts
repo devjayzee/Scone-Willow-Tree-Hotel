@@ -44,7 +44,7 @@ export function useTablePagination<T>(
 ): UseTablePaginationResult<T> {
   const {
     storageKeyPrefix,
-    defaultPerPage = 10,
+    defaultPerPage = DEFAULT_PAGE_SIZE_OPTIONS[0],
     pageSizeOptions = [...DEFAULT_PAGE_SIZE_OPTIONS],
   } = options;
 
