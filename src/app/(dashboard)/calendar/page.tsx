@@ -7,6 +7,7 @@ import {
   CALENDAR_PREFETCH_MONTHS_BACK,
   CALENDAR_PREFETCH_MONTHS_AHEAD,
 } from "@/lib/constants/calendar";
+import { serializeRoom } from "@/lib/utils/serialize";
 
 // Disable caching - always fetch fresh data
 export const dynamic = "force-dynamic";
@@ -28,13 +29,7 @@ export default async function CalendarPage() {
   ]);
 
   // Serialize rooms for client component
-  const serializedRooms = rooms.map((room) => ({
-    id: room.id,
-    roomNumber: room.roomNumber,
-    capacity: room.capacity,
-    pricePerNight: room.pricePerNight.toString(),
-    description: room.description,
-  }));
+  const serializedRooms = rooms.map(serializeRoom);
 
   return (
     <CalendarClient
