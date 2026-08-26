@@ -10,9 +10,6 @@ import {
   getChangedFields,
 } from "./audit-service";
 
-// Re-export error types for backwards compatibility
-export { NotFoundError, ConflictError, BusinessRuleError };
-
 // Utility function to sort rooms numerically by room number
 export function sortRoomsByNumber<T extends { roomNumber: string }>(rooms: T[]): T[] {
   return [...rooms].sort((a, b) => {
