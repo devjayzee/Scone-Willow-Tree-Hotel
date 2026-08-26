@@ -92,13 +92,6 @@ export function handleApiError(
 }
 
 /**
- * Type guard to check if an error is an AppError.
- */
-export function isAppError(error: unknown): error is AppError {
-  return error instanceof AppError;
-}
-
-/**
  * Re-export error classes for convenience.
  */
 export {

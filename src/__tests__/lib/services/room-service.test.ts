@@ -46,10 +46,8 @@ import {
   deleteRoom,
   getAvailableRooms,
   sortRoomsByNumber,
-  NotFoundError,
-  ConflictError,
-  BusinessRuleError,
 } from "@/lib/services/room-service";
+import { NotFoundError, ConflictError, BusinessRuleError } from "@/lib/errors";
 
 // Helper to create mock room data
 function createMockRoom(overrides: Partial<{
