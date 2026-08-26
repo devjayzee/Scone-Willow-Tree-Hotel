@@ -40,6 +40,18 @@ Out of scope:
 - Missing best-practice headers on non-production preview deployments
 - Rate-limit bypasses that require distributed infrastructure the average attacker doesn't have
 
+## Known accepted risk
+
+`npm audit --omit=dev` currently reports 3 high-severity alerts, all the same
+root cause: `deepmerge-ts <8.0.0` (stack exhaustion on recursive object
+graphs), pulled in transitively via `prisma` → `@prisma/config`. The only fix
+path is a Prisma downgrade to 6.12.0, which was deliberately not taken. Risk
+is accepted because `prisma` is a build-time CLI dependency (used by
+`vercel-build` for `prisma migrate deploy`), not code in the request path —
+there's no way for an untrusted input to reach it. Will re-enable the check
+once Prisma publishes a patched 7.x release. See the dismissal reasoning on
+the corresponding Dependabot alert and commit `4b992e2`.
+
 ## No bounty
 
 This is a portfolio project. There is no bug bounty, no swag, and no financial reward. Contributors will be credited in the security advisory unless they prefer to remain anonymous.
