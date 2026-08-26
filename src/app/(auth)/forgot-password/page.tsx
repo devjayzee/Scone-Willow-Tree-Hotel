@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Mail } from "lucide-react";
 import { useForgotPasswordForm } from "@/hooks/use-forgot-password-form";
 import { authInputClasses } from "@/components/auth/auth-input-classes";
+import { RESET_TOKEN_TTL_MINUTES } from "@/lib/constants/auth";
 
 export default function ForgotPasswordPage() {
   const { email, setEmail, isLoading, sent, error, handleSubmit } =
@@ -24,7 +25,8 @@ export default function ForgotPasswordPage() {
         <p className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground">
           If an account exists for{" "}
           <strong className="font-semibold text-foreground">{email}</strong>, a
-          reset link is on its way. It expires in 30 minutes.
+          reset link is on its way. It expires in {RESET_TOKEN_TTL_MINUTES}{" "}
+          minutes.
         </p>
         <Link
           href="/login"

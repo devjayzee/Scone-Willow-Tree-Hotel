@@ -15,6 +15,7 @@ import {
 } from "date-fns";
 import { ChevronRight } from "lucide-react";
 import { getRoomColor } from "@/lib/constants/room-colors";
+import { SLIDE_ANIMATION_MS } from "@/lib/constants/calendar";
 import type { CalendarEvent } from "@/types/calendar";
 
 interface MobileCalendarProps {
@@ -45,7 +46,7 @@ export function MobileCalendar({
       const timer = setTimeout(() => {
         setIsAnimating(false);
         setSlideDirection(null);
-      }, 300);
+      }, SLIDE_ANIMATION_MS);
 
       return () => clearTimeout(timer);
     }

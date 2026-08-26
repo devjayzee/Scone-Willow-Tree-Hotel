@@ -2,7 +2,11 @@ import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { Role, PasswordResetTokenPurpose } from "@prisma/client";
 import prisma from "@/lib/prisma";
-import { BCRYPT_COST } from "@/lib/constants/auth";
+import {
+  BCRYPT_COST,
+  RESET_TOKEN_TTL_MINUTES,
+  SETUP_TOKEN_TTL_HOURS,
+} from "@/lib/constants/auth";
 import { NotFoundError, RateLimitError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { getForgotPasswordRateLimiter } from "@/lib/services/rate-limit-service";
@@ -13,9 +17,6 @@ import {
   AuditAction,
   EntityType,
 } from "@/lib/services/audit-service";
-
-export const RESET_TOKEN_TTL_MINUTES = 30;
-export const SETUP_TOKEN_TTL_HOURS = 72;
 
 const INVALID_TOKEN_MESSAGE = "This link is invalid or has expired";
 
