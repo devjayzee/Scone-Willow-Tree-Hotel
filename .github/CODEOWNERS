@@ -1,0 +1,20 @@
+# Code owners for this repository.
+#
+# Purpose: this file exists so GitHub automatically requests my review on
+# every pull request that touches an owned path — including pull requests
+# opened from forks, since a fork PR is evaluated against the CODEOWNERS
+# file on the base branch in this repository, not the one in the fork.
+# That puts every incoming PR into my "Review requested" queue instead of
+# relying on me noticing a notification.
+#
+# Deliberately NOT paired with branch protection's "Require review from
+# Code Owners". GitHub does not let a code owner satisfy that requirement
+# on a pull request they authored themselves, so with a single owner it
+# would block every PR I open — including Dependabot's. Revisit if a
+# second maintainer with write access is ever added.
+#
+# Owners must have write access to the repository. Outside contributors
+# opening fork PRs are not owners and are unaffected by this file.
+
+# Everything.
+*                       @devjayzee
