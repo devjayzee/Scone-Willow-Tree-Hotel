@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo } from "react";
 import {
   startOfWeek,
   endOfWeek,
@@ -8,11 +8,10 @@ import {
   format,
   isToday,
   isSameWeek,
-  isBefore,
 } from "date-fns";
 import { ChevronRight, Calendar } from "lucide-react";
 import { getRoomColor } from "@/lib/constants/room-colors";
-import { SLIDE_ANIMATION_MS } from "@/lib/constants/calendar";
+import { useSlideDirection } from "@/hooks/use-slide-direction";
 import type { CalendarEvent } from "@/types/calendar";
 import type { RoomSummary } from "@/types/room";
 
@@ -23,34 +22,17 @@ interface MobileWeekCalendarProps {
   onSelectEvent?: (event: CalendarEvent) => void;
 }
 
+function hasWeekChanged(previous: Date, current: Date): boolean {
+  return !isSameWeek(previous, current, { weekStartsOn: 1 });
+}
+
 export function MobileWeekCalendar({
   date,
   events,
   rooms,
   onSelectEvent,
 }: MobileWeekCalendarProps) {
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [slideDirection, setSlideDirection] = useState<"left" | "right" | null>(null);
-  const prevDateRef = useRef<Date>(date);
-
-  // Detect navigation direction and trigger animation
-  useEffect(() => {
-    const prevDate = prevDateRef.current;
-    if (prevDate && !isSameWeek(prevDate, date, { weekStartsOn: 1 })) {
-      const direction = isBefore(date, prevDate) ? "right" : "left";
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Animation trigger derived from `date` prop change plus a timer-based reset. Refactoring to a `key`-prop remount would lose scroll/focus state.
-      setSlideDirection(direction);
-      setIsAnimating(true);
-
-      const timer = setTimeout(() => {
-        setIsAnimating(false);
-        setSlideDirection(null);
-      }, SLIDE_ANIMATION_MS);
-
-      return () => clearTimeout(timer);
-    }
-    prevDateRef.current = date;
-  }, [date]);
+  const animationClass = useSlideDirection(date, hasWeekChanged);
 
   // Get all days in the current week (Monday to Sunday)
   const daysInWeek = useMemo(() => {
@@ -88,19 +70,11 @@ export function MobileWeekCalendar({
     return bookings;
   };
 
-  // Animation class based on direction
-  const getAnimationClass = () => {
-    if (!isAnimating || !slideDirection) return "";
-    return slideDirection === "left"
-      ? "animate-slide-in-right"
-      : "animate-slide-in-left";
-  };
-
   return (
     <div className="space-y-4">
       {/* Week Header */}
       <div
-        className={`bg-white rounded-lg border overflow-hidden ${getAnimationClass()}`}
+        className={`bg-white rounded-lg border overflow-hidden ${animationClass}`}
         role="grid"
         aria-label={`Week of ${format(daysInWeek[0], "MMMM d")} to ${format(daysInWeek[6], "MMMM d, yyyy")}`}
       >
@@ -139,7 +113,7 @@ export function MobileWeekCalendar({
           return (
             <article
               key={room.id}
-              className={`bg-white rounded-lg border overflow-hidden transition-all duration-200 ${getAnimationClass()}`}
+              className={`bg-white rounded-lg border overflow-hidden transition-all duration-200 ${animationClass}`}
               style={{ animationDelay: `${index * 30}ms` }}
               aria-label={`Room ${room.roomNumber}, ${bookings.length} booking${bookings.length !== 1 ? "s" : ""} this week`}
             >

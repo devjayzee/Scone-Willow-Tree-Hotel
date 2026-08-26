@@ -11,6 +11,25 @@ import {
 } from "@/lib/services/rate-limit-service";
 import { logger } from "@/lib/logger";
 
+// Shared 429 response shape — every rate limiter reports the same
+// {limit, remaining, reset} triple, surfaced as X-RateLimit-* headers.
+function tooManyRequests(
+  message: string,
+  { limit, remaining, reset }: { limit: number; remaining: number; reset: number },
+): NextResponse {
+  return NextResponse.json(
+    { error: message },
+    {
+      status: 429,
+      headers: {
+        "X-RateLimit-Limit": limit.toString(),
+        "X-RateLimit-Remaining": remaining.toString(),
+        "X-RateLimit-Reset": reset.toString(),
+      },
+    },
+  );
+}
+
 // Cap request bodies at ~100 KB. Every route validates fields via Zod (Rule
 // 3), but a 100 MB payload still hits `request.json()` before validation
 // fires — an attacker-controlled memory-pressure surface on the event loop.
@@ -78,17 +97,11 @@ async function apiRateLimitMiddleware(
   const { success, limit, remaining, reset } = await limiter.limit(key);
   if (success) return null;
 
-  return NextResponse.json(
-    { error: "Too many requests. Please slow down." },
-    {
-      status: 429,
-      headers: {
-        "X-RateLimit-Limit": limit.toString(),
-        "X-RateLimit-Remaining": remaining.toString(),
-        "X-RateLimit-Reset": reset.toString(),
-      },
-    },
-  );
+  return tooManyRequests("Too many requests. Please slow down.", {
+    limit,
+    remaining,
+    reset,
+  });
 }
 
 // Paths under /api/auth/** that we own and want IP-rate-limited.
@@ -121,17 +134,11 @@ async function authEndpointRateLimitMiddleware(
   );
   if (success) return null;
 
-  return NextResponse.json(
-    { error: "Too many requests. Please slow down." },
-    {
-      status: 429,
-      headers: {
-        "X-RateLimit-Limit": limit.toString(),
-        "X-RateLimit-Remaining": remaining.toString(),
-        "X-RateLimit-Reset": reset.toString(),
-      },
-    },
-  );
+  return tooManyRequests("Too many requests. Please slow down.", {
+    limit,
+    remaining,
+    reset,
+  });
 }
 
 /**
@@ -171,17 +178,7 @@ async function sessionEndpointRateLimitMiddleware(
 
   if (result.success) return null;
 
-  return NextResponse.json(
-    { error: "Too many requests. Please slow down." },
-    {
-      status: 429,
-      headers: {
-        "X-RateLimit-Limit": result.limit.toString(),
-        "X-RateLimit-Remaining": result.remaining.toString(),
-        "X-RateLimit-Reset": result.reset.toString(),
-      },
-    },
-  );
+  return tooManyRequests("Too many requests. Please slow down.", result);
 }
 
 // Rate limiting middleware for auth endpoints
@@ -197,17 +194,11 @@ async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | nul
       const { success, limit, reset, remaining } = await rateLimiter.limit(ip);
 
       if (!success) {
-        return NextResponse.json(
-          { error: "Too many login attempts. Please try again later." },
-          {
-            status: 429,
-            headers: {
-              "X-RateLimit-Limit": limit.toString(),
-              "X-RateLimit-Remaining": remaining.toString(),
-              "X-RateLimit-Reset": reset.toString(),
-            },
-          }
-        );
+        return tooManyRequests("Too many login attempts. Please try again later.", {
+          limit,
+          remaining,
+          reset,
+        });
       }
     }
   }
