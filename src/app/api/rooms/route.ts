@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       return handleApiError(validation.error, "creating room");
     }
 
-    const room = await createRoom(validation.data);
+    const room = await createRoom(validation.data, session.user.id);
     return NextResponse.json(room, { status: 201 });
   } catch (error) {
     return handleApiError(error, "creating room");

@@ -146,6 +146,7 @@ describe("Rooms [id] API", () => {
       expect(mockUpdateRoom).toHaveBeenCalledWith(
         "room-1",
         expect.objectContaining(validUpdate),
+        "u-gm",
       );
     });
 
@@ -204,7 +205,7 @@ describe("Rooms [id] API", () => {
 
       expect(response.status).toBe(200);
       expect(data.message).toBe("Room deleted successfully");
-      expect(mockDeleteRoom).toHaveBeenCalledWith("room-1");
+      expect(mockDeleteRoom).toHaveBeenCalledWith("room-1", "u-gm");
     });
   });
 });
