@@ -23,6 +23,20 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/services/audit-service", () => ({
+  createAuditLog: vi.fn(),
+  AuditAction: {
+    ROOM_CREATED: "ROOM_CREATED",
+    ROOM_UPDATED: "ROOM_UPDATED",
+    ROOM_DELETED: "ROOM_DELETED",
+  },
+  EntityType: {
+    ROOM: "ROOM",
+  },
+  sanitizeForAudit: (obj: unknown) => obj,
+  getChangedFields: vi.fn(() => []),
+}));
+
 // Import after mocks are set up
 import {
   getAllRooms,
@@ -255,6 +269,33 @@ describe("Room Service", () => {
         },
       });
     });
+
+    it("should log a ROOM_CREATED audit entry when performedBy is provided", async () => {
+      const createdRoom = createMockRoom({ id: "new-room", roomNumber: "201" });
+      mockRoomFindUnique.mockResolvedValue(null);
+      mockRoomCreate.mockResolvedValue(createdRoom);
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await createRoom(validInput, "user-42");
+
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "user-42",
+        "ROOM_CREATED",
+        "ROOM",
+        "new-room",
+        expect.objectContaining({ current: expect.anything() })
+      );
+    });
+
+    it("should not log an audit entry when performedBy is omitted", async () => {
+      mockRoomFindUnique.mockResolvedValue(null);
+      mockRoomCreate.mockResolvedValue(createMockRoom());
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await createRoom(validInput);
+
+      expect(createAuditLog).not.toHaveBeenCalled();
+    });
   });
 
   // ============================================================
@@ -336,6 +377,53 @@ describe("Room Service", () => {
       // Should only call findUnique once (to get existing room)
       expect(mockRoomFindUnique).toHaveBeenCalledTimes(1);
     });
+
+    it("should log a ROOM_UPDATED audit entry when fields changed and performedBy is provided", async () => {
+      const updateData = { capacity: 3 };
+      mockRoomFindUnique.mockResolvedValue(existingRoom);
+      mockRoomUpdate.mockResolvedValue({ ...existingRoom, ...updateData });
+      const { createAuditLog, getChangedFields } = await import(
+        "@/lib/services/audit-service"
+      );
+      vi.mocked(getChangedFields).mockReturnValueOnce(["capacity"]);
+
+      await updateRoom("room-1", updateData, "user-42");
+
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "user-42",
+        "ROOM_UPDATED",
+        "ROOM",
+        "room-1",
+        expect.objectContaining({
+          previous: expect.anything(),
+          current: expect.anything(),
+          changedFields: ["capacity"],
+        })
+      );
+    });
+
+    it("should not log an audit entry when nothing changed", async () => {
+      mockRoomFindUnique.mockResolvedValue(existingRoom);
+      mockRoomUpdate.mockResolvedValue(existingRoom);
+      const { createAuditLog, getChangedFields } = await import(
+        "@/lib/services/audit-service"
+      );
+      vi.mocked(getChangedFields).mockReturnValueOnce([]);
+
+      await updateRoom("room-1", { capacity: 2 }, "user-42");
+
+      expect(createAuditLog).not.toHaveBeenCalled();
+    });
+
+    it("should not log an audit entry when performedBy is omitted", async () => {
+      mockRoomFindUnique.mockResolvedValue(existingRoom);
+      mockRoomUpdate.mockResolvedValue({ ...existingRoom, capacity: 3 });
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await updateRoom("room-1", { capacity: 3 });
+
+      expect(createAuditLog).not.toHaveBeenCalled();
+    });
   });
 
   // ============================================================
@@ -405,6 +493,40 @@ describe("Room Service", () => {
 
       await expect(deleteRoom("room-1")).resolves.toBeUndefined();
       expect(mockRoomDelete).toHaveBeenCalled();
+    });
+
+    it("should log a ROOM_DELETED audit entry when performedBy is provided", async () => {
+      const roomWithNoBookings = {
+        ...createMockRoom({ id: "room-1" }),
+        bookings: [],
+      };
+      mockRoomFindUnique.mockResolvedValue(roomWithNoBookings);
+      mockRoomDelete.mockResolvedValue(undefined);
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await deleteRoom("room-1", "user-42");
+
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "user-42",
+        "ROOM_DELETED",
+        "ROOM",
+        "room-1",
+        expect.objectContaining({ previous: expect.anything() })
+      );
+    });
+
+    it("should not log an audit entry when performedBy is omitted", async () => {
+      const roomWithNoBookings = {
+        ...createMockRoom({ id: "room-1" }),
+        bookings: [],
+      };
+      mockRoomFindUnique.mockResolvedValue(roomWithNoBookings);
+      mockRoomDelete.mockResolvedValue(undefined);
+      const { createAuditLog } = await import("@/lib/services/audit-service");
+
+      await deleteRoom("room-1");
+
+      expect(createAuditLog).not.toHaveBeenCalled();
     });
   });
 

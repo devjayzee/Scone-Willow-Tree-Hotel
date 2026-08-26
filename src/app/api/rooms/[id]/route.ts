@@ -56,7 +56,7 @@ export async function PUT(
       return handleApiError(validation.error, "updating room");
     }
 
-    const room = await updateRoom(id, validation.data);
+    const room = await updateRoom(id, validation.data, session.user.id);
     return NextResponse.json(room);
   } catch (error) {
     return handleApiError(error, "updating room");
@@ -79,7 +79,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    await deleteRoom(id);
+    await deleteRoom(id, session.user.id);
     return NextResponse.json({ message: "Room deleted successfully" });
   } catch (error) {
     return handleApiError(error, "deleting room");

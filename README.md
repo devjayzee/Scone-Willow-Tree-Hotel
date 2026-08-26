@@ -88,6 +88,9 @@ flowchart LR
 
 ## Local setup
 
+Requires a running local PostgreSQL instance — `DATABASE_URL`/`DIRECT_URL`
+in `.env.example` default to `localhost:5432`.
+
 ```bash
 git clone https://github.com/devjayzee/Scone-Willow-Tree-Hotel.git
 cd Scone-Willow-Tree-Hotel
@@ -99,9 +102,12 @@ npm run dev
 ```
 
 Required environment variables are documented in `.env.example`:
-`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `UPSTASH_REDIS_REST_URL`,
-`UPSTASH_REDIS_REST_TOKEN`. Optional: `RESEND_API_KEY` + `EMAIL_FROM` for
-transactional email (unset → emails log to console).
+`DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `SEED_MANAGER_PASSWORD`,
+`SEED_STAFF_PASSWORD` (the last two only matter for `prisma db seed` — the
+seed script refuses to run if either is empty). Required in production only,
+optional in development: `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+(unset locally → rate limiters no-op). Optional: `RESEND_API_KEY` +
+`EMAIL_FROM` for transactional email (unset → emails log to console).
 
 ## Testing & CI
 

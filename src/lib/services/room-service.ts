@@ -2,6 +2,13 @@ import prisma from "@/lib/prisma";
 import type { Room as PrismaRoom } from "@prisma/client";
 import type { CreateRoomInput, UpdateRoomInput } from "@/lib/validations/room";
 import { NotFoundError, ConflictError, BusinessRuleError } from "@/lib/errors";
+import {
+  createAuditLog,
+  AuditAction,
+  EntityType,
+  sanitizeForAudit,
+  getChangedFields,
+} from "./audit-service";
 
 // Re-export error types for backwards compatibility
 export { NotFoundError, ConflictError, BusinessRuleError };
@@ -49,7 +56,10 @@ export async function getRoomById(id: string) {
 }
 
 // Create a new room
-export async function createRoom(data: CreateRoomInput): Promise<PrismaRoom> {
+export async function createRoom(
+  data: CreateRoomInput,
+  performedBy?: string
+): Promise<PrismaRoom> {
   // Check if room number already exists
   const existingRoom = await prisma.room.findUnique({
     where: { roomNumber: data.roomNumber },
@@ -68,11 +78,32 @@ export async function createRoom(data: CreateRoomInput): Promise<PrismaRoom> {
     },
   });
 
+  if (performedBy) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.ROOM_CREATED,
+      EntityType.ROOM,
+      room.id,
+      {
+        current: sanitizeForAudit({
+          roomNumber: room.roomNumber,
+          capacity: room.capacity,
+          pricePerNight: room.pricePerNight,
+          description: room.description,
+        }),
+      }
+    );
+  }
+
   return room;
 }
 
 // Update an existing room
-export async function updateRoom(id: string, data: UpdateRoomInput): Promise<PrismaRoom> {
+export async function updateRoom(
+  id: string,
+  data: UpdateRoomInput,
+  performedBy?: string
+): Promise<PrismaRoom> {
   const existingRoom = await prisma.room.findUnique({
     where: { id },
   });
@@ -101,11 +132,43 @@ export async function updateRoom(id: string, data: UpdateRoomInput): Promise<Pri
     },
   });
 
+  if (performedBy) {
+    const changedFields = getChangedFields(
+      existingRoom as unknown as Record<string, unknown>,
+      data as Record<string, unknown>
+    );
+
+    if (changedFields.length > 0) {
+      await createAuditLog(
+        performedBy,
+        AuditAction.ROOM_UPDATED,
+        EntityType.ROOM,
+        id,
+        {
+          previous: sanitizeForAudit(
+            Object.fromEntries(
+              changedFields.map((f) => [
+                f,
+                existingRoom[f as keyof typeof existingRoom],
+              ])
+            )
+          ),
+          current: sanitizeForAudit(
+            Object.fromEntries(
+              changedFields.map((f) => [f, data[f as keyof typeof data]])
+            )
+          ),
+          changedFields,
+        }
+      );
+    }
+  }
+
   return room;
 }
 
 // Delete a room (checks for active bookings)
-export async function deleteRoom(id: string): Promise<void> {
+export async function deleteRoom(id: string, performedBy?: string): Promise<void> {
   const room = await prisma.room.findUnique({
     where: { id },
     include: {
@@ -128,6 +191,23 @@ export async function deleteRoom(id: string): Promise<void> {
   await prisma.room.delete({
     where: { id },
   });
+
+  if (performedBy) {
+    await createAuditLog(
+      performedBy,
+      AuditAction.ROOM_DELETED,
+      EntityType.ROOM,
+      id,
+      {
+        previous: sanitizeForAudit({
+          roomNumber: room.roomNumber,
+          capacity: room.capacity,
+          pricePerNight: room.pricePerNight,
+          description: room.description,
+        }),
+      }
+    );
+  }
 }
 
 // Get available rooms for a date range
