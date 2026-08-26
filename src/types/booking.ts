@@ -5,9 +5,6 @@ import type { RoomSummary } from "./room";
 export type { BookingStatus };
 export type { RoomSummary };
 
-// Alias for backwards compatibility (deprecated, use RoomSummary)
-export type BookingRoom = RoomSummary;
-
 // Creator info for booking
 export interface BookingCreator {
   firstName: string;

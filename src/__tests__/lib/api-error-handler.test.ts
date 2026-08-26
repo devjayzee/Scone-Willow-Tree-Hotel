@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 import {
   handleApiError,
-  isAppError,
   AppError,
   NotFoundError,
   ConflictError,
@@ -225,29 +224,6 @@ describe("API Error Handler", () => {
 
       expect(response.status).toBe(500);
       expect(data.code).toBe("INTERNAL_ERROR");
-    });
-  });
-
-  // ============================================================
-  // isAppError
-  // ============================================================
-  describe("isAppError", () => {
-    it("should return true for AppError instances", () => {
-      expect(isAppError(new AppError("test"))).toBe(true);
-      expect(isAppError(new NotFoundError())).toBe(true);
-      expect(isAppError(new ConflictError())).toBe(true);
-      expect(isAppError(new ValidationError())).toBe(true);
-      expect(isAppError(new UnauthorizedError())).toBe(true);
-      expect(isAppError(new ForbiddenError())).toBe(true);
-      expect(isAppError(new BusinessRuleError("test"))).toBe(true);
-    });
-
-    it("should return false for non-AppError", () => {
-      expect(isAppError(new Error("test"))).toBe(false);
-      expect(isAppError("string")).toBe(false);
-      expect(isAppError(null)).toBe(false);
-      expect(isAppError(undefined)).toBe(false);
-      expect(isAppError({ message: "object" })).toBe(false);
     });
   });
 });

@@ -6,10 +6,6 @@ export interface ResolvedInviteResponse {
   role: Role;
 }
 
-export interface AuthActionResponse {
-  ok: true;
-}
-
 /**
  * Wire shape of the login-form pre-check. `resetAt` is a Unix ms epoch;
  * `remaining` uses the sentinel `999` when the limiter is disabled

@@ -18,12 +18,3 @@ export interface Staff {
   };
 }
 
-// Staff type without booking count (for simpler contexts)
-export interface StaffSummary {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: Role;
-  isActive: boolean;
-}
