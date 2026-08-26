@@ -32,15 +32,10 @@ concurrency:
 permissions:
   contents: read
 
-# Runner is switchable via repo variable `RUNNER` on every job below.
-# - Unset (default) → GitHub-hosted `ubuntu-latest`.
-# - `self-hosted`   → local Docker runner (see `.github/runner/README.md`).
-# Forks can't read repo variables, so PRs from forks always route to
-# `ubuntu-latest` — self-hosted is never exposed to untrusted code.
 jobs:
   lint:
     name: Lint
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     steps:
@@ -54,7 +49,7 @@ jobs:
 
   typecheck:
     name: Typecheck
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
@@ -75,7 +70,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
@@ -98,7 +93,7 @@ jobs:
     # can't see — the exact class of bug that shipped PR #130's CSP
     # outage. Scoped to render + hydration; no live DB required.
     name: Smoke
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     if: github.event.pull_request.draft == false || github.event_name == 'push'
     env:
