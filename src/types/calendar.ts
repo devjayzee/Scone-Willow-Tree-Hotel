@@ -29,11 +29,3 @@ export interface CalendarEvent {
   resource: CalendarEventResource;
 }
 
-/**
- * Query parameters for fetching calendar events
- */
-export interface CalendarQueryParams {
-  startDate?: string;
-  endDate?: string;
-  roomId?: string;
-}

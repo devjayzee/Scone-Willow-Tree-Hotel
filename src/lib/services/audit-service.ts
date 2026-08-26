@@ -12,7 +12,6 @@ export const AuditAction = {
   STAFF_DELETED: "STAFF_DELETED",
   STAFF_DEACTIVATED: "STAFF_DEACTIVATED",
   STAFF_ACTIVATED: "STAFF_ACTIVATED",
-  STAFF_PASSWORD_CHANGED: "STAFF_PASSWORD_CHANGED",
   STAFF_PASSWORD_RESET: "STAFF_PASSWORD_RESET",
   STAFF_PASSWORD_SETUP: "STAFF_PASSWORD_SETUP",
   STAFF_INVITE_RESENT: "STAFF_INVITE_RESENT",
@@ -107,74 +106,6 @@ export async function createAuditLog(
     // Log error but don't fail the main operation
     logger.error("Failed to create audit log", error, { userId, action, entityType, entityId });
   }
-}
-
-/**
- * Get audit logs for a specific entity.
- *
- * @param entityType - Type of entity
- * @param entityId - ID of the entity
- * @param limit - Maximum number of logs to return
- */
-export async function getAuditLogsForEntity(
-  entityType: EntityTypeValue,
-  entityId: string,
-  limit = 50
-) {
-  return prisma.auditLog.findMany({
-    where: {
-      entityType,
-      entityId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-  });
-}
-
-/**
- * Get audit logs for a specific user's actions.
- *
- * @param userId - ID of the user
- * @param limit - Maximum number of logs to return
- */
-export async function getAuditLogsByUser(userId: string, limit = 50) {
-  return prisma.auditLog.findMany({
-    where: {
-      userId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-  });
-}
-
-/**
- * Get recent audit logs with optional filtering.
- *
- * @param options - Filter options
- */
-export async function getRecentAuditLogs(options?: {
-  entityType?: EntityTypeValue;
-  action?: AuditActionType;
-  limit?: number;
-  offset?: number;
-}) {
-  const { entityType, action, limit = 100, offset = 0 } = options ?? {};
-
-  return prisma.auditLog.findMany({
-    where: {
-      ...(entityType && { entityType }),
-      ...(action && { action }),
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-    skip: offset,
-  });
 }
 
 /**
