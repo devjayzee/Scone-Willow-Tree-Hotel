@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LogOut, Menu } from "lucide-react";
+import { ROLE_LABELS } from "@/lib/constants/roles";
+import type { Role } from "@prisma/client";
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -34,12 +36,9 @@ export function Header({ onMenuClick }: HeaderProps) {
     ? `${firstName[0]}${lastName[0]}`.toUpperCase()
     : (firstName[0] || "U").toUpperCase();
 
-  const roleLabel =
-    session?.user?.role === "GENERAL_MANAGER"
-      ? "General Manager"
-      : session?.user?.role === "MANAGER"
-        ? "Manager"
-        : "Staff";
+  const roleLabel = session?.user?.role
+    ? ROLE_LABELS[session.user.role as Role]
+    : "Staff";
 
   return (
     <header className="h-16 border-b border-border bg-white px-4 flex items-center justify-between">
