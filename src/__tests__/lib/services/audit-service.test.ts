@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 
 // Mock Prisma
 const mockAuditLogCreate = vi.fn();
@@ -355,6 +356,45 @@ describe("Audit Service", () => {
       const changed = getChangedFields(previous, current);
 
       expect(changed).toContain("count");
+    });
+
+    // A Prisma record's Date/Decimal fields compared against zod-parsed
+    // update input (ISO strings/plain numbers) — the exact shape
+    // updateBooking/updateRoom pass in.
+    it("does not report a Date field as changed when the incoming string is the same instant", () => {
+      const previous = { checkIn: new Date("2026-04-10T00:00:00.000Z") } as Record<string, unknown>;
+      const current = { checkIn: "2026-04-10" } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).not.toContain("checkIn");
+    });
+
+    it("reports a Date field as changed when the incoming string is a different instant", () => {
+      const previous = { checkIn: new Date("2026-04-10T00:00:00.000Z") } as Record<string, unknown>;
+      const current = { checkIn: "2026-04-11" } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).toContain("checkIn");
+    });
+
+    it("does not report a Decimal field as changed when the incoming number is the same value", () => {
+      const previous = { bondDeposit: new Prisma.Decimal("150.00") } as Record<string, unknown>;
+      const current = { bondDeposit: 150 } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).not.toContain("bondDeposit");
+    });
+
+    it("reports a Decimal field as changed when the incoming number differs", () => {
+      const previous = { bondDeposit: new Prisma.Decimal("150.00") } as Record<string, unknown>;
+      const current = { bondDeposit: 200 } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).toContain("bondDeposit");
     });
   });
 });
