@@ -46,6 +46,15 @@ const PUBLIC_AUTH_PATHS = new Set([
   "/setup-password",
 ]);
 
+// Routes that require MANAGER or GENERAL_MANAGER role.
+const MANAGER_PATHS = ["/reports"];
+
+// Routes that require GENERAL_MANAGER role only. /rooms is GM-only
+// because every mutation on the page (create/update/delete room) is
+// gated to GM at the API. MANAGER/STAFF who need room data at
+// runtime (booking form) use /api/rooms/available, which is open.
+const GENERAL_MANAGER_ONLY_PATHS = ["/staff", "/rooms"];
+
 function enforceBodySizeCap(req: NextRequest): NextResponse | null {
   if (
     req.method === "GET" ||
@@ -106,9 +115,8 @@ async function apiRateLimitMiddleware(
 
 // Paths under /api/auth/** that we own and want IP-rate-limited.
 // forgot-password self-limits (dual key needs the body); rate-limit-status
-// is a UX pre-check called ~2x per login attempt and intentionally left
-// unlimited; NextAuth internals and the credentials callback are handled
-// elsewhere.
+// self-limits in-route via getRateLimitStatusLimiter; NextAuth internals
+// and the credentials callback are handled elsewhere.
 const AUTH_ENDPOINT_LIMITED_EXACT = new Set([
   "/api/auth/reset-password",
   "/api/auth/setup-password",
@@ -224,20 +232,13 @@ const authMiddleware = withAuth(
       return NextResponse.redirect(new URL("/bookings", req.url));
     }
 
-    // Routes that require MANAGER or GENERAL_MANAGER role
-    const managerPaths = ["/reports"];
-    if (managerPaths.some((p) => path.startsWith(p))) {
+    if (MANAGER_PATHS.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER" && token?.role !== "MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
     }
 
-    // Routes that require GENERAL_MANAGER role only. /rooms is GM-only
-    // because every mutation on the page (create/update/delete room) is
-    // gated to GM at the API. MANAGER/STAFF who need room data at
-    // runtime (booking form) use /api/rooms/available, which is open.
-    const generalManagerOnlyPaths = ["/staff", "/rooms"];
-    if (generalManagerOnlyPaths.some((p) => path.startsWith(p))) {
+    if (GENERAL_MANAGER_ONLY_PATHS.some((p) => path.startsWith(p))) {
       if (token?.role !== "GENERAL_MANAGER") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
