@@ -22,6 +22,15 @@ import {
   MAX_BOOKING_REF_RETRIES,
 } from "./booking-utils";
 
+import {
+  checkInBooking,
+  checkOutBooking,
+  cancelBooking,
+  togglePaymentStatus,
+  undoCheckOutBooking,
+  undoCancelBooking,
+} from "./booking-status";
+
 const PRISMA_UNIQUE_VIOLATION = "P2002";
 
 function isBookingRefCollision(err: unknown): boolean {
@@ -32,14 +41,6 @@ function isBookingRefCollision(err: unknown): boolean {
     (err.meta.target as string[]).includes("bookingRef")
   );
 }
-import {
-  checkInBooking,
-  checkOutBooking,
-  cancelBooking,
-  togglePaymentStatus,
-  undoCheckOutBooking,
-  undoCancelBooking,
-} from "./booking-status";
 
 /**
  * Create a new booking
