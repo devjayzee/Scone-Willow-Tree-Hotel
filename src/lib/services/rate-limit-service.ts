@@ -26,7 +26,7 @@ if (
  * callers (middleware gate and status route pre-check) build their limiter
  * from the same source config.
  *
- * All four limiters share the same env vars and the same shape (env check
+ * All seven limiters share the same env vars and the same shape (env check
  * → new Redis → new Ratelimit); the extracted `makeRateLimiter` closure
  * captures the per-config memo. Callers still get null when Upstash is
  * unconfigured, which they already handle as "rate limiting disabled".

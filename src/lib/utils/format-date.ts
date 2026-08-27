@@ -19,7 +19,7 @@ export function formatDisplayDate(dateStr: string): string {
 export function formatDisplayTime(timeStr: string): string {
   if (!timeStr) return EMPTY_TIME_PLACEHOLDER;
   const [hours, minutes] = timeStr.split(":");
-  const hour = parseInt(hours);
+  const hour = parseInt(hours, 10);
   const ampm = hour >= 12 ? "PM" : "AM";
   const hour12 = hour % 12 || 12;
   return `${hour12}:${minutes} ${ampm}`;

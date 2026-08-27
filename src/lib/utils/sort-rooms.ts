@@ -7,8 +7,8 @@ export function sortRoomsByNumber<T extends { roomNumber: string }>(
   rooms: T[]
 ): T[] {
   return [...rooms].sort((a, b) => {
-    const numA = parseInt(a.roomNumber) || 0;
-    const numB = parseInt(b.roomNumber) || 0;
+    const numA = parseInt(a.roomNumber, 10) || 0;
+    const numB = parseInt(b.roomNumber, 10) || 0;
     return numA - numB;
   });
 }
