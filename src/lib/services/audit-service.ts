@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { getAuditContext } from "./audit-context";
 
@@ -128,6 +129,26 @@ export function sanitizeForAudit<T extends Record<string, unknown>>(
 }
 
 /**
+ * Normalize a field value for equality comparison, using `reference`'s
+ * runtime type to decide the representation. Callers like
+ * `updateBooking`/`updateRoom` compare a Prisma record (Date/Decimal
+ * objects) against zod-parsed input (ISO strings/plain numbers) —
+ * without this, every field comparison across that type boundary
+ * reports "changed" even when the value is identical, inflating the
+ * audit trail on every PUT that echoes a Date/Decimal field back
+ * unchanged.
+ */
+function normalizeForComparison(reference: unknown, value: unknown): unknown {
+  if (reference instanceof Date) {
+    return new Date(value as string | number | Date).getTime();
+  }
+  if (reference instanceof Prisma.Decimal) {
+    return String(value);
+  }
+  return value;
+}
+
+/**
  * Helper to compute changed fields between two objects.
  */
 export function getChangedFields<T extends Record<string, unknown>>(
@@ -140,7 +161,14 @@ export function getChangedFields<T extends Record<string, unknown>>(
   for (const key of Object.keys(current)) {
     if (ignoreFields.includes(key)) continue;
 
-    if (current[key] !== undefined && current[key] !== previous[key]) {
+    const currentValue = current[key];
+    if (currentValue === undefined) continue;
+
+    const previousValue = previous[key];
+    const normalizedPrevious = normalizeForComparison(previousValue, previousValue);
+    const normalizedCurrent = normalizeForComparison(previousValue, currentValue);
+
+    if (normalizedCurrent !== normalizedPrevious) {
       changedFields.push(key);
     }
   }
