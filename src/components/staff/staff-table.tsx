@@ -13,6 +13,7 @@ import {
 import { MoreHorizontal, Edit, Trash2, UserCheck, UserX, Mail, Calendar as CalendarIcon, Send } from "lucide-react";
 import { format } from "date-fns";
 import type { Staff } from "@/types/staff";
+import { ROLE_LABELS_SHORT } from "@/lib/constants/roles";
 
 interface StaffTableProps {
   staffs: Staff[];
@@ -47,12 +48,6 @@ export function StaffTable({
 
   const getInitials = (staff: Staff) =>
     `${staff.firstName[0] || ""}${staff.lastName[0] || ""}`.toUpperCase();
-
-  const getRoleDisplay = (role: string) => {
-    if (role === "GENERAL_MANAGER") return "GM";
-    if (role === "MANAGER") return "Manager";
-    return "Staff";
-  };
 
   const renderActionMenu = (staff: Staff) => (
     <DropdownMenu>
@@ -150,7 +145,7 @@ export function StaffTable({
                             : "text-xs"
                       }
                     >
-                      {getRoleDisplay(staff.role)}
+                      {ROLE_LABELS_SHORT[staff.role]}
                     </Badge>
                     <Badge
                       variant={staff.isActive ? "default" : "secondary"}
@@ -235,7 +230,7 @@ export function StaffTable({
                           : ""
                     }
                   >
-                    {getRoleDisplay(staff.role)}
+                    {ROLE_LABELS_SHORT[staff.role]}
                   </Badge>
                 </td>
                 <td className="px-6 py-4 text-center">
