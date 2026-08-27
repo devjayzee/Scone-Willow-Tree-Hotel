@@ -110,7 +110,11 @@ model Booking {
 
 model AuditLog {
   id         String   @id @default(cuid())
+  // Deliberately no @relation to User: audit rows must survive user
+  // deletion, so this is a plain, unenforced reference.
   userId     String
+  // Deliberately String, not an enum: AuditAction/EntityType (src/lib/services/audit-service.ts)
+  // are append-only const objects so new values ship without a migration.
   action     String
   entityType String
   entityId   String

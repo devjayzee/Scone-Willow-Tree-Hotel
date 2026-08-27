@@ -63,7 +63,7 @@ export function useTablePagination<T>(
   // Derive itemsPerPage from stored value
   const itemsPerPage = useMemo(() => {
     if (storedValue) {
-      const parsed = parseInt(storedValue);
+      const parsed = parseInt(storedValue, 10);
       if (pageSizeOptions.includes(parsed)) {
         return parsed;
       }
