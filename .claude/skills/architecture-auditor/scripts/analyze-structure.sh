@@ -39,7 +39,7 @@ echo ""
 echo "--- High Coupling (>10 imports) ---"
 for file in $(find "$SRC_PATH" -name "*.ts" -o -name "*.tsx" 2>/dev/null | grep -v ".spec\." | grep -v ".test\."); do
     if [ -f "$file" ]; then
-        IMPORT_COUNT=$(grep -c "^import " "$file" 2>/dev/null || echo 0)
+        IMPORT_COUNT=$(grep -c "^import " "$file" 2>/dev/null | head -1)
         if [ "$IMPORT_COUNT" -gt 10 ]; then
             echo "$IMPORT_COUNT imports: $file"
         fi
@@ -49,7 +49,7 @@ echo ""
 
 # Check for client components
 echo "--- Client Component Usage ---"
-CLIENT_COUNT=$(grep -rl "'use client'" "$SRC_PATH" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ')
+CLIENT_COUNT=$(grep -rlE "['\"]use client['\"]" "$SRC_PATH" --include="*.tsx" 2>/dev/null | wc -l | tr -d ' ')
 SERVER_COUNT=$(find "$SRC_PATH" -name "*.tsx" 2>/dev/null | wc -l | tr -d ' ')
 echo "Client Components: $CLIENT_COUNT"
 echo "Total TSX Files:   $SERVER_COUNT"
@@ -68,7 +68,7 @@ for route in $(find "$SRC_PATH/app/api" -name "route.ts" 2>/dev/null); do
     ISSUES=""
 
     # Check for direct Prisma calls
-    PRISMA_CALLS=$(grep -c "prisma\." "$route" 2>/dev/null || echo 0)
+    PRISMA_CALLS=$(grep -c "prisma\." "$route" 2>/dev/null | head -1)
     if [ "$PRISMA_CALLS" -gt 5 ]; then
         ISSUES="$ISSUES [Many DB calls: $PRISMA_CALLS]"
     fi
