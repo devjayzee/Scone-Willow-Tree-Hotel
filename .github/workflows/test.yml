@@ -4,26 +4,14 @@ on:
   pull_request:
     branches: [main, development]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/**'
-      - 'plans/**'
-      - '.gitignore'
-      - '.githooks/**'
   # Redundant with pull_request when merging via a PR (the merge commit is
   # the same SHA the PR checks ran on). Kept for direct pushes to main
   # (hotfixes that bypass the PR workflow).
   push:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/**'
-      - 'plans/**'
-      - '.gitignore'
-      - '.githooks/**'
 
 # Cancel in-flight runs when a new push comes in on the same ref. Applies
-# workflow-wide so all three parallel jobs cancel together.
+# workflow-wide so all jobs cancel together.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -33,11 +21,41 @@ permissions:
   contents: read
 
 jobs:
+  # Lint/Typecheck/Test/Smoke are required status checks on main and
+  # development. A required check that never runs (which is what
+  # paths-ignore on the workflow's own `on:` block used to cause for
+  # doc/.claude/plans-only PRs) blocks the PR forever with no bypass —
+  # whereas a required check that runs and is skipped via job-level
+  # `if:` satisfies branch protection normally. So: always trigger the
+  # workflow, and gate real work on this job's output instead.
+  changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          BASE="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
+          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}")
+          echo "Changed files:"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qvE '\.md$|^\.claude/|^plans/|^\.gitignore$|^\.githooks/'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    if: needs.changes.outputs.relevant == 'true' && (github.event.pull_request.draft == false || github.event_name == 'push')
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -49,9 +67,10 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    if: needs.changes.outputs.relevant == 'true' && (github.event.pull_request.draft == false || github.event_name == 'push')
     env:
       # Placeholders — prisma.config.ts now uses env() which throws
       # if these are missing at config-load time. The values are never
@@ -70,9 +89,10 @@ jobs:
 
   test:
     name: Test
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    if: needs.changes.outputs.relevant == 'true' && (github.event.pull_request.draft == false || github.event_name == 'push')
     env:
       # Placeholders — see typecheck job comment.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
@@ -93,9 +113,10 @@ jobs:
     # can't see — the exact class of bug that shipped PR #130's CSP
     # outage. Scoped to render + hydration; no live DB required.
     name: Smoke
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    if: needs.changes.outputs.relevant == 'true' && (github.event.pull_request.draft == false || github.event_name == 'push')
     env:
       # Placeholder secrets — enough to boot the built app. The
       # smoke never hits an endpoint that queries the DB or sends
