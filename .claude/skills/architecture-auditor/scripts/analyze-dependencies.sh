@@ -76,7 +76,11 @@ else
     echo -e "  ${YELLOW}○${NC} graphviz (not installed - brew install graphviz)"
 fi
 
-if command -v tsc &> /dev/null; then
+# Check the project's own tsc, not whatever "tsc" resolves to on PATH —
+# a global install can be a different major version and mis-parse
+# modern syntax in node_modules type declarations, reporting phantom
+# errors `npm run typecheck` doesn't see.
+if [[ -f "node_modules/.bin/tsc" ]]; then
     TSC_AVAILABLE=true
     echo -e "  ${GREEN}✓${NC} typescript compiler"
 else
@@ -114,8 +118,13 @@ else
     echo "Falling back to basic circular dependency detection..."
     echo ""
 
-    # Basic detection using grep for forwardRef (NestJS indicator)
-    FORWARD_REF_COUNT=$(grep -r "forwardRef" "$SOURCE_DIR" --include="*.ts" 2>/dev/null | grep -v node_modules | grep -v ".spec.ts" | wc -l | tr -d ' ')
+    # Basic detection using grep for forwardRef (NestJS indicator).
+    # `|| true` matches the pattern already used elsewhere in this file
+    # for expected-empty results: under pipefail, this pipeline's exit
+    # status is 1 whenever the initial grep finds zero matches (the
+    # common, healthy case), even though wc/tr afterward succeed —
+    # without it, set -e aborts the whole script right here.
+    FORWARD_REF_COUNT=$(grep -r "forwardRef" "$SOURCE_DIR" --include="*.ts" 2>/dev/null | grep -v node_modules | grep -v ".spec.ts" | wc -l | tr -d ' ' || true)
 
     if [[ $FORWARD_REF_COUNT -gt 0 ]]; then
         echo -e "${YELLOW}Found $FORWARD_REF_COUNT forwardRef usages (potential circular deps):${NC}"
@@ -310,12 +319,12 @@ if [[ "$TSC_AVAILABLE" == true ]]; then
         echo "Running TypeScript type check..."
         echo ""
 
-        TSC_OUTPUT=$(tsc --noEmit 2>&1 || true)
+        TSC_OUTPUT=$(npx tsc --noEmit 2>&1 || true)
 
         if [[ -z "$TSC_OUTPUT" ]]; then
             echo -e "${GREEN}✓ No TypeScript errors${NC}"
         else
-            ERROR_COUNT=$(echo "$TSC_OUTPUT" | grep -c "error TS" || echo 0)
+            ERROR_COUNT=$(echo "$TSC_OUTPUT" | grep -c "error TS" | head -1)
             echo -e "${RED}TypeScript errors: $ERROR_COUNT${NC}"
             echo ""
             echo "$TSC_OUTPUT" | head -20
