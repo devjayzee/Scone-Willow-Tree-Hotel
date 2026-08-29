@@ -84,6 +84,3 @@ for f in src/lib/services/*-service.ts; do
   [ -f "$t" ] || echo "missing: $t"
 done
 ```
-
-Known false positive: `booking-service.ts` is a re-export shim — its tests live
-under the mirrored folder `src/__tests__/lib/services/booking/`.

@@ -8,8 +8,7 @@ paths:
 `src/lib/services/` is the single home for **business-logic services**:
 domain rules and database access. One `<domain>-service.ts` per domain;
 split into a `<domain>/` folder module (with `index.ts` re-exports) only
-when the file grows past ~300 lines — see `src/lib/services/booking/`
-and its compat shim `booking-service.ts`.
+when the file grows past ~300 lines — see `src/lib/services/booking/`.
 
 **Outbound infrastructure adapters** (transport-layer plumbing for
 side effects like email, SMS, storage, PDF, webhooks) are a distinct
