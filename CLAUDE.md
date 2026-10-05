@@ -185,15 +185,20 @@ plan template lives in `plans/README.md`.
   GitHub-side limitation — `target-branch` doesn't apply to security PRs),
   and the guard exempts `dependabot[bot]` so those land straight to `main`.
 - **After any `main` advance** (release PR, hotfix PR, or Dependabot
-  security PR), sync locally:
+  security PR), sync through a PR. A ruleset on `development` requires a
+  PR with Lint, Typecheck, Test and Smoke passing, so a direct push is
+  rejected (GH013):
   ```
   git checkout main && git pull
   git checkout development && git pull
   git merge main --no-edit
-  git push origin development
+  git push origin HEAD:chore/sync-main-into-development
+  gh pr create --base development --head chore/sync-main-into-development
   ```
-  Keeps the two branches in step and prevents lockfile conflicts on the
-  next release.
+  Merge the PR as a merge commit, then `git pull` on `development`. Don't
+  open the PR from `main` itself: the ruleset requires the head to be up
+  to date with `development`, which `main` never is. Keeps the two
+  branches in step and prevents lockfile conflicts on the next release.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore(scope):`, `test:`, `docs:`.
 - PRs merge as merge commits (squash and rebase disabled at the repo level
   to preserve per-commit history).
