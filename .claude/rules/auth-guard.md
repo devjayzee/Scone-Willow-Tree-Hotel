@@ -15,8 +15,14 @@ Three layers of protection:
    for unauthenticated users on dashboard routes. Also rate-limits credential
    logins (5 attempts / 15 min on `/api/auth/callback/credentials`). NOT the
    security boundary — `withAuth` calls `getToken()` internally, which decodes
-   the JWE but does NOT invoke the `jwt` callback, so revocation/expiry never
-   runs here (#181).
+   the JWE but does NOT invoke the `jwt` callback. The proxy copies the expiry
+   rule (`hasLiveSession`, mirroring `src/lib/auth.ts:120-123`) but cannot check
+   revocation (`tokenVersion`/`isActive`), which needs a DB read (#181).
+   On the four public auth pages it clears the session cookies (all
+   `next-auth.session-token` variants, `secure` matching the `__Secure-` prefix)
+   when `hasLiveSession` is false. It must never clear them on `/api/auth/*` (that
+   would wipe a freshly issued session on the credentials callback or session
+   poll), and never based on `?session=expired`.
 2. **Dashboard pages/layout** — `(dashboard)/layout.tsx` calls
    `await requireSession()` from `@/lib/auth-guard`. Role-restricted pages
    pass a role (or role array). `requireSession` uses `getServerSession`,
@@ -96,6 +102,13 @@ Requirements:
   (`GENERAL_MANAGER`, `MANAGER`, `STAFF`).
 - Throw `UnauthorizedError` (401) for "who are you", `ForbiddenError` (403)
   for "you can't do that" — don't mix them up.
+- A server-side redirect to `/login` for a session the proxy cannot see is
+  dead (revoked via `tokenVersion`/`isActive`, i.e. `requireSession`) must
+  carry `?session=expired`. The proxy skips its bounce to `/bookings` when
+  that parameter is present; without it a revoked session bounces once more.
+  The parameter is attacker-controllable and UX-only: it must never trigger,
+  suppress or condition a cookie deletion or any auth decision.
+- Keep `hasLiveSession` in step with the expiry rule in the `jwt` callback.
 
 ## Anti-patterns
 
