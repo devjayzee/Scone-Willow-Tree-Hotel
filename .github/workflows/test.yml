@@ -4,17 +4,16 @@ on:
   pull_request:
     branches: [main, development]
     types: [opened, synchronize, reopened, ready_for_review]
-  # Redundant with pull_request when merging via a PR (the merge commit is
-  # the same SHA the PR checks ran on). Kept for direct pushes to main
-  # (hotfixes that bypass the PR workflow).
+  # Post-merge check of the exact merged SHA on main. Needed because strict
+  # up-to-date is off on main, so the PR checks may have run on an older base.
   push:
     branches: [main]
 
-# Cancel in-flight runs when a new push comes in on the same ref. Applies
-# workflow-wide so all jobs cancel together.
+# Cancel superseded PR runs. Push-to-main runs are not cancelled, so each
+# merged SHA keeps its post-merge check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least-privilege default. Individual jobs can escalate if they ever need to.
 permissions:
@@ -41,10 +40,16 @@ jobs:
       - id: filter
         run: |
           BASE="${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}"
-          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}")
+          # Fail closed: if the diff cannot be computed (e.g. an all-zero
+          # `before`), run everything rather than let required jobs skip.
+          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}") || {
+            echo "git diff failed; treating as relevant"
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
           echo "Changed files:"
           echo "$CHANGED"
-          if echo "$CHANGED" | grep -qvE '\.md$|^\.claude/|^plans/|^\.gitignore$|^\.githooks/'; then
+          if [ -n "$CHANGED" ] && grep -qvE '\.md$|^\.claude/|^plans/|^\.gitignore$|^\.githooks/' <<<"$CHANGED"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
