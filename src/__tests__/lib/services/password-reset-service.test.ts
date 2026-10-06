@@ -99,9 +99,11 @@ import {
   consumeResetToken,
   consumeSetupToken,
   requestPasswordReset,
+} from "@/lib/services/password-reset-service";
+import {
   RESET_TOKEN_TTL_MINUTES,
   SETUP_TOKEN_TTL_HOURS,
-} from "@/lib/services/password-reset-service";
+} from "@/lib/constants/auth";
 
 const activeUser = {
   id: "u1",

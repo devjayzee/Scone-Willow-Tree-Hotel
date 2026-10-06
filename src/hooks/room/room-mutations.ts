@@ -3,17 +3,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { invalidateWithRelated } from "@/lib/query-invalidation";
+import { sortRoomsByNumber } from "@/lib/utils/sort-rooms";
 import type { Room } from "@/types/room";
 import { createRoom, updateRoom, deleteRoom } from "./room-api";
 import { roomKeys } from "./room-keys";
-
-function sortByRoomNumber(rooms: Room[]): Room[] {
-  return [...rooms].sort((a, b) => {
-    const numA = parseInt(a.roomNumber) || 0;
-    const numB = parseInt(b.roomNumber) || 0;
-    return numA - numB;
-  });
-}
 
 export function useCreateRoom() {
   const queryClient = useQueryClient();
@@ -35,7 +28,7 @@ export function useCreateRoom() {
 
       queryClient.setQueryData<Room[]>(roomKeys.list(), (old) => {
         if (!old) return [optimisticRoom];
-        return sortByRoomNumber([...old, optimisticRoom]);
+        return sortRoomsByNumber([...old, optimisticRoom]);
       });
 
       return { previousRooms };
@@ -78,7 +71,7 @@ export function useUpdateRoom() {
               }
             : room
         );
-        return sortByRoomNumber(updated);
+        return sortRoomsByNumber(updated);
       });
 
       return { previousRooms };

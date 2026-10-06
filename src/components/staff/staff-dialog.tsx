@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Staff, Role } from "@/types/staff";
+import { ROLE_LABELS } from "@/lib/constants/roles";
 
 // Password rotation is handled by the /reset-password flow — GMs
 // cannot set another user's password directly through the staff edit
@@ -185,9 +186,11 @@ export function StaffDialog({
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="STAFF">Staff</SelectItem>
-                  <SelectItem value="MANAGER">Manager</SelectItem>
-                  <SelectItem value="GENERAL_MANAGER">General Manager</SelectItem>
+                  <SelectItem value="STAFF">{ROLE_LABELS.STAFF}</SelectItem>
+                  <SelectItem value="MANAGER">{ROLE_LABELS.MANAGER}</SelectItem>
+                  <SelectItem value="GENERAL_MANAGER">
+                    {ROLE_LABELS.GENERAL_MANAGER}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

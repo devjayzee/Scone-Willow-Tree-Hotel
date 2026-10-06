@@ -1,4 +1,4 @@
-import { SETUP_TOKEN_TTL_HOURS } from "@/lib/services/password-reset-service";
+import { SETUP_TOKEN_TTL_HOURS } from "@/lib/constants/auth";
 import { APP_BASE_URL } from "@/lib/email/app-url";
 import { escapeHtml } from "@/lib/email/escape-html";
 

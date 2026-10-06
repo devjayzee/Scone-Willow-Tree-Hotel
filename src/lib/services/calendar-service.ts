@@ -1,6 +1,11 @@
 import prisma from "@/lib/prisma";
 import { BookingStatus } from "@prisma/client";
 import type { CalendarEvent } from "@/types/calendar";
+import {
+  ALL_ROOMS,
+  CALENDAR_EVENT_START_HOUR,
+  CALENDAR_EVENT_END_HOUR,
+} from "@/lib/constants/calendar";
 
 /**
  * Get calendar events (bookings) with optional filtering
@@ -37,7 +42,7 @@ export async function getCalendarEvents(
   if (endDate) {
     where.checkIn = { lt: endDate };
   }
-  if (roomId && roomId !== "all") {
+  if (roomId && roomId !== ALL_ROOMS) {
     where.roomId = roomId;
   }
 
@@ -66,12 +71,12 @@ export async function getCalendarEvents(
     // Create an event for each night of the stay
     const currentDate = new Date(checkIn);
     while (currentDate < checkOut) {
-      // Set event times (e.g., 2pm check-in style display)
+      // Set event times (display window, not the real checkInTime/checkOutTime)
       const eventStart = new Date(currentDate);
-      eventStart.setHours(14, 0, 0, 0);
+      eventStart.setHours(CALENDAR_EVENT_START_HOUR, 0, 0, 0);
 
       const eventEnd = new Date(currentDate);
-      eventEnd.setHours(16, 0, 0, 0);
+      eventEnd.setHours(CALENDAR_EVENT_END_HOUR, 0, 0, 0);
 
       events.push({
         id: `${booking.id}::${currentDate.toISOString().split("T")[0]}`,

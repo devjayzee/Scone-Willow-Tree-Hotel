@@ -9,7 +9,7 @@ async function loadTemplate() {
   const [{ passwordResetEmail }, { RESET_TOKEN_TTL_MINUTES }] =
     await Promise.all([
       import("@/lib/email/templates/password-reset"),
-      import("@/lib/services/password-reset-service"),
+      import("@/lib/constants/auth"),
     ]);
   return { passwordResetEmail, RESET_TOKEN_TTL_MINUTES };
 }

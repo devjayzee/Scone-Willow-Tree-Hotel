@@ -1,7 +1,5 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import {
@@ -9,37 +7,14 @@ import {
   DUMMY_PASSWORD_HASH,
   SESSION_MAX_AGE_REMEMBER,
   SESSION_MAX_AGE_STANDARD,
+  SESSION_UPDATE_AGE,
 } from "@/lib/constants/auth";
 import { normalizeEmail } from "@/lib/validations/email";
+import { getLoginEmailRateLimiter } from "@/lib/services/rate-limit-service";
 
 // Fail loud at server boot instead of on the first sign-in attempt.
 if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required — set it in .env");
-}
-
-// Per-email login rate limiter. Complements the IP-keyed limiter in
-// proxy.ts so that distributed brute-force attempts (many IPs, one
-// account) still hit a per-account cap.
-let emailRateLimiter: Ratelimit | null = null;
-
-function getEmailRateLimiter(): Ratelimit | null {
-  if (
-    !emailRateLimiter &&
-    process.env.UPSTASH_REDIS_REST_URL &&
-    process.env.UPSTASH_REDIS_REST_TOKEN
-  ) {
-    const redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-    emailRateLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(10, "15 m"),
-      analytics: true,
-      prefix: "ratelimit:login-email",
-    });
-  }
-  return emailRateLimiter;
 }
 
 export const authOptions: NextAuthOptions = {
@@ -70,7 +45,7 @@ export const authOptions: NextAuthOptions = {
         // so casing/whitespace variants share one budget. Blocked attempts
         // return the same generic error as bad credentials so the limit
         // isn't distinguishable via response.
-        const limiter = getEmailRateLimiter();
+        const limiter = getLoginEmailRateLimiter();
         if (limiter) {
           const { success } = await limiter.limit(email);
           if (!success) {
@@ -219,7 +194,7 @@ export const authOptions: NextAuthOptions = {
     // itself sticks around until the ceiling. updateAge re-signs the
     // JWT once per hour of activity; custom fields survive re-signing.
     maxAge: SESSION_MAX_AGE_REMEMBER,
-    updateAge: 60 * 60,
+    updateAge: SESSION_UPDATE_AGE,
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

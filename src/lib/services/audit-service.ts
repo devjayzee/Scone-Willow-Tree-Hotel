@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { getAuditContext } from "./audit-context";
 
@@ -12,7 +13,6 @@ export const AuditAction = {
   STAFF_DELETED: "STAFF_DELETED",
   STAFF_DEACTIVATED: "STAFF_DEACTIVATED",
   STAFF_ACTIVATED: "STAFF_ACTIVATED",
-  STAFF_PASSWORD_CHANGED: "STAFF_PASSWORD_CHANGED",
   STAFF_PASSWORD_RESET: "STAFF_PASSWORD_RESET",
   STAFF_PASSWORD_SETUP: "STAFF_PASSWORD_SETUP",
   STAFF_INVITE_RESENT: "STAFF_INVITE_RESENT",
@@ -110,74 +110,6 @@ export async function createAuditLog(
 }
 
 /**
- * Get audit logs for a specific entity.
- *
- * @param entityType - Type of entity
- * @param entityId - ID of the entity
- * @param limit - Maximum number of logs to return
- */
-export async function getAuditLogsForEntity(
-  entityType: EntityTypeValue,
-  entityId: string,
-  limit = 50
-) {
-  return prisma.auditLog.findMany({
-    where: {
-      entityType,
-      entityId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-  });
-}
-
-/**
- * Get audit logs for a specific user's actions.
- *
- * @param userId - ID of the user
- * @param limit - Maximum number of logs to return
- */
-export async function getAuditLogsByUser(userId: string, limit = 50) {
-  return prisma.auditLog.findMany({
-    where: {
-      userId,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-  });
-}
-
-/**
- * Get recent audit logs with optional filtering.
- *
- * @param options - Filter options
- */
-export async function getRecentAuditLogs(options?: {
-  entityType?: EntityTypeValue;
-  action?: AuditActionType;
-  limit?: number;
-  offset?: number;
-}) {
-  const { entityType, action, limit = 100, offset = 0 } = options ?? {};
-
-  return prisma.auditLog.findMany({
-    where: {
-      ...(entityType && { entityType }),
-      ...(action && { action }),
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: limit,
-    skip: offset,
-  });
-}
-
-/**
  * Helper to sanitize sensitive data before logging.
  * Removes passwords and other sensitive fields.
  */
@@ -197,6 +129,26 @@ export function sanitizeForAudit<T extends Record<string, unknown>>(
 }
 
 /**
+ * Normalize a field value for equality comparison, using `reference`'s
+ * runtime type to decide the representation. Callers like
+ * `updateBooking`/`updateRoom` compare a Prisma record (Date/Decimal
+ * objects) against zod-parsed input (ISO strings/plain numbers) —
+ * without this, every field comparison across that type boundary
+ * reports "changed" even when the value is identical, inflating the
+ * audit trail on every PUT that echoes a Date/Decimal field back
+ * unchanged.
+ */
+function normalizeForComparison(reference: unknown, value: unknown): unknown {
+  if (reference instanceof Date) {
+    return new Date(value as string | number | Date).getTime();
+  }
+  if (reference instanceof Prisma.Decimal) {
+    return String(value);
+  }
+  return value;
+}
+
+/**
  * Helper to compute changed fields between two objects.
  */
 export function getChangedFields<T extends Record<string, unknown>>(
@@ -209,7 +161,14 @@ export function getChangedFields<T extends Record<string, unknown>>(
   for (const key of Object.keys(current)) {
     if (ignoreFields.includes(key)) continue;
 
-    if (current[key] !== undefined && current[key] !== previous[key]) {
+    const currentValue = current[key];
+    if (currentValue === undefined) continue;
+
+    const previousValue = previous[key];
+    const normalizedPrevious = normalizeForComparison(previousValue, previousValue);
+    const normalizedCurrent = normalizeForComparison(previousValue, currentValue);
+
+    if (normalizedCurrent !== normalizedPrevious) {
       changedFields.push(key);
     }
   }

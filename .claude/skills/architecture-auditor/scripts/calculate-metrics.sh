@@ -17,7 +17,12 @@
 # - File LOC: Warning >300, Critical >500
 # - Instability violations flagged
 
-set -euo pipefail
+# No -e: the script relies on `((COUNTER++))` as a standalone statement
+# in several places below, and that construct's exit status is the
+# post-increment value's truthiness — false (exit 1) whenever the
+# counter was 0 before incrementing. With -e, that aborts the whole
+# script on the very first file processed.
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'

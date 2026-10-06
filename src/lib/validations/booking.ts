@@ -51,29 +51,33 @@ const timeStringSchema = z
   .optional()
   .or(z.literal(""));
 
+// Field schemas shared between createBookingSchema and updateBookingSchema —
+// Rule 3's "share field schemas within the file" applied.
+const guestNameSchema = z.string().min(1, "Guest name is required").max(100, "Name is too long");
+const guestAddressSchema = z.string().max(500, "Address is too long");
+const vehicleRegoSchema = z.string().max(20, "Vehicle registration is too long");
+const additionalGuestsSchema = z.string().max(1000, "Additional guests text is too long");
+const notesSchema = z.string().max(2000, "Notes are too long");
+
 // Schema for creating a new booking
 export const createBookingSchema = z
   .object({
     roomId: z.string().min(1, "Room is required"),
     // Guest Details
-    guestName: z.string().min(1, "Guest name is required").max(100, "Name is too long"),
+    guestName: guestNameSchema,
     guestDateOfBirth: optionalDateStringSchema,
-    guestAddress: z.string().max(500, "Address is too long").optional().or(z.literal("")),
+    guestAddress: guestAddressSchema.optional().or(z.literal("")),
     guestPhone: phoneSchema,
     guestEmail: z.string().email("Valid email is required").optional().or(z.literal("")),
-    vehicleRego: z
-      .string()
-      .max(20, "Vehicle registration is too long")
-      .optional()
-      .or(z.literal("")),
-    additionalGuests: z.string().max(1000, "Additional guests text is too long").optional(),
+    vehicleRego: vehicleRegoSchema.optional().or(z.literal("")),
+    additionalGuests: additionalGuestsSchema.optional(),
     // Stay Details
     checkIn: dateStringSchema,
     checkInTime: timeStringSchema,
     checkOut: dateStringSchema,
     checkOutTime: timeStringSchema,
     bondDeposit: z.number().min(0, "Bond deposit cannot be negative").optional(),
-    notes: z.string().max(2000, "Notes are too long").optional(),
+    notes: notesSchema.optional(),
   })
   .refine(
     (data) => {
@@ -92,13 +96,13 @@ export const updateBookingSchema = z
   .object({
     roomId: z.string().min(1, "Room is required").optional(),
     // Guest Details
-    guestName: z.string().min(1, "Guest name is required").max(100, "Name is too long").optional(),
+    guestName: guestNameSchema.optional(),
     guestDateOfBirth: optionalDateStringSchema.nullable(),
-    guestAddress: z.string().max(500, "Address is too long").optional().nullable(),
+    guestAddress: guestAddressSchema.optional().nullable(),
     guestPhone: optionalPhoneSchema.nullable(),
     guestEmail: z.string().email("Valid email is required").optional().or(z.literal("")).nullable(),
-    vehicleRego: z.string().max(20, "Vehicle registration is too long").optional().nullable(),
-    additionalGuests: z.string().max(1000, "Additional guests text is too long").optional().nullable(),
+    vehicleRego: vehicleRegoSchema.optional().nullable(),
+    additionalGuests: additionalGuestsSchema.optional().nullable(),
     // Stay Details
     checkIn: dateStringSchema.optional(),
     checkInTime: timeStringSchema.nullable(),
@@ -106,7 +110,7 @@ export const updateBookingSchema = z
     checkOutTime: timeStringSchema.nullable(),
     bondDeposit: z.number().min(0, "Bond deposit cannot be negative").optional().nullable(),
     status: bookingStatusEnum.optional(),
-    notes: z.string().max(2000, "Notes are too long").optional().nullable(),
+    notes: notesSchema.optional().nullable(),
   })
   .refine(
     (data) => {

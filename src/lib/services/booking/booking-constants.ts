@@ -54,5 +54,5 @@ export const VALID_STATUS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = 
   CONFIRMED: ["CHECKED_IN", "CANCELLED"],
   CHECKED_IN: ["CHECKED_OUT", "CANCELLED"],
   CHECKED_OUT: ["CHECKED_IN"], // Can undo checkout if checkout date hasn't passed
-  CANCELLED: ["CONFIRMED"], // Can undo cancel if check-in date hasn't passed
+  CANCELLED: ["CONFIRMED"], // Can undo cancel if checkout date hasn't passed
 };

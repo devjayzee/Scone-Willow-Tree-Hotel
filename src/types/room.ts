@@ -15,19 +15,3 @@ export interface RoomSummary {
   pricePerNight: string | number;
   description?: string | null;
 }
-
-// Input type for creating a room
-export interface CreateRoomInput {
-  roomNumber: string;
-  capacity?: number;
-  pricePerNight?: number;
-  description?: string;
-}
-
-// Input type for updating a room
-export interface UpdateRoomInput {
-  roomNumber?: string;
-  capacity?: number;
-  pricePerNight?: number;
-  description?: string;
-}

@@ -1,14 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 
 // Mock Prisma
 const mockAuditLogCreate = vi.fn();
-const mockAuditLogFindMany = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   default: {
     auditLog: {
       create: (...args: unknown[]) => mockAuditLogCreate(...args),
-      findMany: (...args: unknown[]) => mockAuditLogFindMany(...args),
     },
   },
 }));
@@ -26,9 +25,6 @@ vi.mock("@/lib/logger", () => ({
 // Import after mocks
 import {
   createAuditLog,
-  getAuditLogsForEntity,
-  getAuditLogsByUser,
-  getRecentAuditLogs,
   sanitizeForAudit,
   getChangedFields,
   AuditAction,
@@ -50,7 +46,6 @@ describe("Audit Service", () => {
       expect(AuditAction.STAFF_DELETED).toBe("STAFF_DELETED");
       expect(AuditAction.STAFF_DEACTIVATED).toBe("STAFF_DEACTIVATED");
       expect(AuditAction.STAFF_ACTIVATED).toBe("STAFF_ACTIVATED");
-      expect(AuditAction.STAFF_PASSWORD_CHANGED).toBe("STAFF_PASSWORD_CHANGED");
       expect(AuditAction.STAFF_ROLE_CHANGED).toBe("STAFF_ROLE_CHANGED");
     });
 
@@ -212,146 +207,6 @@ describe("Audit Service", () => {
   });
 
   // ============================================================
-  // getAuditLogsForEntity
-  // ============================================================
-  describe("getAuditLogsForEntity", () => {
-    it("should fetch audit logs for entity", async () => {
-      const mockLogs = [
-        { id: "log-1", action: "BOOKING_CREATED" },
-        { id: "log-2", action: "BOOKING_UPDATED" },
-      ];
-      mockAuditLogFindMany.mockResolvedValue(mockLogs);
-
-      const result = await getAuditLogsForEntity(EntityType.BOOKING, "booking-1");
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith({
-        where: {
-          entityType: "BOOKING",
-          entityId: "booking-1",
-        },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      });
-      expect(result).toEqual(mockLogs);
-    });
-
-    it("should respect custom limit", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getAuditLogsForEntity(EntityType.STAFF, "staff-1", 10);
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 10 })
-      );
-    });
-  });
-
-  // ============================================================
-  // getAuditLogsByUser
-  // ============================================================
-  describe("getAuditLogsByUser", () => {
-    it("should fetch audit logs for user", async () => {
-      const mockLogs = [{ id: "log-1" }];
-      mockAuditLogFindMany.mockResolvedValue(mockLogs);
-
-      const result = await getAuditLogsByUser("user-1");
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith({
-        where: { userId: "user-1" },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      });
-      expect(result).toEqual(mockLogs);
-    });
-
-    it("should respect custom limit", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getAuditLogsByUser("user-1", 25);
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ take: 25 })
-      );
-    });
-  });
-
-  // ============================================================
-  // getRecentAuditLogs
-  // ============================================================
-  describe("getRecentAuditLogs", () => {
-    it("should fetch recent logs with default options", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getRecentAuditLogs();
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith({
-        where: {},
-        orderBy: { createdAt: "desc" },
-        take: 100,
-        skip: 0,
-      });
-    });
-
-    it("should filter by entityType", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getRecentAuditLogs({ entityType: EntityType.BOOKING });
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { entityType: "BOOKING" },
-        })
-      );
-    });
-
-    it("should filter by action", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getRecentAuditLogs({ action: AuditAction.STAFF_CREATED });
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { action: "STAFF_CREATED" },
-        })
-      );
-    });
-
-    it("should support pagination", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getRecentAuditLogs({ limit: 20, offset: 40 });
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          take: 20,
-          skip: 40,
-        })
-      );
-    });
-
-    it("should combine all filters", async () => {
-      mockAuditLogFindMany.mockResolvedValue([]);
-
-      await getRecentAuditLogs({
-        entityType: EntityType.ROOM,
-        action: AuditAction.ROOM_UPDATED,
-        limit: 10,
-        offset: 5,
-      });
-
-      expect(mockAuditLogFindMany).toHaveBeenCalledWith({
-        where: {
-          entityType: "ROOM",
-          action: "ROOM_UPDATED",
-        },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        skip: 5,
-      });
-    });
-  });
-
-  // ============================================================
   // sanitizeForAudit
   // ============================================================
   describe("sanitizeForAudit", () => {
@@ -501,6 +356,45 @@ describe("Audit Service", () => {
       const changed = getChangedFields(previous, current);
 
       expect(changed).toContain("count");
+    });
+
+    // A Prisma record's Date/Decimal fields compared against zod-parsed
+    // update input (ISO strings/plain numbers) — the exact shape
+    // updateBooking/updateRoom pass in.
+    it("does not report a Date field as changed when the incoming string is the same instant", () => {
+      const previous = { checkIn: new Date("2026-04-10T00:00:00.000Z") } as Record<string, unknown>;
+      const current = { checkIn: "2026-04-10" } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).not.toContain("checkIn");
+    });
+
+    it("reports a Date field as changed when the incoming string is a different instant", () => {
+      const previous = { checkIn: new Date("2026-04-10T00:00:00.000Z") } as Record<string, unknown>;
+      const current = { checkIn: "2026-04-11" } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).toContain("checkIn");
+    });
+
+    it("does not report a Decimal field as changed when the incoming number is the same value", () => {
+      const previous = { bondDeposit: new Prisma.Decimal("150.00") } as Record<string, unknown>;
+      const current = { bondDeposit: 150 } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).not.toContain("bondDeposit");
+    });
+
+    it("reports a Decimal field as changed when the incoming number differs", () => {
+      const previous = { bondDeposit: new Prisma.Decimal("150.00") } as Record<string, unknown>;
+      const current = { bondDeposit: 200 } as Record<string, unknown>;
+
+      const changed = getChangedFields(previous, current);
+
+      expect(changed).toContain("bondDeposit");
     });
   });
 });
