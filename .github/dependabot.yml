@@ -1,8 +1,8 @@
 # Dependabot configuration — https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 #
-# Version updates are scheduled here. Security updates fire automatically
-# when a GitHub advisory is published for a listed dependency; those are
-# controlled by the repo's Code security & analysis settings, not this file.
+# Version updates are scheduled here and target `development`. Security
+# updates are turned off; alerts stay on and are patched manually per
+# SECURITY.md.
 
 version: 2
 

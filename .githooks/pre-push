@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Block direct pushes to main. Release promotions go through a
-# chore/release-YYYY-MM-DD PR from development into main.
-# Emergency bypass: git push --no-verify
+# Block direct pushes to main. Open a PR from development (or hotfix/<name>)
+# into main. GitHub rejects direct pushes to main even with --no-verify.
 set -euo pipefail
 
 protected_ref="refs/heads/main"
@@ -9,8 +8,8 @@ protected_ref="refs/heads/main"
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   if [[ "$remote_ref" == "$protected_ref" ]]; then
     echo "✗ Direct push to '$protected_ref' is blocked." >&2
-    echo "  Open a chore/release-YYYY-MM-DD PR from development into main." >&2
-    echo "  Emergency bypass: git push --no-verify" >&2
+    echo "  Open a PR from development (or hotfix/<name>) into main." >&2
+    echo "  GitHub rejects direct pushes to main even with --no-verify." >&2
     exit 1
   fi
 done

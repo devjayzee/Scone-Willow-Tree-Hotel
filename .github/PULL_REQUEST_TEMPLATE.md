@@ -20,6 +20,10 @@
 
 - [ ] Browser-smoke checklist run against the Vercel preview URL — `docs/RELEASING.md`
 
+<!-- One per line: each issue fixed by an included PR. GitHub only auto-closes from PRs into the default branch (main). -->
+
+Closes #
+
 ## Related plan
 
 <!-- Link the plan doc that shaped this PR (e.g. `plans/refactor-foo.md`), or "n/a" for chore/docs branches. -->
