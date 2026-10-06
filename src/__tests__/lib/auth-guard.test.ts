@@ -24,11 +24,18 @@ describe("requireSession", () => {
     vi.clearAllMocks();
   });
 
-  it("redirects to /login when there is no session", async () => {
+  it("redirects to /login?session=expired when there is no session", async () => {
     mockGetServerSession.mockResolvedValue(null);
 
     await expect(requireSession()).rejects.toThrow("__REDIRECT__");
-    expect(mockRedirect).toHaveBeenCalledWith("/login");
+    expect(mockRedirect).toHaveBeenCalledWith("/login?session=expired");
+  });
+
+  it("redirects to /login?session=expired when the session has no user", async () => {
+    mockGetServerSession.mockResolvedValue({ expires: "2026-10-05T12:00:00.000Z" });
+
+    await expect(requireSession()).rejects.toThrow("__REDIRECT__");
+    expect(mockRedirect).toHaveBeenCalledWith("/login?session=expired");
   });
 
   it("returns the session when no role is required", async () => {

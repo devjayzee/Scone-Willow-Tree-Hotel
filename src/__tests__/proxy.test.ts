@@ -1,14 +1,43 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock next-auth/middleware — the real withAuth wraps our inner function and
 // populates req.nextauth.token from the JWT. For unit tests we bypass the JWT
-// step: withAuth becomes a passthrough that just invokes the inner fn with
-// whatever the test has attached to req.nextauth.
-vi.mock("next-auth/middleware", () => ({
-  withAuth: (fn: (req: unknown) => unknown) => {
-    return (req: unknown) => fn(req);
-  },
-}));
+// step and use whatever the test has attached to req.nextauth. Like the real
+// one, it runs `callbacks.authorized` first and, when that is false, redirects
+// to /api/auth/signin instead of calling the inner fn.
+//
+// Two DELIBERATE differences from the real withAuth. Do not "fix" them without
+// re-checking the cases they support:
+// - The real one appends ?callbackUrl=<path><search> to the sign-in redirect;
+//   this shim redirects to bare /api/auth/signin.
+// - The real one returns before the inner fn for the NextAuth base path
+//   /api/auth/* (node_modules/next-auth/next/middleware.js:22-26); this shim
+//   always runs the inner fn. That is what lets the "no deletions on
+//   /api/auth/callback/credentials and /api/auth/session" cases pin the
+//   proxy's own PUBLIC_AUTH_PATHS guard instead of passing vacuously.
+vi.mock("next-auth/middleware", async () => {
+  const { NextResponse: RealNextResponse } =
+    await vi.importActual<typeof import("next/server")>("next/server");
+  type ShimReq = { url: string; nextauth?: { token: unknown } };
+  type Authorized = (args: { token: unknown; req: ShimReq }) => boolean;
+  return {
+    withAuth: (
+      fn: (req: unknown) => unknown,
+      opts?: { callbacks?: { authorized?: Authorized } },
+    ) => {
+      return (req: ShimReq) => {
+        const authorized = opts?.callbacks?.authorized;
+        if (
+          authorized &&
+          !authorized({ token: req.nextauth?.token ?? null, req })
+        ) {
+          return RealNextResponse.redirect(new URL("/api/auth/signin", req.url));
+        }
+        return fn(req);
+      };
+    },
+  };
+});
 
 // Mock next-auth/jwt — apiRateLimitMiddleware reads the token to key the
 // per-user API limit. Individual tests override to simulate presence
@@ -61,7 +90,7 @@ type Token = {
 } | null;
 
 // Minimal NextRequest shim — the middleware only reads .headers, .method,
-// .nextUrl.pathname, .url, and .nextauth.token. Defaults a
+// .nextUrl.pathname/.searchParams, .url, .cookies.getAll(), and .nextauth.token. Defaults a
 // `content-length: "0"` header on body-carrying methods so the
 // enforceBodySizeCap doesn't 411 tests that aren't exercising it;
 // the body-size-cap suite overrides this explicitly.
@@ -70,8 +99,12 @@ function buildReq(opts: {
   method?: string;
   token?: Token;
   headers?: Record<string, string>;
+  search?: string;
+  cookies?: Record<string, string>;
 }) {
-  const url = `http://localhost${opts.path}`;
+  const search = opts.search ?? "";
+  const url = `http://localhost${opts.path}${search}`;
+  const cookieEntries = Object.entries(opts.cookies ?? {});
   const method = opts.method ?? "GET";
   const needsLength =
     method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -83,7 +116,10 @@ function buildReq(opts: {
     url,
     method,
     headers,
-    nextUrl: { pathname: opts.path },
+    nextUrl: { pathname: opts.path, searchParams: new URLSearchParams(search) },
+    cookies: {
+      getAll: () => cookieEntries.map(([name, value]) => ({ name, value })),
+    },
     nextauth: { token: opts.token ?? null },
   } as unknown as Parameters<typeof proxy>[0];
 }
@@ -248,6 +284,192 @@ describe("proxy", () => {
         expect(response.headers.get("location")).toBeNull();
       });
     }
+  });
+
+  describe("dead-session handling (login redirect loop)", () => {
+    const NOW_MS = Date.UTC(2026, 9, 5, 12, 0, 0);
+    const nowSec = Math.floor(NOW_MS / 1000);
+    const SESSION_NAMES = [
+      "__Secure-next-auth.session-token.0",
+      "__Secure-next-auth.session-token.1",
+      "next-auth.session-token",
+    ];
+    const UNRELATED = {
+      "__Host-next-auth.csrf-token": "csrf",
+      "next-auth.callback-url": "http://localhost/bookings",
+    };
+    const allCookies = {
+      "__Secure-next-auth.session-token.0": "chunk0",
+      "__Secure-next-auth.session-token.1": "chunk1",
+      "next-auth.session-token": "plain",
+      ...UNRELATED,
+    };
+    const expired = () => ({ id: "u-1", role: "STAFF" as const, expiresAt: nowSec - 60 });
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW_MS);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function expectDeleted(response: NextResponse, name: string) {
+      const c = response.cookies.get(name);
+      expect(c, `${name} should be deleted`).toBeDefined();
+      expect(c?.value).toBe("");
+      expect(c?.expires).toEqual(new Date(0));
+      expect(c?.path).toBe("/");
+      expect(c?.secure ?? false).toBe(name.startsWith("__Secure-"));
+    }
+
+    function expectNoCookieChanges(response: NextResponse) {
+      expect(response.cookies.getAll()).toEqual([]);
+    }
+
+    it("/login with an expired token: no bounce, deletes only the session cookies", async () => {
+      const req = buildReq({ path: "/login", token: expired(), cookies: allCookies });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      for (const name of SESSION_NAMES) expectDeleted(response, name);
+      for (const name of Object.keys(UNRELATED)) {
+        expect(response.cookies.get(name)).toBeUndefined();
+      }
+    });
+
+    it("/login with a null token and a session cookie: deletes the cookie", async () => {
+      const req = buildReq({
+        path: "/login",
+        token: null,
+        cookies: { "__Secure-next-auth.session-token": "undecodable" },
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      expectDeleted(response, "__Secure-next-auth.session-token");
+    });
+
+    it("/login with a live token: 307 to /bookings, no cookie changes", async () => {
+      const req = buildReq({
+        path: "/login",
+        token: { id: "u-1", role: "STAFF", expiresAt: nowSec + 3600 },
+        cookies: allCookies,
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost/bookings");
+      expectNoCookieChanges(response);
+    });
+
+    it("/login with a token that has no expiresAt counts as live", async () => {
+      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost/bookings");
+    });
+
+    it("/login with expiresAt equal to now is still live (strict >)", async () => {
+      const req = buildReq({
+        path: "/login",
+        token: { id: "u-1", role: "STAFF", expiresAt: nowSec },
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost/bookings");
+    });
+
+    it("/login?session=expired with a live token: form renders, no cookie changes", async () => {
+      const req = buildReq({
+        path: "/login",
+        search: "?session=expired",
+        token: { id: "u-1", role: "STAFF", expiresAt: nowSec + 3600 },
+        cookies: allCookies,
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      expectNoCookieChanges(response);
+    });
+
+    it("/login?session=expired with an expired token: no bounce, cookies deleted", async () => {
+      const req = buildReq({
+        path: "/login",
+        search: "?session=expired",
+        token: expired(),
+        cookies: allCookies,
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      for (const name of SESSION_NAMES) expectDeleted(response, name);
+    });
+
+    describe("dashboard path /bookings", () => {
+      it("sends an expired token to /api/auth/signin", async () => {
+        const req = buildReq({ path: "/bookings", token: expired() });
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(
+          "http://localhost/api/auth/signin",
+        );
+      });
+
+      it("sends an invalidated token (id: null) to /api/auth/signin", async () => {
+        const req = buildReq({ path: "/bookings", token: { id: null, role: "STAFF" } });
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(
+          "http://localhost/api/auth/signin",
+        );
+      });
+
+      it("lets a live token through", async () => {
+        const req = buildReq({
+          path: "/bookings",
+          token: { id: "u-1", role: "STAFF", expiresAt: nowSec + 3600 },
+        });
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.headers.get("location")).toBeNull();
+      });
+    });
+
+    describe("NextAuth routes never clear cookies", () => {
+      const cases = [
+        { path: "/api/auth/callback/credentials", method: "POST" },
+        { path: "/api/auth/session", method: "GET" },
+      ];
+      for (const { path, method } of cases) {
+        it(`${method} ${path} with an expired token`, async () => {
+          const req = buildReq({
+            path,
+            method,
+            token: expired(),
+            cookies: allCookies,
+          });
+
+          const response = (await proxy(req)) as NextResponse;
+
+          expectNoCookieChanges(response);
+        });
+      }
+    });
   });
 
 
