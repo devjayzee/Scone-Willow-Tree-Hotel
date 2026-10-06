@@ -55,3 +55,6 @@ next-env.d.ts
 .claude/settings.local.json
 
 /src/generated/prisma
+
+# Isolated agent worktrees (eslint would otherwise lint them)
+.claude/worktrees/
