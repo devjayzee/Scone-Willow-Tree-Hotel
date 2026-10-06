@@ -44,7 +44,7 @@ export function useTablePagination<T>(
 ): UseTablePaginationResult<T> {
   const {
     storageKeyPrefix,
-    defaultPerPage = 10,
+    defaultPerPage = DEFAULT_PAGE_SIZE_OPTIONS[0],
     pageSizeOptions = [...DEFAULT_PAGE_SIZE_OPTIONS],
   } = options;
 
@@ -63,7 +63,7 @@ export function useTablePagination<T>(
   // Derive itemsPerPage from stored value
   const itemsPerPage = useMemo(() => {
     if (storedValue) {
-      const parsed = parseInt(storedValue);
+      const parsed = parseInt(storedValue, 10);
       if (pageSizeOptions.includes(parsed)) {
         return parsed;
       }

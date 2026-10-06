@@ -13,6 +13,7 @@ import { authInputClasses } from "@/components/auth/auth-input-classes";
 import { ExpiredLinkScreen } from "@/components/auth/expired-link-screen";
 import { PasswordVisibilityToggle } from "@/components/auth/password-visibility-toggle";
 import { cn } from "@/lib/utils";
+import { RESET_TOKEN_TTL_MINUTES } from "@/lib/constants/auth";
 
 function ResetPasswordContent() {
   const searchParams = useSearchParams();
@@ -36,7 +37,7 @@ function ResetPasswordContent() {
   if (!token || invalidToken) {
     return (
       <ExpiredLinkScreen
-        description="Reset links last 30 minutes. Request a new one and try again."
+        description={`Reset links last ${RESET_TOKEN_TTL_MINUTES} minutes. Request a new one and try again.`}
         primaryHref="/forgot-password"
         primaryLabel="Request a new link"
       />

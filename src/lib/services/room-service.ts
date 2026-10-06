@@ -9,18 +9,10 @@ import {
   sanitizeForAudit,
   getChangedFields,
 } from "./audit-service";
+import { sortRoomsByNumber } from "@/lib/utils/sort-rooms";
 
-// Re-export error types for backwards compatibility
-export { NotFoundError, ConflictError, BusinessRuleError };
-
-// Utility function to sort rooms numerically by room number
-export function sortRoomsByNumber<T extends { roomNumber: string }>(rooms: T[]): T[] {
-  return [...rooms].sort((a, b) => {
-    const numA = parseInt(a.roomNumber) || 0;
-    const numB = parseInt(b.roomNumber) || 0;
-    return numA - numB;
-  });
-}
+// Number of recent bookings to include when fetching a room's detail view.
+const RECENT_BOOKINGS_LIMIT = 10;
 
 // Get all rooms sorted by room number
 export async function getAllRooms(): Promise<PrismaRoom[]> {
@@ -35,7 +27,7 @@ export async function getRoomById(id: string) {
     include: {
       bookings: {
         orderBy: { checkIn: "desc" },
-        take: 10,
+        take: RECENT_BOOKINGS_LIMIT,
         select: {
           id: true,
           bookingRef: true,

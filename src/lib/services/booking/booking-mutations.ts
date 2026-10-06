@@ -22,14 +22,6 @@ import {
   MAX_BOOKING_REF_RETRIES,
 } from "./booking-utils";
 
-function isBookingRefCollision(err: unknown): boolean {
-  return (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    err.code === "P2002" &&
-    Array.isArray(err.meta?.target) &&
-    (err.meta.target as string[]).includes("bookingRef")
-  );
-}
 import {
   checkInBooking,
   checkOutBooking,
@@ -38,6 +30,17 @@ import {
   undoCheckOutBooking,
   undoCancelBooking,
 } from "./booking-status";
+
+const PRISMA_UNIQUE_VIOLATION = "P2002";
+
+function isBookingRefCollision(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === PRISMA_UNIQUE_VIOLATION &&
+    Array.isArray(err.meta?.target) &&
+    (err.meta.target as string[]).includes("bookingRef")
+  );
+}
 
 /**
  * Create a new booking
