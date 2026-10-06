@@ -4,19 +4,23 @@ import { authOptions } from "@/lib/auth";
 
 // Server-side session gate for dashboard pages and layouts.
 //
-// Middleware's withAuth uses getToken() internally, which decodes the JWE
-// but does NOT invoke the NextAuth jwt callback — so the revocation /
-// expiry logic in src/lib/auth.ts never runs at the middleware layer.
-// This helper forces getServerSession, which DOES run jwt, so a
-// deactivated or expired session gets kicked out before any RSC data
-// fetch. Middleware stays as a fast-path UX redirect.
+// The proxy's withAuth uses getToken() internally, which decodes the JWE
+// but does NOT invoke the NextAuth jwt callback. The proxy copies the
+// expiry rule, but revocation (tokenVersion / isActive) needs a DB read it
+// does not do. This helper forces getServerSession, which DOES run jwt, so
+// a deactivated or expired session gets kicked out before any RSC data
+// fetch. The proxy stays as a fast-path UX redirect.
+//
+// The redirect carries ?session=expired so the proxy does not bounce a
+// still-decodable cookie straight back to /bookings (redirect loop). Any
+// redirect to /login caused by a dead session must carry it.
 export async function requireSession(
   role?: string | readonly string[],
 ): Promise<Session> {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
-    redirect("/login");
+    redirect("/login?session=expired");
   }
 
   if (role !== undefined) {
