@@ -1,7 +1,7 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest, NextFetchEvent } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { getToken, type JWT } from "next-auth/jwt";
 import { getClientIp } from "@/lib/utils/get-client-ip";
 import {
   getApiRateLimiter,
@@ -38,13 +38,42 @@ function tooManyRequests(
 const MAX_BODY_BYTES = 100_000;
 
 // Auth pages reachable without a session; signed-in users get bounced to
-// the dashboard from all of them.
+// the dashboard from all of them unless ?session=expired is present (only
+// requireSession sends it, always to /login; see the public-auth branch below).
 const PUBLIC_AUTH_PATHS = new Set([
   "/login",
   "/forgot-password",
   "/reset-password",
   "/setup-password",
 ]);
+
+// getToken() only decodes the JWE; it never runs the jwt callback, so a
+// session that expired or was revoked still decodes with a real `id`.
+// The expiry half of that check is copied here from the jwt callback in
+// src/lib/auth.ts:120-123: only a numeric expiresAt can expire a token, a
+// missing one falls through to NextAuth's own maxAge. Revocation
+// (tokenVersion / isActive) needs a DB read and stays in requireSession.
+function hasLiveSession(token: JWT | null): boolean {
+  if (!token?.id) return false;
+  return !(
+    typeof token.expiresAt === "number" &&
+    Math.floor(Date.now() / 1000) > token.expiresAt
+  );
+}
+
+// Matches the production (__Secure-), development and chunked (.0, .1, ...)
+// session cookie names.
+const SESSION_COOKIE = /^(__Secure-)?next-auth\.session-token(\.\d+)?$/;
+
+// Deletes every session cookie on the request. `secure` must match the
+// cookie's own flag for __Secure- names or the browser drops the deletion.
+function clearSessionCookies(req: NextRequest, res: NextResponse): void {
+  for (const { name } of req.cookies.getAll()) {
+    if (SESSION_COOKIE.test(name)) {
+      res.cookies.delete({ name, path: "/", secure: name.startsWith("__Secure-") });
+    }
+  }
+}
 
 // Routes that require MANAGER or GENERAL_MANAGER role.
 const MANAGER_PATHS = ["/reports"];
@@ -220,16 +249,22 @@ const authMiddleware = withAuth(
     const token = req.nextauth.token;
     const path = req.nextUrl.pathname;
 
-    // Redirect authenticated users away from the public auth pages.
-    // Check `token.id` not `token` — auth.ts's jwt callback returns
-    // `{ ...token, id: null }` on invalidation (expiry, tokenVersion
-    // bump, deactivation) and NextAuth re-encodes that nulled shape
-    // back to the cookie. `!!token` is truthy for the nulled shape,
-    // which used to loop: middleware would send an invalidated user
-    // from /login → /bookings → requireSession redirects to /login →
-    // repeat. Requiring token.id breaks the loop.
-    if (PUBLIC_AUTH_PATHS.has(path) && token?.id) {
-      return NextResponse.redirect(new URL("/bookings", req.url));
+    // Public auth pages. A dead session (expired, nulled `id`, or an
+    // undecodable cookie) renders the page and has its cookies cleared, so a
+    // stale cookie cannot loop /login -> /bookings -> /login. A live session
+    // is bounced to the dashboard, unless requireSession just sent it here
+    // with ?session=expired (revoked sessions look live to the proxy). The
+    // parameter never adds or suppresses a cookie deletion.
+    if (PUBLIC_AUTH_PATHS.has(path)) {
+      if (!hasLiveSession(token)) {
+        const res = NextResponse.next();
+        clearSessionCookies(req, res);
+        return res;
+      }
+      if (req.nextUrl.searchParams.get("session") !== "expired") {
+        return NextResponse.redirect(new URL("/bookings", req.url));
+      }
+      return NextResponse.next();
     }
 
     if (MANAGER_PATHS.some((p) => path.startsWith(p))) {
@@ -254,10 +289,9 @@ const authMiddleware = withAuth(
         if (PUBLIC_AUTH_PATHS.has(path) || path.startsWith("/api/auth/")) {
           return true;
         }
-        // Require a valid token (with id) — see the comment on the
-        // /login redirect above for the invalidated-token loop this
-        // guards against.
-        return !!token?.id;
+        // Require a live session — see hasLiveSession for what the proxy
+        // can and cannot tell from the cookie.
+        return hasLiveSession(token);
       },
     },
   }
