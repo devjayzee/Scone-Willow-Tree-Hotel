@@ -13,15 +13,14 @@ jobs:
       - name: Assert head branch is development or hotfix/*
         env:
           HEAD_REF: ${{ github.head_ref }}
-          PR_ACTOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
         run: |
-          # Dependabot security updates always target the default branch
-          # (main) — the target-branch option in dependabot.yml does not
-          # apply to security PRs, per GitHub docs. Exempt them so CVE
-          # patches can fast-track directly to main.
-          if [ "$PR_ACTOR" = "dependabot[bot]" ]; then
-            echo "OK: dependabot PR — security updates may fast-track to main"
-            exit 0
+          # Branch names are not trusted on their own: a fork can name its
+          # branch 'development' or 'hotfix/x'.
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::PRs to main must come from a branch in $BASE_REPO (got a head from '$HEAD_REPO'). Fork PRs are not allowed."
+            exit 1
           fi
           # hotfix/* branches off main go directly back into main so a
           # targeted prod fix can ship without carrying whatever

@@ -169,23 +169,30 @@ plan template lives in `plans/README.md`.
 ## Git workflow
 
 - **Permanent branches:** `main` (production, deploys to Vercel on push) and
-  `development` (integration, default PR target for features). Both are
-  never deleted or recreated.
+  `development` (integration branch, pre-production gate). Both are never
+  deleted or recreated. GitHub's default branch is `main`, so always pass
+  `--base development` when opening a feature PR.
 - **Feature branches** (`feat/*`, `fix/*`, `refactor/*`, `chore/*`, `test/*`,
   `docs/*`) branch off `development`, PR into `development`, and are
   auto-deleted on merge by `.github/workflows/auto-delete-feature-branch.yml`.
 - **Release PRs** promote `development` → `main`. `enforce-release-source.yml`
-  fails any PR to `main` whose head is not `development`, `hotfix/*`, or
-  Dependabot. `development` is preserved through the merge.
+  fails any PR to `main` whose head is not `development` or `hotfix/*`.
+  `development` is preserved through the merge.
 - **Hotfix branches** (`hotfix/<name>`) branch off `main`, fix a targeted
   prod issue, and PR directly to `main` — bypassing `development` so
   in-flight integration work isn't dragged into the incident fix.
+- **Release PR bodies** must list `Closes #N`, one per line, for every issue
+  its included PRs fix. GitHub only reads closing keywords on PRs into
+  the default branch (`main`), and merge commits keep only the PR title.
 - **Dependabot** — `.github/dependabot.yml` targets `development` for
-  weekly version updates. Security-update PRs always target `main` (a
-  GitHub-side limitation — `target-branch` doesn't apply to security PRs),
-  and the guard exempts `dependabot[bot]` so those land straight to `main`.
-- **After any `main` advance** (release PR, hotfix PR, or Dependabot
-  security PR), sync through a PR. A ruleset on `development` requires a
+  weekly version updates. Security updates are off and alerts stay on:
+  patch an alert on a `chore/deps-*` PR to `development`, or a `hotfix/*`
+  PR to `main` for an urgent production CVE (triage process and deadlines
+  are in `SECURITY.md`).
+- **After a `main` advance that carries content** (a hotfix PR), sync
+  through a PR. Release PRs need no sync, since strict up-to-date is off on
+  `main`. Check with `git fetch origin && git log --no-merges origin/development..origin/main`;
+  if it prints anything, sync. A ruleset on `development` requires a
   PR with Lint, Typecheck, Test and Smoke passing, so a direct push is
   rejected (GH013):
   ```
@@ -197,8 +204,8 @@ plan template lives in `plans/README.md`.
   ```
   Merge the PR as a merge commit, then `git pull` on `development`. Don't
   open the PR from `main` itself: the ruleset requires the head to be up
-  to date with `development`, which `main` never is. Keeps the two
-  branches in step and prevents lockfile conflicts on the next release.
+  to date with `development`, which `main` is not after a hotfix. Keeps the
+  two branches in step and prevents lockfile conflicts on the next release.
 - Conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `chore(scope):`, `test:`, `docs:`.
 - PRs merge as merge commits (squash and rebase disabled at the repo level
   to preserve per-commit history).
@@ -207,8 +214,9 @@ plan template lives in `plans/README.md`.
   app. `prisma generate` runs before the Vitest and Smoke jobs.
 - Never commit `.env`. Never push directly to `main` — enforced client-side
   by `.githooks/pre-push`. New checkouts need one-time setup:
-  `git config core.hooksPath .githooks`. Emergency bypass:
-  `git push --no-verify`.
+  `git config core.hooksPath .githooks`. `git push --no-verify` only skips
+  the local hook; the `main` ruleset rejects direct pushes anyway (no bypass
+  actors). The emergency path is a `hotfix/<name>` PR to `main`.
 - A `PreToolUse` hook (`.claude/hooks/guard-protected-branch.sh`) governs
   Edit/Write to `src/` and `prisma/`:
   - **Blocks** on `main` / `development` (structural changes require a
