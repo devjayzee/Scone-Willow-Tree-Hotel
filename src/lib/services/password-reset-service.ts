@@ -1,6 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import type { Role, PasswordResetTokenPurpose } from "@prisma/client";
+import type {
+  Role,
+  PasswordResetTokenPurpose,
+  Prisma,
+} from "@prisma/client";
 import prisma from "@/lib/prisma";
 import {
   BCRYPT_COST,
@@ -33,17 +37,21 @@ function generateRawToken(): string {
 }
 
 /**
- * Issuing a fresh token voids any prior unused tokens of the same purpose,
- * so a leaked older link dies the moment a new one is requested.
+ * Voids every unused, unexpired token of one purpose for a user, so a
+ * leaked older link dies the moment a new one is issued or the account's
+ * email changes. Pass a transaction client to void atomically with other
+ * writes. Returns the number of tokens voided.
  */
-async function voidActiveTokens(
+export async function voidActiveTokens(
   userId: string,
-  purpose: PasswordResetTokenPurpose
-): Promise<void> {
-  await prisma.passwordResetToken.updateMany({
+  purpose: PasswordResetTokenPurpose,
+  db: Prisma.TransactionClient = prisma
+): Promise<number> {
+  const result = await db.passwordResetToken.updateMany({
     where: { userId, purpose, usedAt: null, expiresAt: { gt: new Date() } },
     data: { usedAt: new Date() },
   });
+  return result.count;
 }
 
 /**
