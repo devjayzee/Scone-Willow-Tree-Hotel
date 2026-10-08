@@ -9,7 +9,12 @@ import {
   mockUserUpdate,
   mockUserDelete,
   mockIssueSetupTokenForUser,
+  mockVoidActiveTokens,
+  mockTransaction,
+  mockTxClient,
+  mockTxUserUpdate,
 } from "./test-utils";
+import { createAuditLog } from "@/lib/services/audit-service";
 
 // Setup mocks before importing services
 setupMocks();
@@ -375,6 +380,151 @@ describe("Staff Mutations", () => {
         updateStaff("gm-1", { isActive: false }, "gm-1")
       ).rejects.toThrow("Cannot deactivate your own account");
       expect(mockUserUpdate).not.toHaveBeenCalled();
+    });
+
+    describe("email change voids outstanding tokens", () => {
+      const newEmail = "new.email@sconewillowtree.com";
+
+      function arrangeEmailChange() {
+        mockUserFindUnique
+          .mockResolvedValueOnce(existingStaff)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({ ...existingStaff, email: newEmail });
+      }
+
+      function voidedAuditCalls() {
+        return vi
+          .mocked(createAuditLog)
+          .mock.calls.filter((c) => (c[1] as string) === "STAFF_TOKENS_VOIDED");
+      }
+
+      it("voids SETUP and RESET tokens on the transaction client when the email changes", async () => {
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "current-user-id");
+
+        expect(mockVoidActiveTokens).toHaveBeenCalledTimes(2);
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "SETUP",
+          mockTxClient
+        );
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "RESET",
+          mockTxClient
+        );
+      });
+
+      it("does not void tokens for non-email updates", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff(
+          "staff-1",
+          { firstName: "Johnny", role: "MANAGER", isActive: false },
+          "current-user-id"
+        );
+
+        expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+        expect(voidedAuditCalls()).toHaveLength(0);
+      });
+
+      it.each([
+        ["identical", "john.doe@sconewillowtree.com", "john.doe@sconewillowtree.com"],
+        ["case-only", "john.doe@sconewillowtree.com", "John.Doe@sconewillowtree.com"],
+      ])(
+        "does not void tokens or audit when the email is %s",
+        async (_label, newValue, storedEmail) => {
+          const stored = { ...existingStaff, email: storedEmail };
+          // 2nd lookup (conflict check, only reached for a case-only diff) finds nothing
+          mockUserFindUnique
+            .mockResolvedValueOnce(stored)
+            .mockResolvedValue(null);
+          mockUserUpdate.mockResolvedValue(stored);
+          mockVoidActiveTokens.mockResolvedValue(3);
+
+          await updateStaff("staff-1", { email: newValue }, "current-user-id");
+
+          expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+          expect(voidedAuditCalls()).toHaveLength(0);
+        }
+      );
+
+      it("runs the user update and both voids in one transaction on the same client", async () => {
+        arrangeEmailChange();
+        const txSeen: unknown[] = [];
+        mockVoidActiveTokens.mockImplementation(
+          async (_id: string, _purpose: string, db: unknown) => {
+            txSeen.push(db);
+            return 0;
+          }
+        );
+
+        await updateStaff("staff-1", { email: newEmail }, "current-user-id");
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+        expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
+        expect(mockUserUpdate).toHaveBeenCalledTimes(1);
+        expect(txSeen).toHaveLength(2);
+        expect(txSeen[0]).toBe(mockTxClient);
+        expect(txSeen[1]).toBe(mockTxClient);
+      });
+
+      it("voids both purposes before the user update (lock order)", async () => {
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "current-user-id");
+
+        const voidOrders = mockVoidActiveTokens.mock.invocationCallOrder;
+        const updateOrder = mockTxUserUpdate.mock.invocationCallOrder[0];
+        expect(voidOrders).toHaveLength(2);
+        expect(Math.max(...voidOrders)).toBeLessThan(updateOrder);
+      });
+
+      it("writes a STAFF_TOKENS_VOIDED audit entry with the summed count when tokens were voided", async () => {
+        arrangeEmailChange();
+        mockVoidActiveTokens
+          .mockResolvedValueOnce(1) // SETUP
+          .mockResolvedValueOnce(2); // RESET
+
+        await updateStaff("staff-1", { email: newEmail }, "current-user-id");
+
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "current-user-id",
+          "STAFF_TOKENS_VOIDED",
+          "STAFF",
+          "staff-1",
+          {
+            previous: { email: existingStaff.email },
+            current: { email: newEmail },
+            reason: "Email changed; 3 unused setup/reset link(s) cancelled",
+          }
+        );
+      });
+
+      it("writes no STAFF_TOKENS_VOIDED entry when nothing was voided", async () => {
+        arrangeEmailChange();
+        mockVoidActiveTokens.mockResolvedValue(0);
+
+        await updateStaff("staff-1", { email: newEmail }, "current-user-id");
+
+        expect(mockVoidActiveTokens).toHaveBeenCalledTimes(2);
+        expect(voidedAuditCalls()).toHaveLength(0);
+      });
+
+      it("propagates a void failure, skips the user update and writes no audit entry", async () => {
+        arrangeEmailChange();
+        mockVoidActiveTokens.mockRejectedValue(new Error("db down"));
+
+        await expect(
+          updateStaff("staff-1", { email: newEmail }, "current-user-id")
+        ).rejects.toThrow("db down");
+
+        expect(mockTxUserUpdate).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
     });
   });
 

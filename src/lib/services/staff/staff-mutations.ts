@@ -14,7 +14,11 @@ import {
   EntityType,
   sanitizeForAudit,
 } from "../audit-service";
-import { issueSetupTokenForUser } from "../password-reset-service";
+import {
+  issueSetupTokenForUser,
+  voidActiveTokens,
+} from "../password-reset-service";
+import { normalizeEmail } from "@/lib/validations/email";
 import { staffSelectFieldsMinimal } from "./staff-constants";
 import { logStaffUpdateAudits } from "./staff-audit";
 
@@ -201,13 +205,42 @@ export async function updateStaff(
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-  const staff = await prisma.user.update({
-    where: { id },
-    data: updateData,
-    select: staffSelectFieldsMinimal,
+  // An email change cancels outstanding setup/reset links sent to the
+  // old address, atomically with the update.
+  const emailChanged =
+    data.email !== undefined &&
+    normalizeEmail(data.email) !== normalizeEmail(existingStaff.email);
+
+  const { staff, voidedCount } = await prisma.$transaction(async (tx) => {
+    // Void tokens before the user update: consumeToken locks token then
+    // user, so the same order avoids a deadlock with a concurrent redemption.
+    const voidedCount = emailChanged
+      ? (await voidActiveTokens(id, "SETUP", tx)) +
+        (await voidActiveTokens(id, "RESET", tx))
+      : 0;
+    const staff = await tx.user.update({
+      where: { id },
+      data: updateData,
+      select: staffSelectFieldsMinimal,
+    });
+    return { staff, voidedCount };
   });
 
   await logStaffUpdateAudits(id, existingStaff, data, currentUserId);
+
+  if (voidedCount > 0) {
+    await createAuditLog(
+      currentUserId,
+      AuditAction.STAFF_TOKENS_VOIDED,
+      EntityType.STAFF,
+      id,
+      {
+        previous: { email: existingStaff.email },
+        current: { email: data.email },
+        reason: `Email changed; ${voidedCount} unused setup/reset link(s) cancelled`,
+      }
+    );
+  }
 
   return staff;
 }
