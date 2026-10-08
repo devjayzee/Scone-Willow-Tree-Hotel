@@ -99,6 +99,7 @@ import {
   consumeResetToken,
   consumeSetupToken,
   requestPasswordReset,
+  voidActiveTokens,
 } from "@/lib/services/password-reset-service";
 import {
   RESET_TOKEN_TTL_MINUTES,
@@ -134,6 +135,7 @@ function validToken(overrides: Record<string, unknown> = {}) {
 describe("Password Reset Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTokenUpdateMany.mockResolvedValue({ count: 0 });
   });
 
   describe("hashToken", () => {
@@ -141,6 +143,44 @@ describe("Password Reset Service", () => {
       expect(hashToken("abc")).toBe(hashToken("abc"));
       expect(hashToken("abc")).toMatch(/^[0-9a-f]{64}$/);
       expect(hashToken("abc")).not.toBe(hashToken("abd"));
+    });
+  });
+
+  describe("voidActiveTokens", () => {
+    it("voids on the passed client and not on the global prisma", async () => {
+      const txUpdateMany = vi.fn().mockResolvedValue({ count: 2 });
+      const tx = { passwordResetToken: { updateMany: txUpdateMany } };
+
+      await voidActiveTokens("u1", "SETUP", tx as never);
+
+      expect(txUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockTokenUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("defaults to the global prisma client", async () => {
+      await voidActiveTokens("u1", "RESET");
+
+      expect(mockTokenUpdateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the number of voided rows", async () => {
+      mockTokenUpdateMany.mockResolvedValue({ count: 4 });
+
+      await expect(voidActiveTokens("u1", "SETUP")).resolves.toBe(4);
+    });
+
+    it("targets only unused, unexpired tokens of the given user and purpose", async () => {
+      await voidActiveTokens("u1", "SETUP");
+
+      expect(mockTokenUpdateMany).toHaveBeenCalledWith({
+        where: {
+          userId: "u1",
+          purpose: "SETUP",
+          usedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        data: { usedAt: expect.any(Date) },
+      });
     });
   });
 
