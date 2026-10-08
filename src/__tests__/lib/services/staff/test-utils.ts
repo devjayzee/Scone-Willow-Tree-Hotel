@@ -10,8 +10,23 @@ export const mockUserCreate = vi.fn();
 export const mockUserUpdate = vi.fn();
 export const mockUserDelete = vi.fn();
 
-// password-reset-service mock (createStaff / resendInvite call this)
+// password-reset-service mock (createStaff / resendInvite / updateStaff call this)
 export const mockIssueSetupTokenForUser = vi.fn();
+export const mockVoidActiveTokens = vi.fn();
+
+// Interactive $transaction: the callback receives mockTxClient (its own identity,
+// distinct from the global prisma mock) so tests can assert work ran on the tx.
+export const mockTxUserUpdate = vi.fn((...args: unknown[]) =>
+  mockUserUpdate(...args)
+);
+export const mockTxClient = {
+  user: {
+    update: mockTxUserUpdate,
+  },
+};
+export const mockTransaction = vi.fn(async (arg: unknown) =>
+  (arg as (tx: typeof mockTxClient) => unknown)(mockTxClient)
+);
 
 // Setup mocks — call this at the top of each test file, before importing services.
 export function setupMocks() {
@@ -23,6 +38,7 @@ export function setupMocks() {
 
   vi.mock("@/lib/prisma", () => ({
     default: {
+      $transaction: (arg: unknown) => mockTransaction(arg),
       user: {
         findMany: (...args: unknown[]) => mockUserFindMany(...args),
         findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
@@ -43,6 +59,7 @@ export function setupMocks() {
       STAFF_ACTIVATED: "STAFF_ACTIVATED",
       STAFF_INVITE_RESENT: "STAFF_INVITE_RESENT",
       STAFF_ROLE_CHANGED: "STAFF_ROLE_CHANGED",
+      STAFF_TOKENS_VOIDED: "STAFF_TOKENS_VOIDED",
     },
     EntityType: {
       STAFF: "STAFF",
@@ -71,6 +88,7 @@ export function setupMocks() {
   vi.mock("@/lib/services/password-reset-service", () => ({
     issueSetupTokenForUser: (...args: unknown[]) =>
       mockIssueSetupTokenForUser(...args),
+    voidActiveTokens: (...args: unknown[]) => mockVoidActiveTokens(...args),
   }));
 }
 
@@ -112,7 +130,11 @@ export function resetMocks() {
   mockUserUpdate.mockReset();
   mockUserDelete.mockReset();
   mockIssueSetupTokenForUser.mockReset();
+  mockVoidActiveTokens.mockReset();
+  mockTransaction.mockClear();
+  mockTxUserUpdate.mockClear();
   // Restore default behaviors tests expect
   mockHash.mockResolvedValue("hashed_password");
   mockIssueSetupTokenForUser.mockResolvedValue("stub-setup-token");
+  mockVoidActiveTokens.mockResolvedValue(0);
 }
