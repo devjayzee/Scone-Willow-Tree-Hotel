@@ -5,6 +5,7 @@ import { NotFoundError, RateLimitError } from "@/lib/errors";
 const h = vi.hoisted(() => {
   const mockUserFindUnique = vi.fn();
   const mockUserUpdate = vi.fn();
+  const mockUserUpdateMany = vi.fn();
   const mockTokenFindUnique = vi.fn();
   const mockTokenCreate = vi.fn();
   const mockTokenUpdateMany = vi.fn();
@@ -14,6 +15,7 @@ const h = vi.hoisted(() => {
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      updateMany: (...args: unknown[]) => mockUserUpdateMany(...args),
     },
     passwordResetToken: {
       findUnique: (...args: unknown[]) => mockTokenFindUnique(...args),
@@ -38,6 +40,7 @@ const h = vi.hoisted(() => {
   return {
     mockUserFindUnique,
     mockUserUpdate,
+    mockUserUpdateMany,
     mockTokenFindUnique,
     mockTokenCreate,
     mockTokenUpdateMany,
@@ -50,6 +53,7 @@ const h = vi.hoisted(() => {
 const {
   mockUserFindUnique,
   mockUserUpdate,
+  mockUserUpdateMany,
   mockTokenFindUnique,
   mockTokenCreate,
   mockTokenUpdateMany,
@@ -113,6 +117,15 @@ const activeUser = {
   isActive: true,
 };
 
+function pendingSetupToken(overrides: Record<string, unknown> = {}) {
+  const base = validToken({ purpose: "SETUP" });
+  return {
+    ...base,
+    user: { ...base.user, setupPending: true },
+    ...overrides,
+  };
+}
+
 function validToken(overrides: Record<string, unknown> = {}) {
   return {
     id: "t1",
@@ -127,6 +140,7 @@ function validToken(overrides: Record<string, unknown> = {}) {
       email: "jane@example.com",
       firstName: "Jane",
       role: "STAFF",
+      setupPending: false,
     },
     ...overrides,
   };
@@ -269,7 +283,7 @@ describe("Password Reset Service", () => {
 
   describe("resolveSetupInvite", () => {
     it("returns the invite projection for a valid SETUP token", async () => {
-      mockTokenFindUnique.mockResolvedValue(validToken({ purpose: "SETUP" }));
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
 
       await expect(resolveSetupInvite("raw-token")).resolves.toEqual({
         email: "jane@example.com",
@@ -288,6 +302,17 @@ describe("Password Reset Service", () => {
 
       await expect(resolveSetupInvite("raw-token")).rejects.toThrow(
         NotFoundError
+      );
+    });
+
+    it("throws the invalid-link NotFoundError for a non-pending user", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken({ purpose: "SETUP" }));
+
+      await expect(resolveSetupInvite("raw-token")).rejects.toThrow(
+        NotFoundError
+      );
+      await expect(resolveSetupInvite("raw-token")).rejects.toThrow(
+        "This link is invalid or has expired"
       );
     });
   });
@@ -391,22 +416,122 @@ describe("Password Reset Service", () => {
   });
 
   describe("consumeSetupToken", () => {
-    it("additionally activates the account and audits as SETUP", async () => {
-      mockTokenFindUnique.mockResolvedValue(validToken({ purpose: "SETUP" }));
+    const input = { rawToken: "raw-token", newPassword: "NewStr0ng!Pass" };
+
+    it("activates a pending account via a conditional updateMany and audits the state change", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
       mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
 
-      await consumeSetupToken({
-        rawToken: "raw-token",
-        newPassword: "NewStr0ng!Pass",
+      await consumeSetupToken(input);
+
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockUserUpdateMany).toHaveBeenCalledWith({
+        where: { id: "u1", setupPending: true },
+        data: {
+          password: expect.any(String),
+          tokenVersion: { increment: 1 },
+          isActive: true,
+          setupPending: false,
+        },
       });
-
-      const userUpdateArg = mockUserUpdate.mock.calls[0][0];
-      expect(userUpdateArg.data.isActive).toBe(true);
+      const data = mockUserUpdateMany.mock.calls[0][0].data;
+      expect(data.password).not.toBe("NewStr0ng!Pass");
       expect(mockAuditLogCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ action: "STAFF_PASSWORD_SETUP" }),
+          data: expect.objectContaining({
+            action: "STAFF_PASSWORD_SETUP",
+            details: expect.objectContaining({
+              previous: { isActive: false, setupPending: true },
+              current: { isActive: true, setupPending: false },
+            }),
+          }),
         })
       );
+    });
+
+    it.each([
+      ["deactivated", false],
+      ["active", true],
+    ])(
+      "refuses a SETUP token for a %s non-pending user: no claim, no user write, no audit",
+      async (_label, isActive) => {
+        const base = validToken({ purpose: "SETUP" });
+        mockTokenFindUnique.mockResolvedValue({
+          ...base,
+          user: { ...base.user, isActive, setupPending: false },
+        });
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+
+        await expect(consumeSetupToken(input)).rejects.toThrow(NotFoundError);
+
+        expect(mockTokenUpdateMany).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(mockUserUpdateMany).not.toHaveBeenCalled();
+        expect(mockAuditLogCreate).not.toHaveBeenCalled();
+      }
+    );
+
+    it("throws NotFoundError and writes no audit when the account stops being pending between the read and the write", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 0 });
+
+      await expect(consumeSetupToken(input)).rejects.toThrow(NotFoundError);
+
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockAuditLogCreate).not.toHaveBeenCalled();
+    });
+
+    it("returns the same error class and message for every kind of invalid token", async () => {
+      const nonPending = validToken({ purpose: "SETUP" });
+      const cases: Array<unknown> = [
+        null,
+        pendingSetupToken({ purpose: "RESET" }),
+        pendingSetupToken({ usedAt: new Date() }),
+        pendingSetupToken({ expiresAt: new Date(Date.now() - 1_000) }),
+        nonPending,
+      ];
+
+      // Token claim and user write would succeed, so only the validity checks
+      // can produce the rejection.
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      const errors: unknown[] = [];
+      for (const row of cases) {
+        mockTokenFindUnique.mockResolvedValue(row);
+        errors.push(
+          await consumeSetupToken(input).then(
+            () => "resolved instead of rejecting",
+            (e: unknown) => e
+          )
+        );
+      }
+
+      for (const e of errors) {
+        expect(e).toBeInstanceOf(NotFoundError);
+        expect((e as Error).message).toBe("This link is invalid or has expired");
+      }
+    });
+  });
+
+  describe("consumeResetToken for a non-pending user", () => {
+    it("is not refused and never writes setupPending or isActive", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+
+      await expect(
+        consumeResetToken({
+          rawToken: "raw-token",
+          newPassword: "NewStr0ng!Pass",
+        })
+      ).resolves.toEqual({ userId: "u1" });
+
+      expect(mockUserUpdateMany).not.toHaveBeenCalled();
+      const data = mockUserUpdate.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty("setupPending");
+      expect(data).not.toHaveProperty("isActive");
     });
   });
 

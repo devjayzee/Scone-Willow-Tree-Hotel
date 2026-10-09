@@ -26,6 +26,7 @@ export default async function StaffsPage() {
     email: staff.email,
     role: staff.role,
     isActive: staff.isActive,
+    setupPending: staff.setupPending,
     createdAt: staff.createdAt.toISOString(),
     updatedAt: staff.updatedAt.toISOString(),
     _count: staff._count,

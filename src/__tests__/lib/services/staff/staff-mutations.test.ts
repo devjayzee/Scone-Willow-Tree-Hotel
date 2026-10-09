@@ -54,6 +54,7 @@ describe("Staff Mutations", () => {
         lastName: "Smith",
         email: "jane.smith@sconewillowtree.com",
         isActive: false,
+        setupPending: true,
       });
       mockUserFindUnique.mockResolvedValue(null);
       mockUserCreate.mockResolvedValue(createdStaff);
@@ -76,6 +77,7 @@ describe("Staff Mutations", () => {
           password: "random-placeholder-hash",
           role: "STAFF",
           isActive: false,
+          setupPending: true,
         },
         select: expect.objectContaining({
           id: true,
@@ -84,6 +86,7 @@ describe("Staff Mutations", () => {
           email: true,
           role: true,
           isActive: true,
+          setupPending: true,
         }),
       });
       expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("new-staff");
@@ -143,17 +146,22 @@ describe("Staff Mutations", () => {
   // resendInvite
   // ============================================================
   describe("resendInvite", () => {
-    it("issues a fresh setup token and returns the invited user projection", async () => {
+    it("issues a fresh setup token for a pending invite and returns the invited user projection", async () => {
       mockUserFindUnique.mockResolvedValue({
         id: "u1",
         email: "invitee@example.com",
         firstName: "Ivy",
         isActive: false,
+        setupPending: true,
       });
       mockIssueSetupTokenForUser.mockResolvedValue("fresh-token");
 
       const result = await resendInvite("u1", "manager-1");
 
+      expect(mockUserFindUnique).toHaveBeenCalledWith({
+        where: { id: "u1" },
+        select: expect.objectContaining({ setupPending: true }),
+      });
       expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("u1");
       expect(result).toEqual({
         user: { id: "u1", email: "invitee@example.com", firstName: "Ivy" },
@@ -176,12 +184,35 @@ describe("Staff Mutations", () => {
         email: "active@example.com",
         firstName: "Ann",
         isActive: true,
+        setupPending: false,
       });
 
-      await expect(resendInvite("u1", "manager-1")).rejects.toThrow(
-        BusinessRuleError
-      );
+      const result = resendInvite("u1", "manager-1");
+      await expect(result).rejects.toThrow(BusinessRuleError);
+      await expect(result).rejects.toMatchObject({
+        message:
+          "Cannot resend invite: this staff member has already completed setup",
+      });
       expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
+    });
+
+    it("refuses a deactivated user who completed setup: no token, no audit", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        id: "u2",
+        email: "exemployee@example.com",
+        firstName: "Eve",
+        isActive: false,
+        setupPending: false,
+      });
+
+      const result = resendInvite("u2", "manager-1");
+      await expect(result).rejects.toThrow(BusinessRuleError);
+      await expect(result).rejects.toMatchObject({
+        message:
+          "This account has been deactivated. Use Activate to restore access.",
+      });
+      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
+      expect(createAuditLog).not.toHaveBeenCalled();
     });
   });
 
@@ -380,6 +411,64 @@ describe("Staff Mutations", () => {
         updateStaff("gm-1", { isActive: false }, "gm-1")
       ).rejects.toThrow("Cannot deactivate your own account");
       expect(mockUserUpdate).not.toHaveBeenCalled();
+    });
+
+    describe("setupPending handling", () => {
+      it("refuses isActive:true on a pending invite: no transaction, no audit", async () => {
+        const pending = createMockStaff({
+          id: "staff-9",
+          isActive: false,
+          setupPending: true,
+        });
+        mockUserFindUnique.mockResolvedValue(pending);
+
+        await expect(
+          updateStaff("staff-9", { isActive: true }, "current-user-id")
+        ).rejects.toThrow(BusinessRuleError);
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("activates a deactivated non-pending user and audits STAFF_ACTIVATED", async () => {
+        const deactivated = createMockStaff({
+          id: "staff-8",
+          isActive: false,
+          setupPending: false,
+        });
+        mockUserFindUnique.mockResolvedValue(deactivated);
+        mockUserUpdate.mockResolvedValue({ ...deactivated, isActive: true });
+
+        await updateStaff("staff-8", { isActive: true }, "current-user-id");
+
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-8" },
+          data: { isActive: true },
+          select: expect.any(Object),
+        });
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "current-user-id",
+          "STAFF_ACTIVATED",
+          "STAFF",
+          "staff-8",
+          expect.anything()
+        );
+      });
+
+      it("never writes setupPending even if the input carries it", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff(
+          "staff-1",
+          { firstName: "Updated", setupPending: true } as never,
+          "current-user-id"
+        );
+
+        const arg = mockUserUpdate.mock.calls[0][0];
+        expect(arg.data).not.toHaveProperty("setupPending");
+        expect(arg.data).toEqual({ firstName: "Updated" });
+      });
     });
 
     describe("email change voids outstanding tokens", () => {

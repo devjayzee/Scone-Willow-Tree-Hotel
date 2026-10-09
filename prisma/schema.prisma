@@ -36,6 +36,7 @@ model User {
   lastName            String
   role                Role                 @default(STAFF)
   isActive            Boolean              @default(true)
+  setupPending        Boolean              @default(false) // true from invite until the SETUP link is redeemed
   tokenVersion        Int                  @default(0) // Incremented on password change to invalidate sessions
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt

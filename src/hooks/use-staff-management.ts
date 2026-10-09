@@ -116,7 +116,7 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
     [toggleActiveMutation]
   );
 
-  // Resend a setup invite to an inactive staff member.
+  // Resend a setup invite to a pending staff member.
   const resendInvite = useCallback(
     async (staff: Staff) => {
       await resendInviteMutation.mutateAsync(staff.id);

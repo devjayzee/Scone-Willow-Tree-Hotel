@@ -11,6 +11,7 @@ export interface Staff {
   email: string;
   role: Role;
   isActive: boolean;
+  setupPending: boolean;
   createdAt: string;
   updatedAt: string;
   _count: {
