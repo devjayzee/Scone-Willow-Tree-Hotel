@@ -8,6 +8,7 @@ export const staffSelectFields = {
   email: true,
   role: true,
   isActive: true,
+  setupPending: true,
   createdAt: true,
   updatedAt: true,
   _count: {
@@ -26,6 +27,7 @@ export const staffSelectFieldsMinimal = {
   email: true,
   role: true,
   isActive: true,
+  setupPending: true,
   createdAt: true,
   updatedAt: true,
 } as const;

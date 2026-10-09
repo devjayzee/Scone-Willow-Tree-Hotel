@@ -47,6 +47,7 @@ function makeStaff(overrides: Partial<Staff> = {}): Staff {
     email: "alice@example.com",
     role: "STAFF" as Role,
     isActive: true,
+    setupPending: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     _count: { bookings: 0 },
@@ -101,6 +102,23 @@ describe("staff mutation hooks", () => {
         expect(mockToastSuccess).toHaveBeenCalledWith("Invite sent to bob@example.com");
       });
       expect(mockInvalidateWithRelated).toHaveBeenCalledWith(queryClient, "staffs");
+    });
+
+    it("marks the optimistic staff as a pending invite", async () => {
+      queryClient.setQueryData<Staff[]>(staffKeys.list(), []);
+      mockCreateStaff.mockResolvedValue(makeStaff({ id: "server-2" }));
+
+      const { result } = renderHook(() => useCreateStaff(), { wrapper });
+      const promise = result.current.mutateAsync(createInput);
+
+      await waitFor(() => {
+        const cache = queryClient.getQueryData<Staff[]>(staffKeys.list());
+        expect(cache?.[0].id).toMatch(/^temp-/);
+        expect(cache?.[0].isActive).toBe(false);
+        expect(cache?.[0].setupPending).toBe(true);
+      });
+
+      await promise;
     });
 
     it("rolls back the optimistic staff on error", async () => {

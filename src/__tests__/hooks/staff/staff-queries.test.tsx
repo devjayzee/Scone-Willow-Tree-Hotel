@@ -22,6 +22,7 @@ function makeStaff(overrides: Partial<Staff> = {}): Staff {
     email: "alice@example.com",
     role: "STAFF" as Role,
     isActive: true,
+    setupPending: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     _count: { bookings: 0 },
