@@ -120,7 +120,13 @@ async function findValidToken(
     where: { tokenHash: hashToken(rawToken) },
     include: {
       user: {
-        select: { id: true, email: true, firstName: true, role: true },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          role: true,
+          setupPending: true,
+        },
       },
     },
   });
@@ -130,7 +136,8 @@ async function findValidToken(
     !token ||
     token.purpose !== purpose ||
     token.usedAt !== null ||
-    token.expiresAt <= new Date()
+    token.expiresAt <= new Date() ||
+    (purpose === "SETUP" && !token.user.setupPending)
   ) {
     throw new NotFoundError(INVALID_TOKEN_MESSAGE);
   }
@@ -174,15 +181,32 @@ async function consumeToken(
     if (claim.count === 0) {
       throw new NotFoundError(INVALID_TOKEN_MESSAGE);
     }
-    await tx.user.update({
-      where: { id: token.userId },
-      data: {
-        password: hashedPassword,
-        // Invalidate every live session for this user
-        tokenVersion: { increment: 1 },
-        ...(purpose === "SETUP" && { isActive: true }),
-      },
-    });
+    if (purpose === "SETUP") {
+      // Only a still-pending invite may be redeemed; a deactivated
+      // account (setupPending false) must not be switched back on.
+      const updated = await tx.user.updateMany({
+        where: { id: token.userId, setupPending: true },
+        data: {
+          password: hashedPassword,
+          // Invalidate every live session for this user
+          tokenVersion: { increment: 1 },
+          isActive: true,
+          setupPending: false,
+        },
+      });
+      if (updated.count === 0) {
+        throw new NotFoundError(INVALID_TOKEN_MESSAGE);
+      }
+    } else {
+      await tx.user.update({
+        where: { id: token.userId },
+        data: {
+          password: hashedPassword,
+          // Invalidate every live session for this user
+          tokenVersion: { increment: 1 },
+        },
+      });
+    }
   });
 
   await createAuditLog(
@@ -192,7 +216,13 @@ async function consumeToken(
       : AuditAction.STAFF_PASSWORD_SETUP,
     EntityType.STAFF,
     token.userId,
-    { reason: `Password ${purpose === "RESET" ? "reset" : "setup"} via emailed token` }
+    {
+      reason: `Password ${purpose === "RESET" ? "reset" : "setup"} via emailed token`,
+      ...(purpose === "SETUP" && {
+        previous: { isActive: false, setupPending: true },
+        current: { isActive: true, setupPending: false },
+      }),
+    }
   );
 
   return { userId: token.userId };

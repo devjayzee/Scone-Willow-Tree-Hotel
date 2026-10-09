@@ -159,6 +159,23 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
     expect(mockSend).not.toHaveBeenCalled();
   });
 
+  it("returns 400 BUSINESS_RULE_VIOLATION and schedules no email for a deactivated account", async () => {
+    mockGetServerSession.mockResolvedValue(gmSession);
+    mockResendInvite.mockRejectedValue(
+      new BusinessRuleError(
+        "This account has been deactivated. Use Activate to restore access."
+      )
+    );
+
+    const response = await POST(makeRequest(), makeParams("u1"));
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(JSON.stringify(data)).toContain("BUSINESS_RULE_VIOLATION");
+    expect(mockAfterCallbacks).toHaveLength(0);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
   it("still returns 200 and logs when the invite email fails to send", async () => {
     mockGetServerSession.mockResolvedValue(gmSession);
     mockResendInvite.mockResolvedValue({

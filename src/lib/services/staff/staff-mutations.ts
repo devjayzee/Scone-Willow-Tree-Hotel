@@ -55,11 +55,12 @@ export async function createStaff(
   }
 
   // Per-user random placeholder hash. Previously all pending
-  // invitees shared DUMMY_PASSWORD_HASH; if a GM flipped `isActive` on
-  // a pending user, they'd have collapsed one of the two "can't log
-  // in" defences onto a value known to every reader of this repo. A
-  // per-user random hash makes each pending account independently
-  // impossible to log in as, even in the misused-isActive scenario.
+  // invitees shared DUMMY_PASSWORD_HASH, a value known to every reader
+  // of this repo. A pending user cannot be made active today:
+  // updateStaff refuses isActive: true on a pending row, and the
+  // User_setupPending_inactive_check constraint rejects it in the
+  // database. The random hash stays as defence in depth, so each
+  // pending account still cannot be logged into if both guards fail.
   // consumeSetupToken overwrites this with the user's real password.
   const placeholderPassword = randomBytes(24).toString("base64url");
   const placeholderHash = await bcrypt.hash(placeholderPassword, BCRYPT_COST);
@@ -72,6 +73,7 @@ export async function createStaff(
       password: placeholderHash,
       role: data.role ?? "STAFF",
       isActive: false,
+      setupPending: true,
     },
     select: staffSelectFieldsMinimal,
   });
@@ -99,12 +101,12 @@ export async function createStaff(
 }
 
 /**
- * Reissue a setup invite. issueSetupTokenForUser voids any prior
- * unused SETUP token for this user by design, so the old link 404s the
- * moment this succeeds.
+ * Reissue a setup invite for a pending invite only.
+ * issueSetupTokenForUser voids any prior unused SETUP token for this
+ * user by design, so the old link 404s the moment this succeeds.
  *
  * @throws NotFoundError if user missing
- * @throws BusinessRuleError if user is already active (nothing to invite)
+ * @throws BusinessRuleError if there is no pending invite (deactivated or setup already completed)
  */
 export async function resendInvite(
   userId: string,
@@ -115,16 +117,24 @@ export async function resendInvite(
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, firstName: true, isActive: true },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      isActive: true,
+      setupPending: true,
+    },
   });
 
   if (!user) {
     throw new NotFoundError("Staff not found");
   }
 
-  if (user.isActive) {
+  if (!user.setupPending) {
     throw new BusinessRuleError(
-      "Cannot resend invite — this staff member has already completed setup"
+      user.isActive
+        ? "Cannot resend invite: this staff member has already completed setup"
+        : "This account has been deactivated. Use Activate to restore access."
     );
   }
 
@@ -170,6 +180,12 @@ export async function updateStaff(
     if (data.isActive === false) {
       throw new BusinessRuleError("Cannot deactivate your own account");
     }
+  }
+
+  if (data.isActive === true && existingStaff.setupPending) {
+    throw new BusinessRuleError(
+      "This person has not set up their account yet. Use Resend invite."
+    );
   }
 
   // Check if updating email conflicts with another user

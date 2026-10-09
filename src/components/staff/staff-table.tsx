@@ -24,6 +24,17 @@ interface StaffTableProps {
   onResendInvite: (staff: Staff) => void;
 }
 
+type StaffStatus = "Pending" | "Active" | "Inactive";
+
+const getStatus = (staff: Staff): StaffStatus =>
+  staff.setupPending ? "Pending" : staff.isActive ? "Active" : "Inactive";
+
+const STATUS_CLASSES: Record<StaffStatus, string> = {
+  Pending: "bg-amber-100 text-amber-800 hover:bg-amber-100",
+  Active: "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
+  Inactive: "bg-gray-100 text-gray-500",
+};
+
 export function StaffTable({
   staffs,
   currentUserId,
@@ -66,7 +77,7 @@ export function StaffTable({
           <Edit className="h-4 w-4 mr-2" aria-hidden="true" />
           Edit
         </DropdownMenuItem>
-        {!staff.isActive && (
+        {staff.setupPending && (
           <DropdownMenuItem onClick={() => onResendInvite(staff)}>
             <Send className="h-4 w-4 mr-2" aria-hidden="true" />
             Resend invite
@@ -74,19 +85,21 @@ export function StaffTable({
         )}
         {staff.id !== currentUserId && (
           <>
-            <DropdownMenuItem onClick={() => onToggleActive(staff)}>
-              {staff.isActive ? (
-                <>
-                  <UserX className="h-4 w-4 mr-2" aria-hidden="true" />
-                  Deactivate
-                </>
-              ) : (
-                <>
-                  <UserCheck className="h-4 w-4 mr-2" aria-hidden="true" />
-                  Activate
-                </>
-              )}
-            </DropdownMenuItem>
+            {!staff.setupPending && (
+              <DropdownMenuItem onClick={() => onToggleActive(staff)}>
+                {staff.isActive ? (
+                  <>
+                    <UserX className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Deactivate
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Activate
+                  </>
+                )}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onClick={() => onDelete(staff)}
               className="text-red-600 focus:text-red-600"
@@ -149,13 +162,9 @@ export function StaffTable({
                     </Badge>
                     <Badge
                       variant={staff.isActive ? "default" : "secondary"}
-                      className={
-                        staff.isActive
-                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs"
-                          : "bg-gray-100 text-gray-500 text-xs"
-                      }
+                      className={`${STATUS_CLASSES[getStatus(staff)]} text-xs`}
                     >
-                      {staff.isActive ? "Active" : "Inactive"}
+                      {getStatus(staff)}
                     </Badge>
                   </div>
                 </div>
@@ -236,13 +245,9 @@ export function StaffTable({
                 <td className="px-6 py-4 text-center">
                   <Badge
                     variant={staff.isActive ? "default" : "secondary"}
-                    className={
-                      staff.isActive
-                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
-                        : "bg-gray-100 text-gray-500"
-                    }
+                    className={STATUS_CLASSES[getStatus(staff)]}
                   >
-                    {staff.isActive ? "Active" : "Inactive"}
+                    {getStatus(staff)}
                   </Badge>
                 </td>
                 <td className="px-6 py-4 text-center text-gray-600">

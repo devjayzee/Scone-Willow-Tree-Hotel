@@ -101,6 +101,7 @@ export function createMockStaff(
     password: string;
     role: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
     isActive: boolean;
+    setupPending: boolean;
     tokenVersion: number;
     createdAt: Date;
     updatedAt: Date;
@@ -115,6 +116,7 @@ export function createMockStaff(
     password: overrides.password ?? "hashedpassword",
     role: overrides.role ?? "STAFF",
     isActive: overrides.isActive ?? true,
+    setupPending: overrides.setupPending ?? false,
     tokenVersion: overrides.tokenVersion ?? 0,
     createdAt: overrides.createdAt ?? new Date("2024-01-01"),
     updatedAt: overrides.updatedAt ?? new Date("2024-01-01"),
