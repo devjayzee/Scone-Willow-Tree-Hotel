@@ -144,8 +144,9 @@ async function apiRateLimitMiddleware(
 
 // Paths under /api/auth/** that we own and want IP-rate-limited.
 // forgot-password self-limits (dual key needs the body); rate-limit-status
-// self-limits in-route via getRateLimitStatusLimiter; NextAuth internals
-// and the credentials callback are handled elsewhere.
+// is limited by getLoginPrecheckStatus in the rate-limit service, which
+// answers a gate trip with 429; NextAuth internals and the credentials
+// callback are handled elsewhere.
 const AUTH_ENDPOINT_LIMITED_EXACT = new Set([
   "/api/auth/reset-password",
   "/api/auth/setup-password",

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchLoginRateLimitStatus } from "@/hooks/auth/auth-api";
+import {
+  AuthApiError,
+  fetchInviteToken,
+  fetchLoginRateLimitStatus,
+} from "@/hooks/auth/auth-api";
 
 describe("fetchLoginRateLimitStatus", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -37,5 +41,46 @@ describe("fetchLoginRateLimitStatus", () => {
   it("propagates network errors", async () => {
     fetchSpy.mockRejectedValueOnce(new Error("network down"));
     await expect(fetchLoginRateLimitStatus()).rejects.toThrow("network down");
+  });
+});
+
+describe("fetchInviteToken", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  const jsonResponse = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  it("rejects with an AuthApiError carrying status 404 for an invalid link", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({ error: "This link is invalid or has expired" }, 404)
+    );
+
+    const err = await fetchInviteToken("tok_123").catch((e) => e);
+
+    expect(err).toBeInstanceOf(AuthApiError);
+    expect(err.status).toBe(404);
+    expect(err.message).toBe("This link is invalid or has expired");
+  });
+
+  it("rejects with an AuthApiError carrying status 429 when rate limited", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse({ error: "Too many requests" }, 429)
+    );
+
+    const err = await fetchInviteToken("tok_123").catch((e) => e);
+
+    expect(err).toBeInstanceOf(AuthApiError);
+    expect(err.status).toBe(429);
   });
 });
