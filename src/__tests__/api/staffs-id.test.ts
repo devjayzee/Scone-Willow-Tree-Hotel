@@ -29,6 +29,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+import { RateLimitError } from "@/lib/errors";
 import { GET, PUT, DELETE } from "@/app/api/staffs/[id]/route";
 
 const params = Promise.resolve({ id: "staff-1" });
@@ -143,6 +144,20 @@ describe("Staffs [id] API", () => {
         expect.objectContaining(validUpdate),
         gmSession.user.id,
       );
+    });
+
+    it("returns 429 RATE_LIMITED when updateStaff throws RateLimitError", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      mockUpdateStaff.mockRejectedValue(
+        new RateLimitError("Too many email changes. Try again later."),
+      );
+
+      const response = await PUT(buildRequest(validUpdate), { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.error).toBe("Too many email changes. Try again later.");
+      expect(data.code).toBe("RATE_LIMITED");
     });
 
     it("returns 400 for invalid input", async () => {

@@ -14,6 +14,14 @@ export const mockUserDelete = vi.fn();
 export const mockIssueSetupTokenForUser = vi.fn();
 export const mockVoidActiveTokens = vi.fn();
 
+// Invite guards: limiter, email transport and logger mocks (inviteStaff / resendInvite)
+export const mockInviteLimit = vi.fn();
+export const mockGetStaffInviteRateLimiter = vi.fn();
+export const mockInviteGlobalLimit = vi.fn();
+export const mockGetStaffInviteGlobalRateLimiter = vi.fn();
+export const mockEmailSend = vi.fn();
+export const mockLoggerError = vi.fn();
+
 // Interactive $transaction: the callback receives mockTxClient (its own identity,
 // distinct from the global prisma mock) so tests can assert work ran on the tx.
 export const mockTxUserUpdate = vi.fn((...args: unknown[]) =>
@@ -85,6 +93,28 @@ export function setupMocks() {
     },
   }));
 
+  vi.mock("@/lib/services/rate-limit-service", () => ({
+    getStaffInviteRateLimiter: (...args: unknown[]) =>
+      mockGetStaffInviteRateLimiter(...args),
+    getStaffInviteGlobalRateLimiter: (...args: unknown[]) =>
+      mockGetStaffInviteGlobalRateLimiter(...args),
+  }));
+
+  vi.mock("@/lib/email/email-transport", () => ({
+    getEmailTransport: () => ({
+      send: (...args: unknown[]) => mockEmailSend(...args),
+    }),
+  }));
+
+  vi.mock("@/lib/logger", () => ({
+    logger: {
+      error: (...args: unknown[]) => mockLoggerError(...args),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    },
+  }));
+
   vi.mock("@/lib/services/password-reset-service", () => ({
     issueSetupTokenForUser: (...args: unknown[]) =>
       mockIssueSetupTokenForUser(...args),
@@ -133,10 +163,24 @@ export function resetMocks() {
   mockUserDelete.mockReset();
   mockIssueSetupTokenForUser.mockReset();
   mockVoidActiveTokens.mockReset();
+  mockInviteLimit.mockReset();
+  mockGetStaffInviteRateLimiter.mockReset();
+  mockInviteGlobalLimit.mockReset();
+  mockGetStaffInviteGlobalRateLimiter.mockReset();
+  mockEmailSend.mockReset();
+  mockLoggerError.mockReset();
   mockTransaction.mockClear();
   mockTxUserUpdate.mockClear();
   // Restore default behaviors tests expect
   mockHash.mockResolvedValue("hashed_password");
   mockIssueSetupTokenForUser.mockResolvedValue("stub-setup-token");
   mockVoidActiveTokens.mockResolvedValue(0);
+  // Default: limiter configured and allowing; email transport succeeds.
+  mockInviteLimit.mockResolvedValue({ success: true });
+  mockGetStaffInviteRateLimiter.mockReturnValue({ limit: mockInviteLimit });
+  mockInviteGlobalLimit.mockResolvedValue({ success: true });
+  mockGetStaffInviteGlobalRateLimiter.mockReturnValue({
+    limit: mockInviteGlobalLimit,
+  });
+  mockEmailSend.mockResolvedValue(undefined);
 }

@@ -1,41 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
+import { ValidationError, RateLimitError } from "@/lib/errors";
 
 const mockGetServerSession = vi.fn();
 const mockGetAllStaff = vi.fn();
-const mockCreateStaff = vi.fn();
-const mockSend = vi.fn();
-const mockLoggerError = vi.fn();
-const mockGetStaffInviteRateLimiter = vi.fn(() => null);
+const mockInviteStaff = vi.fn();
 
-// after() from next/server: collect callbacks so tests can assert the
-// send was scheduled without racing on it (same pattern as
-// forgot-password.test.ts).
-const { mockAfterCallbacks } = vi.hoisted(() => ({
-  mockAfterCallbacks: [] as Array<() => Promise<unknown>>,
-}));
-
-async function flushAfter() {
-  const pending = mockAfterCallbacks.splice(0);
-  for (const cb of pending) {
-    await cb();
-  }
-}
-
+// after() is passed through to the service as deferSend; the route itself
+// never schedules work, so a stub is enough to assert identity.
 vi.mock("next/server", async () => {
   const actual = await vi.importActual<typeof import("next/server")>(
     "next/server"
   );
-  return {
-    ...actual,
-    after: (task: unknown) => {
-      if (typeof task === "function") {
-        mockAfterCallbacks.push(task as () => Promise<unknown>);
-      } else {
-        mockAfterCallbacks.push(async () => task);
-      }
-    },
-  };
+  return { ...actual, after: vi.fn() };
 });
 
 vi.mock("next-auth", () => ({
@@ -44,30 +21,11 @@ vi.mock("next-auth", () => ({
 
 vi.mock("@/lib/services/staff", () => ({
   getAllStaff: (...args: unknown[]) => mockGetAllStaff(...args),
-  createStaff: (...args: unknown[]) => mockCreateStaff(...args),
-}));
-
-vi.mock("@/lib/email/email-transport", () => ({
-  getEmailTransport: () => ({
-    send: (...args: unknown[]) => mockSend(...args),
-  }),
+  inviteStaff: (...args: unknown[]) => mockInviteStaff(...args),
 }));
 
 vi.mock("@/lib/auth", () => ({
   authOptions: {},
-}));
-
-vi.mock("@/lib/services/rate-limit-service", () => ({
-  getStaffInviteRateLimiter: () => mockGetStaffInviteRateLimiter(),
-}));
-
-vi.mock("@/lib/logger", () => ({
-  logger: {
-    error: (...args: unknown[]) => mockLoggerError(...args),
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
 }));
 
 import { GET, POST } from "@/app/api/staffs/route";
@@ -92,11 +50,6 @@ describe("Staffs API", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAfterCallbacks.length = 0;
-    // Default: Upstash unconfigured → limiter disabled. Individual tests
-    // that need to exercise throttling override this per case.
-    mockGetStaffInviteRateLimiter.mockReturnValue(null);
-    delete process.env.INVITE_DOMAIN_ALLOWLIST;
   });
 
   describe("GET /api/staffs", () => {
@@ -170,7 +123,7 @@ describe("Staffs API", () => {
       const response = await POST(buildRequest(validCreateInput));
 
       expect(response.status).toBe(401);
-      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockInviteStaff).not.toHaveBeenCalled();
     });
 
     it("returns 403 when user is STAFF", async () => {
@@ -181,7 +134,7 @@ describe("Staffs API", () => {
 
       expect(response.status).toBe(403);
       expect(data.code).toBe("FORBIDDEN");
-      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockInviteStaff).not.toHaveBeenCalled();
     });
 
     it("returns 403 when user is MANAGER (GM-only endpoint)", async () => {
@@ -192,16 +145,13 @@ describe("Staffs API", () => {
 
       expect(response.status).toBe(403);
       expect(data.code).toBe("FORBIDDEN");
-      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockInviteStaff).not.toHaveBeenCalled();
     });
 
-    it("creates staff for GENERAL_MANAGER and schedules the invite email via after()", async () => {
+    it("delegates to inviteStaff with the validated body, the GM id and after(), and returns 201", async () => {
       mockGetServerSession.mockResolvedValue(gmSession);
       const created = { id: "new-staff", ...validCreateInput };
-      mockCreateStaff.mockResolvedValue({
-        staff: created,
-        setupToken: "raw-setup-token",
-      });
+      mockInviteStaff.mockResolvedValue(created);
 
       const response = await POST(buildRequest(validCreateInput));
       const data = await response.json();
@@ -211,41 +161,11 @@ describe("Staffs API", () => {
       // Response body must NOT include the raw setup token.
       expect(data.setupToken).toBeUndefined();
 
-      expect(mockCreateStaff).toHaveBeenCalledWith(
+      expect(mockInviteStaff).toHaveBeenCalledTimes(1);
+      expect(mockInviteStaff).toHaveBeenCalledWith(
         expect.objectContaining({ email: validCreateInput.email }),
         gmSession.user.id,
-      );
-
-      // Email is scheduled for after-response, not called synchronously.
-      expect(mockSend).not.toHaveBeenCalled();
-      expect(mockAfterCallbacks).toHaveLength(1);
-
-      await flushAfter();
-
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({ to: validCreateInput.email })
-      );
-    });
-
-    it("still returns 201 and logs when the invite email fails to send", async () => {
-      mockGetServerSession.mockResolvedValue(gmSession);
-      mockCreateStaff.mockResolvedValue({
-        staff: { id: "new-staff", ...validCreateInput },
-        setupToken: "raw-setup-token",
-      });
-      mockSend.mockRejectedValue(new Error("smtp down"));
-
-      const response = await POST(buildRequest(validCreateInput));
-
-      expect(response.status).toBe(201);
-      expect(mockLoggerError).not.toHaveBeenCalled();
-
-      await flushAfter();
-
-      expect(mockLoggerError).toHaveBeenCalledWith(
-        "Failed to send staff invite email",
-        expect.any(Error),
-        { staffId: "new-staff" }
+        after
       );
     });
 
@@ -259,41 +179,36 @@ describe("Staffs API", () => {
 
       expect(response.status).toBe(400);
       expect(data.code).toBe("VALIDATION_ERROR");
-      expect(mockCreateStaff).not.toHaveBeenCalled();
+      expect(mockInviteStaff).not.toHaveBeenCalled();
     });
 
-    it("returns 429 when the staff-invite rate limiter denies", async () => {
+    it("passes the service's allowlist refusal through as 400", async () => {
       mockGetServerSession.mockResolvedValue(gmSession);
-      mockGetStaffInviteRateLimiter.mockReturnValue({
-        limit: async () => ({ success: false, limit: 5, remaining: 0, reset: 0 }),
-      } as unknown as null);
+      mockInviteStaff.mockRejectedValue(
+        new ValidationError(
+          "Recipient email domain is not allowed on this deployment."
+        )
+      );
+
+      const response = await POST(buildRequest(validCreateInput));
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("VALIDATION_ERROR");
+      expect(data.error).toMatch(/domain is not allowed/i);
+    });
+
+    it("passes the service's rate-limit refusal through as 429", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      mockInviteStaff.mockRejectedValue(
+        new RateLimitError("Too many staff invites. Try again later.")
+      );
 
       const response = await POST(buildRequest(validCreateInput));
       const data = await response.json();
 
       expect(response.status).toBe(429);
       expect(data.code).toBe("RATE_LIMITED");
-      expect(mockCreateStaff).not.toHaveBeenCalled();
-      expect(mockAfterCallbacks).toHaveLength(0);
-    });
-
-    it("returns 400 when INVITE_DOMAIN_ALLOWLIST blocks the recipient", async () => {
-      mockGetServerSession.mockResolvedValue(gmSession);
-      process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.com";
-
-      const response = await POST(
-        buildRequest({
-          ...validCreateInput,
-          email: "attacker@evil.example",
-        }),
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.code).toBe("VALIDATION_ERROR");
-      expect(data.error).toMatch(/domain is not allowed/i);
-      expect(mockCreateStaff).not.toHaveBeenCalled();
-      expect(mockAfterCallbacks).toHaveLength(0);
     });
   });
 });

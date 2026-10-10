@@ -4,6 +4,7 @@
  * Organized by concern:
  * - staff-queries: Read operations (getAllStaff, getStaffById)
  * - staff-mutations: Write operations (createStaff, updateStaff, deleteStaff)
+ * - staff-invites: Invite flow (inviteStaff, resendInvite)
  * - staff-constants: Shared select-field shapes
  */
 
@@ -17,9 +18,7 @@ export type { DeleteStaffResult } from "./staff-mutations";
 export { getAllStaff, getStaffById } from "./staff-queries";
 
 // Export mutations
-export {
-  createStaff,
-  updateStaff,
-  deleteStaff,
-  resendInvite,
-} from "./staff-mutations";
+export { updateStaff, deleteStaff } from "./staff-mutations";
+
+// Export invites
+export { inviteStaff, resendInvite } from "./staff-invites";

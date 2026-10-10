@@ -26,7 +26,7 @@ if (
  * callers (middleware gate and status route pre-check) build their limiter
  * from the same source config.
  *
- * All seven limiters share the same env vars and the same shape (env check
+ * Every limiter below shares the same env vars and the same shape (env check
  * → new Redis → new Ratelimit); the extracted `makeRateLimiter` closure
  * captures the per-config memo. Callers still get null when Upstash is
  * unconfigured, which they already handle as "rate limiting disabled".
@@ -111,16 +111,28 @@ export const getAuthEndpointRateLimiter = makeRateLimiter({
 });
 
 /**
- * Per-user limiter for `POST /api/staffs`. Bucket: 5 / 1 h. The
- * generic apiRateLimiter (120 / 1 min) is too loose here because a
- * compromised GM account can spray outbound invites from the verified
- * Resend domain. 5 / hour is enough for a normal hiring push and low
+ * Per-GM limiter shared by invite create and resend
+ * (`staff-invites.ts`) and by staff email changes (`staff-mutations.ts`).
+ * Bucket: 5 / 1 h. The generic apiRateLimiter (120 / 1 min) is too loose
+ * here because a compromised GM account can spray outbound invites from the
+ * verified Resend domain. 5 / hour is enough for a normal hiring push and low
  * enough to blunt an abuse burst even before the recipient-domain
  * allowlist kicks in.
  */
 export const getStaffInviteRateLimiter = makeRateLimiter({
   limiter: Ratelimit.slidingWindow(5, "1 h"),
   prefix: "ratelimit:staff-invite",
+});
+
+/**
+ * Deployment-wide cap on the same spends as `getStaffInviteRateLimiter`,
+ * keyed by a single "global" bucket. Bucket: 20 / 1 h. The per-GM limiter
+ * alone lets a stolen GM credential invite new GMs, each with its own
+ * budget; this cap bounds the total outbound mail regardless of who spends.
+ */
+export const getStaffInviteGlobalRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(20, "1 h"),
+  prefix: "ratelimit:staff-invite-global",
 });
 
 /**
