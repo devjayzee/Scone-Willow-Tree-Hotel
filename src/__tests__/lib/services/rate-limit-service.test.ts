@@ -8,6 +8,10 @@ const mockLimit = vi.fn();
 const constructed: Array<{ prefix: string; limiter: unknown }> = [];
 // Prefix of the instance each .limit() call came from, to tell limiters apart.
 const limitCallPrefixes: string[] = [];
+// [prefix, id] for each .limit() call, and per-prefix result overrides so a
+// test can refuse one bucket while allowing the others.
+const limitCalls: Array<[string, unknown]> = [];
+const limitByPrefix: Record<string, () => unknown> = {};
 vi.mock("@upstash/ratelimit", () => {
   class Ratelimit {
     prefix: string;
@@ -20,7 +24,9 @@ vi.mock("@upstash/ratelimit", () => {
     }
     limit(...args: unknown[]) {
       limitCallPrefixes.push(this.prefix);
-      return mockLimit(...args);
+      limitCalls.push([this.prefix, args[0]]);
+      const override = limitByPrefix[this.prefix];
+      return override ? override() : mockLimit(...args);
     }
     static slidingWindow(...args: unknown[]) {
       return `sliding-window:${args.join(":")}`;
@@ -45,6 +51,7 @@ import {
   getLoginRateLimiter,
   getLoginRateLimitStatus,
   getLoginPrecheckStatus,
+  consumeLoginAttempt,
   getStaffInviteRateLimiter,
   getStaffInviteGlobalRateLimiter,
 } from "@/lib/services/rate-limit-service";
@@ -53,6 +60,8 @@ describe("rate-limit-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     limitCallPrefixes.length = 0;
+    limitCalls.length = 0;
+    for (const k of Object.keys(limitByPrefix)) delete limitByPrefix[k];
   });
 
   describe("getLoginRateLimiter", () => {
@@ -183,6 +192,151 @@ describe("rate-limit-service", () => {
 
       expect(status).toEqual({ limited: false, remaining: 999, resetAt: 0 });
       expect(mockLimit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getLoginPrecheckStatus with a device cookie", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("returns the not-applicable sentinel without reading the IP bucket", async () => {
+      mockLimit.mockResolvedValue({ success: true });
+      mockGetRemaining.mockResolvedValue({ remaining: 0, reset: 2_700_000 });
+
+      const status = await getLoginPrecheckStatus("203.0.113.7", true);
+
+      expect(status).toEqual({ limited: false, remaining: 999, resetAt: 0 });
+      expect(mockGetRemaining).not.toHaveBeenCalled();
+    });
+
+    it("still applies the status-endpoint gate (a trip is a 429, not a status)", async () => {
+      mockLimit.mockResolvedValue({ success: false });
+
+      await expect(getLoginPrecheckStatus("203.0.113.7", true)).rejects.toThrow(
+        RateLimitError,
+      );
+      expect(mockGetRemaining).not.toHaveBeenCalled();
+    });
+
+    it("reads the IP bucket as before when hasDeviceCookie is false", async () => {
+      mockLimit.mockResolvedValue({ success: true });
+      mockGetRemaining.mockResolvedValue({ remaining: 2, reset: 1_800_000 });
+
+      const status = await getLoginPrecheckStatus("203.0.113.7", false);
+
+      expect(status).toEqual({ limited: false, remaining: 2, resetAt: 1_800_000 });
+      expect(mockGetRemaining).toHaveBeenCalledWith("203.0.113.7");
+    });
+  });
+
+  describe("getLoginTrustedRateLimiter", () => {
+    it("is a singleton on a 10 / 15 m sliding window under ratelimit:login-trusted", async () => {
+      vi.resetModules();
+      constructed.length = 0;
+
+      const mod = await import("@/lib/services/rate-limit-service");
+      const a = mod.getLoginTrustedRateLimiter();
+      expect(a).not.toBeNull();
+      expect(mod.getLoginTrustedRateLimiter()).toBe(a);
+      expect(constructed).toEqual([
+        expect.objectContaining({
+          prefix: "ratelimit:login-trusted",
+          limiter: "sliding-window:10:15 m",
+        }),
+      ]);
+    });
+  });
+
+  describe("consumeLoginAttempt", () => {
+    const ok = () => ({ success: true });
+    const refused = () => ({ success: false });
+    const email = "victim@example.com";
+    const ip = "203.0.113.7";
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("untrusted: spends the IP bucket, then the email bucket, and allows", async () => {
+      mockLimit.mockResolvedValue({ success: true });
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+
+      expect(allowed).toBe(true);
+      expect(limitCalls).toEqual([
+        ["ratelimit:login", ip],
+        ["ratelimit:login-email", email],
+      ]);
+    });
+
+    it("untrusted: an IP refusal returns false WITHOUT spending the email bucket", async () => {
+      limitByPrefix["ratelimit:login"] = refused;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+
+      expect(allowed).toBe(false);
+      expect(limitCalls).toEqual([["ratelimit:login", ip]]);
+    });
+
+    it("untrusted: an email refusal returns false", async () => {
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = refused;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+
+      expect(allowed).toBe(false);
+    });
+
+    it("trusted: spends only the shared trusted bucket, keyed by the email, and allows", async () => {
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+      // IP and email buckets are full; a trusted device must not care.
+      limitByPrefix["ratelimit:login"] = refused;
+      limitByPrefix["ratelimit:login-email"] = refused;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" });
+
+      expect(allowed).toBe(true);
+      expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+    });
+
+    it("trusted: a refusal returns false and still touches only the trusted bucket", async () => {
+      limitByPrefix["ratelimit:login-trusted"] = refused;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" });
+
+      expect(allowed).toBe(false);
+      expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+    });
+
+    it("trusted: the nonce does not enter the key, so different devices share one bucket", async () => {
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+
+      await consumeLoginAttempt({ email, ip, deviceNonce: "device-a" });
+      await consumeLoginAttempt({ email, ip, deviceNonce: "device-b" });
+      await consumeLoginAttempt({ email: "colleague@example.com", ip, deviceNonce: "device-a" });
+
+      expect(limitCalls).toEqual([
+        ["ratelimit:login-trusted", email],
+        ["ratelimit:login-trusted", email],
+        ["ratelimit:login-trusted", "colleague@example.com"],
+      ]);
+    });
+
+    it("allows the attempt, spending nothing, when Upstash is unconfigured", async () => {
+      vi.resetModules();
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+      const mod = await import("@/lib/services/rate-limit-service");
+
+      expect(
+        await mod.consumeLoginAttempt({ email, ip, deviceNonce: null }),
+      ).toBe(true);
+      expect(
+        await mod.consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" }),
+      ).toBe(true);
+      expect(limitCalls).toEqual([]);
     });
   });
 

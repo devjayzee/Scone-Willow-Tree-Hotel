@@ -21,7 +21,7 @@
  * env var (`"1"` on Vercel, unset otherwise). Do NOT use
  * `NEXT_PUBLIC_VERCEL_ENV` — that's exposed to the client bundle.
  */
-export function getClientIp(req: Request): string {
+export function getClientIp(req: Pick<Request, "headers">): string {
   if (process.env.VERCEL === "1") {
     const realIp = req.headers.get("x-real-ip");
     if (realIp) {

@@ -114,4 +114,26 @@ describe("getClientIp", () => {
       expect(getClientIp(req)).toBe("127.0.0.1");
     });
   });
+
+  describe("accepts a bare { headers } object (authorize() has no Request)", () => {
+    it("prefers x-real-ip on Vercel", () => {
+      process.env.VERCEL = "1";
+      const ip = getClientIp({
+        headers: new Headers({
+          "x-real-ip": "203.0.113.7",
+          "x-forwarded-for": "6.6.6.6, 10.0.0.1",
+        }),
+      });
+
+      expect(ip).toBe("203.0.113.7");
+    });
+
+    it("uses the rightmost x-forwarded-for entry off Vercel", () => {
+      const ip = getClientIp({
+        headers: new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.7" }),
+      });
+
+      expect(ip).toBe("203.0.113.7");
+    });
+  });
 });

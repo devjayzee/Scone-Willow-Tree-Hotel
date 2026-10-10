@@ -6,7 +6,6 @@ import { getClientIp } from "@/lib/utils/get-client-ip";
 import {
   getApiRateLimiter,
   getAuthEndpointRateLimiter,
-  getLoginRateLimiter,
   getSessionEndpointRateLimiter,
 } from "@/lib/services/rate-limit-service";
 import { logger } from "@/lib/logger";
@@ -195,8 +194,8 @@ async function apiRateLimitMiddleware(
 // Paths under /api/auth/** that we own and want IP-rate-limited.
 // forgot-password self-limits (dual key needs the body); rate-limit-status
 // is limited by getLoginPrecheckStatus in the rate-limit service, which
-// answers a gate trip with 429; NextAuth internals and the credentials
-// callback are handled elsewhere.
+// answers a gate trip with 429; the credentials callback is limited inside
+// `authorize` (src/lib/auth.ts), where the trusted-device cookie is known.
 const AUTH_ENDPOINT_LIMITED_EXACT = new Set([
   "/api/auth/reset-password",
   "/api/auth/setup-password",
@@ -269,31 +268,6 @@ async function sessionEndpointRateLimitMiddleware(
   return tooManyRequests("Too many requests. Please slow down.", result);
 }
 
-// Rate limiting middleware for auth endpoints
-async function rateLimitMiddleware(req: NextRequest): Promise<NextResponse | null> {
-  const path = req.nextUrl.pathname;
-
-  // Only rate limit POST to credentials callback
-  if (path === "/api/auth/callback/credentials" && req.method === "POST") {
-    const rateLimiter = getLoginRateLimiter();
-
-    if (rateLimiter) {
-      const ip = getClientIp(req);
-      const { success, limit, reset, remaining } = await rateLimiter.limit(ip);
-
-      if (!success) {
-        return tooManyRequests("Too many login attempts. Please try again later.", {
-          limit,
-          remaining,
-          reset,
-        });
-      }
-    }
-  }
-
-  return null; // Continue to next middleware
-}
-
 // Auth middleware using withAuth
 const authMiddleware = withAuth(
   function middleware(req) {
@@ -354,12 +328,6 @@ export default async function proxy(req: NextRequest) {
   // touches auth, rate limiting, or the route handler.
   const oversized = await enforceBodySizeCap(req);
   if (oversized) return oversized;
-
-  // Check rate limiting first for auth endpoints
-  const rateLimitResponse = await rateLimitMiddleware(req);
-  if (rateLimitResponse) {
-    return rateLimitResponse;
-  }
 
   // Per-user cap on /api/auth/session (NextAuth's session poll endpoint
   // hits Prisma every call; must run before apiRateLimitMiddleware's

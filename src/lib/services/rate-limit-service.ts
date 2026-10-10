@@ -23,9 +23,10 @@ if (
 /**
  * Per-process singleton factories for Upstash-backed rate limiters. Vercel
  * edge + serverless runtimes each get their own module graph — instances are
- * not shared across runtimes. That's fine: state lives in Redis, and both
- * callers (middleware gate and status route pre-check) build their limiter
- * from the same source config.
+ * not shared across runtimes. That's fine: state lives in Redis, and every
+ * caller builds its limiter from the same source config. The login limiters
+ * (IP, email, trusted) are spent by `consumeLoginAttempt` inside `authorize`;
+ * the status route pre-check only reads them.
  *
  * Every limiter below shares the same env vars and the same shape (env check
  * → new Redis → new Ratelimit); the extracted `makeRateLimiter` closure
@@ -73,6 +74,19 @@ export const getLoginRateLimiter = makeRateLimiter({
 export const getLoginEmailRateLimiter = makeRateLimiter({
   limiter: Ratelimit.slidingWindow(10, "15 m"),
   prefix: "ratelimit:login-email",
+});
+
+/**
+ * Trusted-device login limiter, used inside `authorize()` for browsers
+ * holding a valid trusted-device cookie. Key: the normalized email alone, so
+ * one shared bucket per account caps every trusted device for that email
+ * together, separate from the IP and email buckets. With the untrusted path,
+ * one account gets at most 10 trusted plus 10 untrusted password checks per
+ * 15 min. Bucket: 10 / 15 min.
+ */
+export const getLoginTrustedRateLimiter = makeRateLimiter({
+  limiter: Ratelimit.slidingWindow(10, "15 m"),
+  prefix: "ratelimit:login-trusted",
 });
 
 /**
@@ -164,6 +178,42 @@ export const getSessionEndpointRateLimiter = makeRateLimiter({
 export type { LoginRateLimitStatus };
 
 /**
+ * Spends one login attempt; returns false when the attempt is refused.
+ * - trusted (deviceNonce set): the shared trusted bucket only (key = email, not
+ *   the nonce), never the IP or email bucket. One bucket per account caps every
+ *   trusted device for that email together, so one account gets at most 10
+ *   trusted plus 10 untrusted password checks per 15 min.
+ * - untrusted: IP bucket (`ratelimit:login`, key = ip, so the pre-check keeps
+ *   reading it); if refused, return false WITHOUT spending the email bucket;
+ *   otherwise the email bucket.
+ * - a null limiter (Upstash unset in dev) skips that check.
+ */
+export async function consumeLoginAttempt(input: {
+  email: string;
+  ip: string;
+  deviceNonce: string | null;
+}): Promise<boolean> {
+  if (input.deviceNonce) {
+    const trusted = getLoginTrustedRateLimiter();
+    if (!trusted) return true;
+    const { success } = await trusted.limit(input.email);
+    return success;
+  }
+
+  const ipLimiter = getLoginRateLimiter();
+  if (ipLimiter) {
+    const { success } = await ipLimiter.limit(input.ip);
+    if (!success) return false;
+  }
+  const emailLimiter = getLoginEmailRateLimiter();
+  if (emailLimiter) {
+    const { success } = await emailLimiter.limit(input.email);
+    if (!success) return false;
+  }
+  return true;
+}
+
+/**
  * Read-only status check for the login-page pre-check. Does NOT consume a
  * token (uses `getRemaining`, not `limit`). When Upstash is unconfigured
  * returns the historical sentinel from the old inline route (limited: false,
@@ -186,10 +236,13 @@ export async function getLoginRateLimitStatus(
  * it does not consume a login token. The status-endpoint gate (60 / 1 min per
  * IP) stops a flood from burning Upstash quota; a trip throws `RateLimitError`
  * (429) rather than a fake "limited" status, so the login form can tell
- * "unknown" from a real lockout (ADR-008).
+ * "unknown" from a real lockout (ADR-008). `hasDeviceCookie` means the
+ * client skips the IP bucket, so it gets the "not applicable" sentinel
+ * (`{ limited: false, remaining: 999, resetAt: 0 }`) without reading it.
  */
 export async function getLoginPrecheckStatus(
   ip: string,
+  hasDeviceCookie = false,
 ): Promise<LoginRateLimitStatus> {
   const gate = getRateLimitStatusLimiter();
   if (gate) {
@@ -197,6 +250,9 @@ export async function getLoginPrecheckStatus(
     if (!success) {
       throw new RateLimitError("Too many requests. Try again shortly.");
     }
+  }
+  if (hasDeviceCookie) {
+    return { limited: false, remaining: 999, resetAt: 0 };
   }
   return getLoginRateLimitStatus(ip);
 }
