@@ -272,6 +272,26 @@ describe("Password Reset Service", () => {
       expect(ttlMs).toBeLessThanOrEqual(SETUP_TOKEN_TTL_HOURS * 3_600_000);
     });
 
+    it("voids prior unused SETUP tokens before inserting the new one", async () => {
+      mockUserFindUnique.mockResolvedValue({ id: "u1" });
+
+      await issueSetupTokenForUser("u1");
+
+      expect(mockTokenUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: "u1",
+            purpose: "SETUP",
+            usedAt: null,
+          }),
+          data: { usedAt: expect.any(Date) },
+        })
+      );
+      expect(mockTokenUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTokenCreate.mock.invocationCallOrder[0]
+      );
+    });
+
     it("throws NotFoundError for an unknown user", async () => {
       mockUserFindUnique.mockResolvedValue(null);
 

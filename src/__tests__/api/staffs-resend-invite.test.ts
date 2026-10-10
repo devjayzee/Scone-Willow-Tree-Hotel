@@ -1,37 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
-import { NotFoundError, BusinessRuleError } from "@/lib/errors";
+import { NextRequest, after } from "next/server";
+import {
+  NotFoundError,
+  BusinessRuleError,
+  ValidationError,
+  RateLimitError,
+} from "@/lib/errors";
 
 const mockGetServerSession = vi.fn();
 const mockResendInvite = vi.fn();
-const mockSend = vi.fn();
-const mockLoggerError = vi.fn();
 
-const { mockAfterCallbacks } = vi.hoisted(() => ({
-  mockAfterCallbacks: [] as Array<() => Promise<unknown>>,
-}));
-
-async function flushAfter() {
-  const pending = mockAfterCallbacks.splice(0);
-  for (const cb of pending) {
-    await cb();
-  }
-}
-
+// after() is passed through to the service as deferSend; the route itself
+// never schedules work, so a stub is enough to assert identity.
 vi.mock("next/server", async () => {
   const actual = await vi.importActual<typeof import("next/server")>(
     "next/server"
   );
-  return {
-    ...actual,
-    after: (task: unknown) => {
-      if (typeof task === "function") {
-        mockAfterCallbacks.push(task as () => Promise<unknown>);
-      } else {
-        mockAfterCallbacks.push(async () => task);
-      }
-    },
-  };
+  return { ...actual, after: vi.fn() };
 });
 
 vi.mock("next-auth", () => ({
@@ -42,23 +27,8 @@ vi.mock("@/lib/services/staff", () => ({
   resendInvite: (...args: unknown[]) => mockResendInvite(...args),
 }));
 
-vi.mock("@/lib/email/email-transport", () => ({
-  getEmailTransport: () => ({
-    send: (...args: unknown[]) => mockSend(...args),
-  }),
-}));
-
 vi.mock("@/lib/auth", () => ({
   authOptions: {},
-}));
-
-vi.mock("@/lib/logger", () => ({
-  logger: {
-    error: (...args: unknown[]) => mockLoggerError(...args),
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
 }));
 
 import { POST } from "@/app/api/staffs/[id]/resend-invite/route";
@@ -82,7 +52,6 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAfterCallbacks.length = 0;
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -112,27 +81,17 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
     expect(mockResendInvite).not.toHaveBeenCalled();
   });
 
-  it("schedules the invite email via after() and returns { ok: true } for GENERAL_MANAGER", async () => {
+  it("delegates to resendInvite with the id, the GM id and after(), and returns { ok: true }", async () => {
     mockGetServerSession.mockResolvedValue(gmSession);
-    mockResendInvite.mockResolvedValue({
-      user: { id: "u1", email: "invitee@example.com", firstName: "Ivy" },
-      setupToken: "raw-token",
-    });
+    mockResendInvite.mockResolvedValue(undefined);
 
     const response = await POST(makeRequest(), makeParams("u1"));
     const data = await response.json();
 
     expect(response.status).toBe(200);
     expect(data).toEqual({ ok: true });
-    expect(mockResendInvite).toHaveBeenCalledWith("u1", "u-gm");
-    expect(mockSend).not.toHaveBeenCalled();
-    expect(mockAfterCallbacks).toHaveLength(1);
-
-    await flushAfter();
-
-    expect(mockSend).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "invitee@example.com" })
-    );
+    expect(mockResendInvite).toHaveBeenCalledTimes(1);
+    expect(mockResendInvite).toHaveBeenCalledWith("u1", "u-gm", after);
   });
 
   it("returns 404 when the user doesn't exist", async () => {
@@ -142,7 +101,6 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
     const response = await POST(makeRequest(), makeParams("ghost"));
 
     expect(response.status).toBe(404);
-    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("returns 400 when the staff member is already active", async () => {
@@ -156,10 +114,9 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
     const response = await POST(makeRequest(), makeParams("u1"));
 
     expect(response.status).toBe(400);
-    expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("returns 400 BUSINESS_RULE_VIOLATION and schedules no email for a deactivated account", async () => {
+  it("passes the service deactivated-account refusal through as 400 BUSINESS_RULE_VIOLATION", async () => {
     mockGetServerSession.mockResolvedValue(gmSession);
     mockResendInvite.mockRejectedValue(
       new BusinessRuleError(
@@ -172,29 +129,33 @@ describe("POST /api/staffs/[id]/resend-invite", () => {
 
     expect(response.status).toBe(400);
     expect(JSON.stringify(data)).toContain("BUSINESS_RULE_VIOLATION");
-    expect(mockAfterCallbacks).toHaveLength(0);
-    expect(mockSend).not.toHaveBeenCalled();
   });
 
-  it("still returns 200 and logs when the invite email fails to send", async () => {
+  it("passes the service's allowlist refusal through as 400", async () => {
     mockGetServerSession.mockResolvedValue(gmSession);
-    mockResendInvite.mockResolvedValue({
-      user: { id: "u1", email: "invitee@example.com", firstName: "Ivy" },
-      setupToken: "raw-token",
-    });
-    mockSend.mockRejectedValue(new Error("smtp down"));
+    mockResendInvite.mockRejectedValue(
+      new ValidationError(
+        "Recipient email domain is not allowed on this deployment."
+      )
+    );
 
     const response = await POST(makeRequest(), makeParams("u1"));
+    const data = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(mockLoggerError).not.toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(data.code).toBe("VALIDATION_ERROR");
+  });
 
-    await flushAfter();
-
-    expect(mockLoggerError).toHaveBeenCalledWith(
-      "Failed to resend staff invite email",
-      expect.any(Error),
-      { staffId: "u1" }
+  it("passes the service's rate-limit refusal through as 429", async () => {
+    mockGetServerSession.mockResolvedValue(gmSession);
+    mockResendInvite.mockRejectedValue(
+      new RateLimitError("Too many staff invites. Try again later.")
     );
+
+    const response = await POST(makeRequest(), makeParams("u1"));
+    const data = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(data.code).toBe("RATE_LIMITED");
   });
 });
