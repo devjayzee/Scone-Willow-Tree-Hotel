@@ -2,6 +2,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import type { LoginRateLimitStatus } from "@/types/auth";
 import { SESSION_POLL_INTERVAL_SECONDS } from "@/lib/constants/auth";
+import { RateLimitError } from "@/lib/errors";
 
 // Fail loud at server boot when Upstash is unconfigured in production.
 // Without this guard the factories below silently return null and every
@@ -139,9 +140,8 @@ export const getStaffInviteGlobalRateLimiter = makeRateLimiter({
  * IP-keyed cap on the public `GET /api/auth/rate-limit-status` endpoint.
  * Bucket: 60 / 1 min — generous enough for the login page's
  * ~2 pre-checks per attempt without any UX hit, but enough to blunt a
- * flood that would otherwise burn Upstash quota. Enforced softly: on
- * denial the route returns the same `LoginRateLimitStatus` shape it
- * would on a real login-limit hit, so the pre-check UI doesn't break.
+ * flood that would otherwise burn Upstash quota. On denial the route
+ * answers 429 (see `getLoginPrecheckStatus`), never a fake lockout.
  */
 export const getRateLimitStatusLimiter = makeRateLimiter({
   limiter: Ratelimit.slidingWindow(60, "1 m"),
@@ -179,4 +179,24 @@ export async function getLoginRateLimitStatus(
   }
   const { remaining, reset } = await limiter.getRemaining(ip);
   return { limited: remaining === 0, remaining, resetAt: reset };
+}
+
+/**
+ * Login-page pre-check behind `GET /api/auth/rate-limit-status`. Read-only:
+ * it does not consume a login token. The status-endpoint gate (60 / 1 min per
+ * IP) stops a flood from burning Upstash quota; a trip throws `RateLimitError`
+ * (429) rather than a fake "limited" status, so the login form can tell
+ * "unknown" from a real lockout (ADR-008).
+ */
+export async function getLoginPrecheckStatus(
+  ip: string,
+): Promise<LoginRateLimitStatus> {
+  const gate = getRateLimitStatusLimiter();
+  if (gate) {
+    const { success } = await gate.limit(ip);
+    if (!success) {
+      throw new RateLimitError("Too many requests. Try again shortly.");
+    }
+  }
+  return getLoginRateLimitStatus(ip);
 }

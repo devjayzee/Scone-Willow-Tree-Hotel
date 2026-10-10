@@ -43,12 +43,21 @@ export function useLoginForm() {
     setIsLoading(true);
     setError("");
 
+    // Act only on definite answers: a failed status fetch means "unknown",
+    // never "locked out".
+    const isLockedOut = (s: { limited: boolean; resetAt: number }) =>
+      s.limited === true && s.resetAt > Date.now();
+
     try {
-      const rateLimit = await fetchLoginRateLimitStatus();
-      if (rateLimit.limited) {
-        applyLockout(rateLimit.resetAt);
-        setIsLoading(false);
-        return;
+      try {
+        const rateLimit = await fetchLoginRateLimitStatus();
+        if (isLockedOut(rateLimit)) {
+          applyLockout(rateLimit.resetAt);
+          setIsLoading(false);
+          return;
+        }
+      } catch {
+        // Pre-check unavailable (429, 500, network): go ahead to signIn.
       }
 
       const result = await signIn("credentials", {
@@ -59,15 +68,21 @@ export function useLoginForm() {
       });
 
       if (result?.error) {
-        const status = await fetchLoginRateLimitStatus();
-        if (status.limited) {
-          applyLockout(status.resetAt);
-        } else {
-          setRemaining(
-            status.remaining >= LIMITER_DISABLED_REMAINING
-              ? null
-              : status.remaining
-          );
+        try {
+          const status = await fetchLoginRateLimitStatus();
+          if (isLockedOut(status)) {
+            applyLockout(status.resetAt);
+          } else {
+            setRemaining(
+              status.remaining >= LIMITER_DISABLED_REMAINING
+                ? null
+                : status.remaining
+            );
+            setError(result.error);
+          }
+        } catch {
+          // Count unknown: show the sign-in error and no remaining count.
+          setRemaining(null);
           setError(result.error);
         }
         setIsLoading(false);
@@ -77,6 +92,7 @@ export function useLoginForm() {
       router.push("/bookings");
       router.refresh();
     } catch {
+      setRemaining(null);
       setError("An unexpected error occurred");
       setIsLoading(false);
     }

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordStrengthIndicator } from "@/components/ui/password-strength-indicator";
 import { Check } from "lucide-react";
-import { useInviteToken } from "@/hooks/auth";
+import { AuthApiError, useInviteToken } from "@/hooks/auth";
 import { useSetupPasswordForm } from "@/hooks/use-setup-password-form";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { authInputClasses } from "@/components/auth/auth-input-classes";
@@ -46,21 +46,12 @@ function SetupPasswordContent() {
     handleSubmit,
   } = useSetupPasswordForm(token ?? "");
 
-  if (!token || invalidToken || invite.isError) {
-    return (
-      <ExpiredLinkScreen
-        description="This invite link is invalid or has expired. Ask a manager to send you a new invitation."
-        primaryHref="/login"
-        primaryLabel="Back to sign in"
-      />
-    );
-  }
+  const inviteNotFound =
+    invite.error instanceof AuthApiError && invite.error.status === 404;
 
-  if (invite.isPending) {
-    return <InviteSkeleton />;
-  }
-
-  if (done) {
+  // Checked first: the token is spent after setup, so a later invite refetch
+  // can 404 and must not replace the success screen.
+  if (done && invite.data) {
     return (
       <div className="text-center">
         <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-success bg-success/15">
@@ -80,6 +71,51 @@ function SetupPasswordContent() {
         </Button>
       </div>
     );
+  }
+
+  if (!token || invalidToken || inviteNotFound) {
+    return (
+      <ExpiredLinkScreen
+        description="This invite link is invalid or has expired. Ask a manager to send you a new invitation."
+        primaryHref="/login"
+        primaryLabel="Back to sign in"
+      />
+    );
+  }
+
+  if (invite.isError && !invite.data) {
+    return (
+      <div className="text-center">
+        <h1 className="font-display text-4xl leading-[1.1] font-semibold text-foreground">
+          Couldn&apos;t load your invite
+        </h1>
+        <p
+          role="alert"
+          className="mt-2.5 text-[15px] leading-relaxed text-muted-foreground"
+        >
+          Check your connection and try again.
+        </p>
+        <Button
+          type="button"
+          onClick={() => invite.refetch()}
+          disabled={invite.isFetching}
+          className="mt-8 h-12 w-full rounded-lg text-[15px] font-semibold transition-[filter] hover:brightness-[1.12]"
+        >
+          Try again
+        </Button>
+        <Button
+          asChild
+          variant="ghost"
+          className="mt-3 h-12 w-full rounded-lg text-[15px] font-semibold"
+        >
+          <Link href="/login">Back to sign in</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (invite.isPending) {
+    return <InviteSkeleton />;
   }
 
   return (

@@ -81,8 +81,11 @@ vi.mock("@/lib/logger", () => ({
 process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
+import { Readable } from "node:stream";
 import proxy from "@/proxy";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+
+type NextInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
 type Token = {
   role?: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
@@ -91,9 +94,9 @@ type Token = {
 
 // Minimal NextRequest shim — the middleware only reads .headers, .method,
 // .nextUrl.pathname/.searchParams, .url, .cookies.getAll(), and .nextauth.token. Defaults a
-// `content-length: "0"` header on body-carrying methods so the
-// enforceBodySizeCap doesn't 411 tests that aren't exercising it;
-// the body-size-cap suite overrides this explicitly.
+// `content-length: "0"` header on body-carrying methods because the shim has
+// no clone() or body for enforceBodySizeCap to measure when the header is
+// missing; the body-size-cap suite builds real NextRequests for that case.
 function buildReq(opts: {
   path: string;
   method?: string;
@@ -580,25 +583,367 @@ describe("proxy", () => {
       expect(response.status).not.toBe(413);
     });
 
-    it("returns 411 when a POST omits Content-Length (chunked bypass)", async () => {
-      // Bypass buildReq's default content-length by constructing the
-      // request inline — this test is explicitly about the missing
-      // header case.
-      const req = {
-        url: "http://localhost/api/bookings",
-        method: "POST",
-        headers: new Headers(),
-        nextUrl: { pathname: "/api/bookings" },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
+    // Production shape: a real Request whose headers carry no content-length
+    // (Vercel strips Content-Length: 0; a streamed body may arrive without
+    // one). The cap must measure the body instead of refusing the request.
+    describe("without a content-length header", () => {
+      const MAX = 100_000;
 
-      const response = (await proxy(req)) as NextResponse;
-      const data = await response.json();
+      function noLengthReq(
+        method: string,
+        body?: string | ReadableStream<Uint8Array>,
+      ) {
+        const init: RequestInit & { duplex?: "half" } = { method };
+        if (body !== undefined) {
+          init.body = body;
+          if (typeof body !== "string") init.duplex = "half";
+        }
+        const req = new NextRequest(
+          new Request("http://localhost/api/bookings", init),
+        );
+        expect(req.headers.get("content-length")).toBeNull();
+        return req;
+      }
 
-      expect(response.status).toBe(411);
-      expect(data.error).toMatch(/content-length required/i);
-      // Cap runs before the rate limiter
-      expect(mockLimit).not.toHaveBeenCalled();
+      function streamOf(...chunks: string[]) {
+        const encoder = new TextEncoder();
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+            controller.close();
+          },
+        });
+      }
+
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+        it(`passes a bodiless ${method} through to the rest of the proxy`, async () => {
+          const response = (await proxy(noLengthReq(method))) as NextResponse;
+
+          expect(response.status).not.toBe(411);
+          expect(response.status).not.toBe(413);
+          // Reached the api rate limiter, i.e. fell through the cap
+          expect(mockLimit).toHaveBeenCalledTimes(1);
+        });
+      }
+
+      it("passes a small body through", async () => {
+        const req = noLengthReq("POST", JSON.stringify({ guest: "Ada" }));
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).not.toBe(411);
+        expect(response.status).not.toBe(413);
+        expect(mockLimit).toHaveBeenCalledTimes(1);
+      });
+
+      it("passes a body of exactly the cap", async () => {
+        const response = (await proxy(
+          noLengthReq("POST", "a".repeat(MAX)),
+        )) as NextResponse;
+
+        expect(response.status).not.toBe(411);
+        expect(response.status).not.toBe(413);
+        expect(mockLimit).toHaveBeenCalledTimes(1);
+      });
+
+      it("returns 413 for a body one byte over the cap", async () => {
+        const response = (await proxy(
+          noLengthReq("POST", "a".repeat(MAX + 1)),
+        )) as NextResponse;
+        const data = await response.json();
+
+        expect(response.status).toBe(413);
+        expect(data.error).toMatch(/too large/i);
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("returns 413 for a large string body and skips the rate limiter", async () => {
+        const response = (await proxy(
+          noLengthReq("PUT", "a".repeat(MAX * 3)),
+        )) as NextResponse;
+        const data = await response.json();
+
+        expect(response.status).toBe(413);
+        expect(data.error).toMatch(/too large/i);
+        // Cap runs before the rate limiter
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("returns 413 for a chunked stream body over the cap", async () => {
+        const chunk = "a".repeat(40_000);
+        const req = noLengthReq("POST", streamOf(chunk, chunk, chunk));
+
+        const response = (await proxy(req)) as NextResponse;
+        const data = await response.json();
+
+        expect(response.status).toBe(413);
+        expect(data.error).toMatch(/too large/i);
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("passes a chunked stream body at or under the cap", async () => {
+        const req = noLengthReq("POST", streamOf("a".repeat(50_000), "a".repeat(50_000)));
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).not.toBe(411);
+        expect(response.status).not.toBe(413);
+        expect(mockLimit).toHaveBeenCalledTimes(1);
+      });
+
+      it("leaves the original string body readable in full after passing", async () => {
+        const payload = JSON.stringify({ guest: "Ada", note: "x".repeat(5_000) });
+        const req = noLengthReq("POST", payload);
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).not.toBe(411);
+        expect(response.status).not.toBe(413);
+        expect(await req.text()).toBe(payload);
+      });
+
+      it("leaves the original stream body readable in full after passing", async () => {
+        const req = noLengthReq("POST", streamOf("hello ", "chunked ", "world"));
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).not.toBe(411);
+        expect(response.status).not.toBe(413);
+        expect(await req.text()).toBe("hello chunked world");
+      });
+
+      // A refusal that waits on the body hangs the request, so every test
+      // below races proxy() against a 1s timer and fails with a clear message.
+      async function settled(promise: Promise<unknown>, ms = 1_000) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("proxy did not settle")), ms);
+        });
+        try {
+          return (await Promise.race([promise, timeout])) as NextResponse;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      // Production shape: Next's adapter builds the request from a URL plus a
+      // Node stream body (no Request wrapper), which undici turns into a byte
+      // stream. `body` is cast to BodyInit because lib.dom does not list Node
+      // Readable as one; undici accepts it at runtime.
+      function nodeStreamReq(chunkCount: number, chunkSize: number) {
+        const chunk = Buffer.alloc(chunkSize, "a");
+        const body = Readable.from(Array.from({ length: chunkCount }, () => chunk));
+        const init: NextInit & { duplex: "half" } = {
+          method: "POST",
+          body: body as unknown as BodyInit,
+          duplex: "half",
+        };
+        const req = new NextRequest("http://localhost/api/bookings", init);
+        expect(req.headers.get("content-length")).toBeNull();
+        return req;
+      }
+
+      // Same production shape as nodeStreamReq, for a caller-supplied body.
+      function nodeBodyReq(
+        body: Readable,
+        { method = "POST", signal }: { method?: string; signal?: AbortSignal } = {},
+      ) {
+        const init: NextInit & { duplex: "half" } = {
+          method,
+          body: body as unknown as BodyInit,
+          duplex: "half",
+          signal,
+        };
+        const req = new NextRequest("http://localhost/api/bookings", init);
+        expect(req.headers.get("content-length")).toBeNull();
+        return req;
+      }
+
+      describe("production-shaped Node stream body", () => {
+        it("returns 413 for a 1 MB body that keeps streaming past the cap", async () => {
+          const response = await settled(proxy(nodeStreamReq(25, 40_000)));
+          const data = await response.json();
+
+          expect(response.status).toBe(413);
+          expect(data.error).toBe("Request body too large");
+          expect(mockLimit).not.toHaveBeenCalled();
+        });
+
+        it("passes a body at or under the cap", async () => {
+          const response = await settled(proxy(nodeStreamReq(2, 40_000)));
+
+          expect(response.status).not.toBe(411);
+          expect(response.status).not.toBe(413);
+          expect(mockLimit).toHaveBeenCalledTimes(1);
+        });
+
+        // On `next start` every POST/PUT/PATCH/DELETE gets a body stream, even
+        // when empty, so the Request-wrapped bodiless tests above never take
+        // this path.
+        for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+          it(`passes an empty Node stream ${method} through`, async () => {
+            const req = nodeBodyReq(Readable.from([]), { method });
+
+            const response = await settled(proxy(req));
+
+            expect(response.status).not.toBe(411);
+            expect(response.status).not.toBe(413);
+            expect(mockLimit).toHaveBeenCalledTimes(1);
+          });
+        }
+
+        it("returns 400 when the client aborts while a never-ended Node stream is measured", async () => {
+          const controller = new AbortController();
+          const body = new Readable({ read() {} });
+          body.push(Buffer.alloc(100)); // never push(null)
+          const req = nodeBodyReq(body, { signal: controller.signal });
+
+          const pending = proxy(req);
+          // Let the cap read the first chunk and block on the next read
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          controller.abort();
+
+          const response = await settled(pending);
+          const data = await response.json();
+
+          expect(response.status).toBe(400);
+          expect(data.error).toBe("Invalid request body");
+          expect(mockLimit).not.toHaveBeenCalled();
+          body.destroy();
+        });
+
+        // Tee cancels its source only when both branches are cancelled, so
+        // these fail if abandonBody stops cancelling req.body.
+        it("cancels the source stream after a 413", async () => {
+          const onDestroy = vi.fn();
+          const body = new Readable({
+            read() {
+              this.push(Buffer.alloc(40_000));
+            },
+            destroy(err, cb) {
+              onDestroy();
+              cb(err);
+            },
+          });
+
+          const response = await settled(proxy(nodeBodyReq(body)));
+
+          expect(response.status).toBe(413);
+          await vi.waitFor(() => expect(onDestroy).toHaveBeenCalled());
+        });
+
+        // A Node Readable is not used here: undici cancels it through
+        // iterator.return(), which queues behind the pending read of a stalled
+        // stream, so its destroy only runs once the client socket is torn down.
+        // A web-stream source reports the cancel straight away.
+        it("cancels the source stream after an abort 400", async () => {
+          const cancel = vi.fn();
+          const controller = new AbortController();
+          const body = new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new Uint8Array(100)); // one small chunk, never closes
+            },
+            cancel,
+          });
+          const req = new NextRequest("http://localhost/api/bookings", {
+            method: "POST",
+            body,
+            duplex: "half",
+            signal: controller.signal,
+          } as NextInit & { duplex: "half" });
+
+          const pending = proxy(req);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          controller.abort();
+
+          const response = await settled(pending);
+
+          expect(response.status).toBe(400);
+          await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+        });
+      });
+
+      it("returns 413 for a default stream that keeps producing well past the cap", async () => {
+        const chunk = new Uint8Array(40_000);
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let i = 0; i < 6; i++) controller.enqueue(chunk);
+            // never closed: only a cancel can end it
+          },
+        });
+
+        const response = await settled(proxy(noLengthReq("POST", body)));
+        const data = await response.json();
+
+        expect(response.status).toBe(413);
+        expect(data.error).toBe("Request body too large");
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("returns 400 when the body stream errors immediately", async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new Error("boom"));
+          },
+        });
+
+        const response = await settled(proxy(noLengthReq("POST", body)));
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error).toBe("Invalid request body");
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("returns 400 when the body stream errors after a chunk", async () => {
+        let sent = false;
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              controller.enqueue(new Uint8Array(1_000));
+            } else {
+              controller.error(new Error("boom"));
+            }
+          },
+        });
+
+        const response = await settled(proxy(noLengthReq("POST", body)));
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error).toBe("Invalid request body");
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
+
+      it("returns 400 promptly when the client aborts while the body is being measured", async () => {
+        const controller = new AbortController();
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new Uint8Array(100)); // one small chunk, never closes
+          },
+        });
+        const init: NextInit & { duplex: "half" } = {
+          method: "POST",
+          body,
+          duplex: "half",
+          signal: controller.signal,
+        };
+        const req = new NextRequest("http://localhost/api/bookings", init);
+        expect(req.headers.get("content-length")).toBeNull();
+
+        const pending = proxy(req);
+        // Let the cap read the first chunk and block waiting for the next
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.abort();
+
+        const response = await settled(pending);
+        const data = await response.json();
+
+        expect(response.status).toBe(400);
+        expect(data.error).toBe("Invalid request body");
+        expect(mockLimit).not.toHaveBeenCalled();
+      });
     });
   });
 
