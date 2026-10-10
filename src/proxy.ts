@@ -84,7 +84,16 @@ const MANAGER_PATHS = ["/reports"];
 // runtime (booking form) use /api/rooms/available, which is open.
 const GENERAL_MANAGER_ONLY_PATHS = ["/staff", "/rooms"];
 
-function enforceBodySizeCap(req: NextRequest): NextResponse | null {
+function tooLarge(): NextResponse {
+  return NextResponse.json(
+    { error: "Request body too large" },
+    { status: 413 },
+  );
+}
+
+async function enforceBodySizeCap(
+  req: NextRequest,
+): Promise<NextResponse | null> {
   if (
     req.method === "GET" ||
     req.method === "HEAD" ||
@@ -93,23 +102,64 @@ function enforceBodySizeCap(req: NextRequest): NextResponse | null {
     return null;
   }
   const contentLength = req.headers.get("content-length");
-  // Missing content-length on a body-carrying method typically means
-  // Transfer-Encoding: chunked, which sidesteps the size check
-  // entirely. Force clients to declare a length so the cap
-  // applies uniformly. Vercel's 4.5 MB cap is still the real backstop.
-  if (contentLength === null) {
-    return NextResponse.json(
-      { error: "Content-Length required" },
-      { status: 411 },
-    );
+  if (contentLength !== null) {
+    return Number(contentLength) > MAX_BODY_BYTES ? tooLarge() : null;
   }
-  if (Number(contentLength) > MAX_BODY_BYTES) {
-    return NextResponse.json(
-      { error: "Request body too large" },
-      { status: 413 },
-    );
+  // No content-length does not mean no body: on Vercel a zero length never
+  // reaches the proxy, and chunked/streamed bodies arrive with none. Measure
+  // a clone instead of refusing; the clone keeps the proxy's request body
+  // intact. Next.js already buffers the body for the proxy
+  // (experimental.proxyClientMaxBodySize, 10 MB default), so this adds no
+  // new unbounded read of bytes. Time is not capped: a slow client is held
+  // until its body ends, as before.
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    const body = req.clone().body;
+    if (!body) return null;
+    reader = body.getReader();
+    // Next never ends or errors the body when the client drops mid-upload,
+    // so a pending read() would wait forever; req.signal is the way out.
+    const aborted = new Promise<"aborted">((resolve) => {
+      onAbort = () => resolve("aborted");
+      if (req.signal.aborted) onAbort();
+      else req.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    let total = 0;
+    for (;;) {
+      const result = await Promise.race([reader.read(), aborted]);
+      if (result === "aborted") {
+        abandonBody(reader, req);
+        return invalidBody();
+      }
+      if (result.done) return null;
+      total += result.value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        abandonBody(reader, req);
+        return tooLarge();
+      }
+    }
+  } catch {
+    // A stream error means the size can't be verified: fail closed.
+    return invalidBody();
+  } finally {
+    if (onAbort) req.signal.removeEventListener("abort", onAbort);
   }
-  return null;
+}
+
+function invalidBody(): NextResponse {
+  return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+}
+
+// Cancels the clone's reader and the original body without awaiting: once both
+// branches are cancelled the tee cancels its source, and that waits on a read
+// that never finishes if the client stalls or drops.
+function abandonBody(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  req: NextRequest,
+): void {
+  reader.cancel().catch(() => {});
+  req.body?.cancel().catch(() => {});
 }
 
 /**
@@ -302,7 +352,7 @@ const authMiddleware = withAuth(
 export default async function proxy(req: NextRequest) {
   // Body-size cap runs before anything else so an oversized payload never
   // touches auth, rate limiting, or the route handler.
-  const oversized = enforceBodySizeCap(req);
+  const oversized = await enforceBodySizeCap(req);
   if (oversized) return oversized;
 
   // Check rate limiting first for auth endpoints
