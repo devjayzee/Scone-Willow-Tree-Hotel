@@ -21,6 +21,10 @@ import {
 import { normalizeEmail } from "@/lib/validations/email";
 import { staffSelectFieldsMinimal } from "./staff-constants";
 import { logStaffUpdateAudits } from "./staff-audit";
+import {
+  assertAllowedRecipient,
+  spendInviteLimit,
+} from "./staff-invite-limits";
 
 /**
  * Create a new staff member via the invite flow.
@@ -32,9 +36,9 @@ import { logStaffUpdateAudits } from "./staff-audit";
  * an unknown-plaintext hash AND authorize short-circuits on
  * !isActive), so no schema migration to nullable password is needed.
  *
- * Returns both the created row AND the raw setup token — the caller
- * (POST /api/staffs route) uses the token to render the invite URL for
- * the email, but the token is NEVER surfaced in the API response.
+ * Returns both the created row AND the raw setup token. The only caller,
+ * inviteStaff (the invite flow), uses the token to build the invite
+ * email, and the token is NEVER surfaced in the API response.
  *
  * @throws ConflictError if email already exists
  */
@@ -101,63 +105,11 @@ export async function createStaff(
 }
 
 /**
- * Reissue a setup invite for a pending invite only.
- * issueSetupTokenForUser voids any prior unused SETUP token for this
- * user by design, so the old link 404s the moment this succeeds.
- *
- * @throws NotFoundError if user missing
- * @throws BusinessRuleError if there is no pending invite (deactivated or setup already completed)
- */
-export async function resendInvite(
-  userId: string,
-  performedBy: string
-): Promise<{
-  user: { id: string; email: string; firstName: string };
-  setupToken: string;
-}> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      isActive: true,
-      setupPending: true,
-    },
-  });
-
-  if (!user) {
-    throw new NotFoundError("Staff not found");
-  }
-
-  if (!user.setupPending) {
-    throw new BusinessRuleError(
-      user.isActive
-        ? "Cannot resend invite: this staff member has already completed setup"
-        : "This account has been deactivated. Use Activate to restore access."
-    );
-  }
-
-  const setupToken = await issueSetupTokenForUser(user.id);
-
-  await createAuditLog(
-    performedBy,
-    AuditAction.STAFF_INVITE_RESENT,
-    EntityType.STAFF,
-    user.id,
-    { reason: "Setup invite reissued via manager action" }
-  );
-
-  return {
-    user: { id: user.id, email: user.email, firstName: user.firstName },
-    setupToken,
-  };
-}
-
-/**
  * Update an existing staff member
  * @throws NotFoundError if staff member not found
  * @throws ConflictError if new email already exists
+ * @throws ValidationError if a changed email is outside the recipient-domain allowlist
+ * @throws RateLimitError if an email change is past the per-GM or deployment-wide invite limit
  * @throws BusinessRuleError if the caller tries to change their own role or deactivate themselves
  */
 export async function updateStaff(
@@ -188,6 +140,18 @@ export async function updateStaff(
     );
   }
 
+  // Drives the recipient-allowlist check, the invite-limit spend, and
+  // voiding the old address's setup/reset links.
+  const emailChanged =
+    data.email !== undefined &&
+    normalizeEmail(data.email) !== normalizeEmail(existingStaff.email);
+
+  // Same recipient-domain gate as invites. Only a changed email is checked,
+  // so legacy accounts on other domains can still be edited.
+  if (emailChanged) {
+    assertAllowedRecipient(data.email!);
+  }
+
   // Check if updating email conflicts with another user
   if (data.email && data.email !== existingStaff.email) {
     const emailConflict = await prisma.user.findUnique({
@@ -196,6 +160,15 @@ export async function updateStaff(
     if (emailConflict) {
       throw new ConflictError("Email already exists");
     }
+  }
+
+  // A changed address can receive password-reset mail, so it spends the same
+  // invite budget (per-GM and deployment-wide). A refusal writes nothing.
+  if (emailChanged) {
+    await spendInviteLimit(
+      currentUserId,
+      "Too many email changes. Try again later."
+    );
   }
 
   // Build update data. GMs cannot set another user's password directly:
@@ -221,13 +194,9 @@ export async function updateStaff(
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-  // An email change cancels outstanding setup/reset links sent to the
-  // old address, atomically with the update.
-  const emailChanged =
-    data.email !== undefined &&
-    normalizeEmail(data.email) !== normalizeEmail(existingStaff.email);
-
   const { staff, voidedCount } = await prisma.$transaction(async (tx) => {
+    // An email change cancels outstanding setup/reset links sent to the old
+    // address, atomically with the update.
     // Void tokens before the user update: consumeToken locks token then
     // user, so the same order avoids a deadlock with a concurrent redemption.
     const voidedCount = emailChanged
@@ -353,4 +322,3 @@ export async function deleteStaff(
     message: "Staff deleted successfully",
   };
 }
-

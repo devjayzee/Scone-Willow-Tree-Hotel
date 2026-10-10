@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   setupMocks,
   createMockStaff,
@@ -13,18 +13,22 @@ import {
   mockTransaction,
   mockTxClient,
   mockTxUserUpdate,
+  mockInviteLimit,
+  mockInviteGlobalLimit,
+  mockGetStaffInviteRateLimiter,
+  mockGetStaffInviteGlobalRateLimiter,
 } from "./test-utils";
 import { createAuditLog } from "@/lib/services/audit-service";
+import { ValidationError, RateLimitError } from "@/lib/errors";
 
 // Setup mocks before importing services
 setupMocks();
 
 // Import after mocks are set up
+import { createStaff } from "@/lib/services/staff/staff-mutations";
 import {
-  createStaff,
   updateStaff,
   deleteStaff,
-  resendInvite,
   NotFoundError,
   ConflictError,
   BusinessRuleError,
@@ -139,80 +143,6 @@ describe("Staff Mutations", () => {
           data: expect.objectContaining({ role: "GENERAL_MANAGER" }),
         })
       );
-    });
-  });
-
-  // ============================================================
-  // resendInvite
-  // ============================================================
-  describe("resendInvite", () => {
-    it("issues a fresh setup token for a pending invite and returns the invited user projection", async () => {
-      mockUserFindUnique.mockResolvedValue({
-        id: "u1",
-        email: "invitee@example.com",
-        firstName: "Ivy",
-        isActive: false,
-        setupPending: true,
-      });
-      mockIssueSetupTokenForUser.mockResolvedValue("fresh-token");
-
-      const result = await resendInvite("u1", "manager-1");
-
-      expect(mockUserFindUnique).toHaveBeenCalledWith({
-        where: { id: "u1" },
-        select: expect.objectContaining({ setupPending: true }),
-      });
-      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("u1");
-      expect(result).toEqual({
-        user: { id: "u1", email: "invitee@example.com", firstName: "Ivy" },
-        setupToken: "fresh-token",
-      });
-    });
-
-    it("throws NotFoundError for an unknown user", async () => {
-      mockUserFindUnique.mockResolvedValue(null);
-
-      await expect(resendInvite("ghost", "manager-1")).rejects.toThrow(
-        NotFoundError
-      );
-      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
-    });
-
-    it("throws BusinessRuleError for an already-active staff member", async () => {
-      mockUserFindUnique.mockResolvedValue({
-        id: "u1",
-        email: "active@example.com",
-        firstName: "Ann",
-        isActive: true,
-        setupPending: false,
-      });
-
-      const result = resendInvite("u1", "manager-1");
-      await expect(result).rejects.toThrow(BusinessRuleError);
-      await expect(result).rejects.toMatchObject({
-        message:
-          "Cannot resend invite: this staff member has already completed setup",
-      });
-      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
-    });
-
-    it("refuses a deactivated user who completed setup: no token, no audit", async () => {
-      mockUserFindUnique.mockResolvedValue({
-        id: "u2",
-        email: "exemployee@example.com",
-        firstName: "Eve",
-        isActive: false,
-        setupPending: false,
-      });
-
-      const result = resendInvite("u2", "manager-1");
-      await expect(result).rejects.toThrow(BusinessRuleError);
-      await expect(result).rejects.toMatchObject({
-        message:
-          "This account has been deactivated. Use Activate to restore access.",
-      });
-      expect(mockIssueSetupTokenForUser).not.toHaveBeenCalled();
-      expect(createAuditLog).not.toHaveBeenCalled();
     });
   });
 
@@ -471,6 +401,121 @@ describe("Staff Mutations", () => {
       });
     });
 
+    describe("recipient-domain allowlist on email change", () => {
+      const originalAllowlist = process.env.INVITE_DOMAIN_ALLOWLIST;
+
+      beforeEach(() => {
+        process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.test";
+      });
+
+      afterEach(() => {
+        if (originalAllowlist === undefined) {
+          delete process.env.INVITE_DOMAIN_ALLOWLIST;
+        } else {
+          process.env.INVITE_DOMAIN_ALLOWLIST = originalAllowlist;
+        }
+      });
+
+      it("T4: refuses an email change to a domain outside the allowlist: no transaction, no write, no audit", async () => {
+        const pending = createMockStaff({
+          id: "staff-1",
+          email: "pending@hotel.test",
+          isActive: false,
+          setupPending: true,
+        });
+        mockUserFindUnique
+          .mockResolvedValueOnce(pending)
+          .mockResolvedValueOnce(null); // no email conflict
+        mockUserUpdate.mockResolvedValue({
+          ...pending,
+          email: "attacker@evil.example",
+        });
+
+        const result = updateStaff(
+          "staff-1",
+          { email: "attacker@evil.example" },
+          "current-user-id"
+        );
+
+        await expect(result).rejects.toThrow(ValidationError);
+        await expect(result).rejects.toMatchObject({
+          message: "Recipient email domain is not allowed on this deployment.",
+        });
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("refuses an outside-domain email that is also taken with ValidationError, before the conflict lookup", async () => {
+        const pending = createMockStaff({
+          id: "staff-1",
+          email: "pending@hotel.test",
+          isActive: false,
+          setupPending: true,
+        });
+        const taken = createMockStaff({
+          id: "staff-2",
+          email: "taken@evil.example",
+        });
+        mockUserFindUnique
+          .mockResolvedValueOnce(pending)
+          .mockResolvedValueOnce(taken);
+
+        const result = updateStaff(
+          "staff-1",
+          { email: "taken@evil.example" },
+          "current-user-id"
+        );
+
+        await expect(result).rejects.toThrow(ValidationError);
+        await expect(result).rejects.not.toThrow(ConflictError);
+        expect(mockUserFindUnique).toHaveBeenCalledTimes(1);
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+      });
+
+      it("allows an email change to a domain inside the allowlist", async () => {
+        const pending = createMockStaff({
+          id: "staff-1",
+          email: "pending@hotel.test",
+        });
+        mockUserFindUnique
+          .mockResolvedValueOnce(pending)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({
+          ...pending,
+          email: "other@hotel.test",
+        });
+
+        const result = await updateStaff(
+          "staff-1",
+          { email: "other@hotel.test" },
+          "current-user-id"
+        );
+
+        expect(result.email).toBe("other@hotel.test");
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+      });
+
+      it("T5: allows a name edit on a legacy account whose unchanged email is outside the allowlist", async () => {
+        const legacy = createMockStaff({
+          id: "staff-1",
+          email: "legacy@old-domain.example",
+        });
+        mockUserFindUnique.mockResolvedValue(legacy);
+        mockUserUpdate.mockResolvedValue({ ...legacy, firstName: "Renamed" });
+
+        const result = await updateStaff(
+          "staff-1",
+          { firstName: "Renamed", email: legacy.email },
+          "current-user-id"
+        );
+
+        expect(result.firstName).toBe("Renamed");
+        expect(mockUserUpdate).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe("email change voids outstanding tokens", () => {
       const newEmail = "new.email@sconewillowtree.com";
 
@@ -613,6 +658,163 @@ describe("Staff Mutations", () => {
         expect(mockTxUserUpdate).not.toHaveBeenCalled();
         expect(mockUserUpdate).not.toHaveBeenCalled();
         expect(createAuditLog).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("email change spends the invite limits", () => {
+      const newEmail = "new.email@sconewillowtree.com";
+      const EMAIL_LIMIT_MESSAGE = "Too many email changes. Try again later.";
+      const originalAllowlist = process.env.INVITE_DOMAIN_ALLOWLIST;
+
+      beforeEach(() => {
+        delete process.env.INVITE_DOMAIN_ALLOWLIST;
+      });
+
+      afterEach(() => {
+        if (originalAllowlist === undefined) {
+          delete process.env.INVITE_DOMAIN_ALLOWLIST;
+        } else {
+          process.env.INVITE_DOMAIN_ALLOWLIST = originalAllowlist;
+        }
+      });
+
+      function arrangeEmailChange(row = existingStaff) {
+        mockUserFindUnique
+          .mockResolvedValueOnce(row)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({ ...row, email: newEmail });
+      }
+
+      it("E1: spends the per-GM limit keyed by currentUserId, then the global limit", async () => {
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockInviteLimit).toHaveBeenCalledTimes(1);
+        expect(mockInviteLimit).toHaveBeenCalledWith("gm-1");
+        expect(mockInviteGlobalLimit).toHaveBeenCalledTimes(1);
+        expect(mockInviteGlobalLimit).toHaveBeenCalledWith("global");
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+      });
+
+      it("E1: spends after the email-conflict lookup and before the transaction", async () => {
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        const lookupOrder = mockUserFindUnique.mock.invocationCallOrder[1];
+        const spendOrder = mockInviteLimit.mock.invocationCallOrder[0];
+        const txOrder = mockTransaction.mock.invocationCallOrder[0];
+        expect(lookupOrder).toBeLessThan(spendOrder);
+        expect(spendOrder).toBeLessThan(txOrder);
+      });
+
+      it("E2: per-GM refusal throws RateLimitError: no transaction, no write, no audit, global untouched", async () => {
+        arrangeEmailChange();
+        mockInviteLimit.mockResolvedValue({ success: false });
+
+        const result = updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        await expect(result).rejects.toThrow(RateLimitError);
+        await expect(result).rejects.toMatchObject({
+          message: EMAIL_LIMIT_MESSAGE,
+        });
+        expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("E3: global refusal throws RateLimitError: no transaction, no write, no audit", async () => {
+        arrangeEmailChange();
+        mockInviteGlobalLimit.mockResolvedValue({ success: false });
+
+        const result = updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        await expect(result).rejects.toThrow(RateLimitError);
+        await expect(result).rejects.toMatchObject({
+          message: EMAIL_LIMIT_MESSAGE,
+        });
+        expect(mockInviteLimit).toHaveBeenCalledWith("gm-1");
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["identical", "john.doe@sconewillowtree.com"],
+        ["case-only", "John.Doe@SconeWillowTree.com"],
+      ])("E4: %s email spends no limit", async (_label, sameEmail) => {
+        // A case-only diff still reaches the conflict lookup, which finds nothing.
+        mockUserFindUnique
+          .mockResolvedValueOnce(existingStaff)
+          .mockResolvedValue(null);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { email: sameEmail }, "gm-1");
+
+        expect(mockInviteLimit).not.toHaveBeenCalled();
+        expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+      });
+
+      it("E4: a non-email update spends no limit", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { firstName: "Johnny" }, "gm-1");
+
+        expect(mockInviteLimit).not.toHaveBeenCalled();
+        expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+      });
+
+      it("E5: allowlist refusal spends no limit", async () => {
+        process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.test";
+        mockUserFindUnique.mockResolvedValueOnce(existingStaff);
+
+        await expect(
+          updateStaff("staff-1", { email: "x@evil.example" }, "gm-1")
+        ).rejects.toThrow(ValidationError);
+
+        expect(mockInviteLimit).not.toHaveBeenCalled();
+        expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+      });
+
+      it("E5: email conflict spends no limit", async () => {
+        mockUserFindUnique
+          .mockResolvedValueOnce(existingStaff)
+          .mockResolvedValueOnce(createMockStaff({ id: "staff-2", email: newEmail }));
+
+        await expect(
+          updateStaff("staff-1", { email: newEmail }, "gm-1")
+        ).rejects.toThrow(ConflictError);
+
+        expect(mockInviteLimit).not.toHaveBeenCalled();
+        expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+      });
+
+      it("E6: a GM changing their own email spends their own bucket", async () => {
+        const gm = createMockStaff({
+          id: "gm-1",
+          role: "GENERAL_MANAGER",
+          email: "gm@sconewillowtree.com",
+        });
+        arrangeEmailChange(gm);
+
+        await updateStaff("gm-1", { email: newEmail }, "gm-1");
+
+        expect(mockInviteLimit).toHaveBeenCalledWith("gm-1");
+        expect(mockInviteGlobalLimit).toHaveBeenCalledWith("global");
+      });
+
+      it("skips the spend when both limiters are unconfigured", async () => {
+        mockGetStaffInviteRateLimiter.mockReturnValue(null);
+        mockGetStaffInviteGlobalRateLimiter.mockReturnValue(null);
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
       });
     });
   });

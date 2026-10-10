@@ -5,16 +5,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // pattern used in middleware.test.ts and auth.test.ts.
 const mockGetRemaining = vi.fn();
 const mockLimit = vi.fn();
+const constructed: Array<{ prefix: string; limiter: unknown }> = [];
 vi.mock("@upstash/ratelimit", () => {
   class Ratelimit {
+    constructor(opts: { prefix: string; limiter: unknown }) {
+      constructed.push(opts);
+    }
     getRemaining(...args: unknown[]) {
       return mockGetRemaining(...args);
     }
     limit(...args: unknown[]) {
       return mockLimit(...args);
     }
-    static slidingWindow() {
-      return "sliding-window-config";
+    static slidingWindow(...args: unknown[]) {
+      return `sliding-window:${args.join(":")}`;
     }
   }
   return { Ratelimit };
@@ -34,6 +38,8 @@ import {
   getApiRateLimiter,
   getLoginRateLimiter,
   getLoginRateLimitStatus,
+  getStaffInviteRateLimiter,
+  getStaffInviteGlobalRateLimiter,
 } from "@/lib/services/rate-limit-service";
 
 describe("rate-limit-service", () => {
@@ -129,6 +135,41 @@ describe("rate-limit-service", () => {
       const login = getLoginRateLimiter();
       const api = getApiRateLimiter();
       expect(api).not.toBe(login);
+    });
+  });
+
+  describe("getStaffInviteGlobalRateLimiter", () => {
+    it("is a singleton, distinct from the per-GM invite limiter", () => {
+      const a = getStaffInviteGlobalRateLimiter();
+      expect(a).not.toBeNull();
+      expect(getStaffInviteGlobalRateLimiter()).toBe(a);
+      expect(a).not.toBe(getStaffInviteRateLimiter());
+    });
+
+    it("uses a 20 / 1 h sliding window under the global prefix", async () => {
+      vi.resetModules();
+      constructed.length = 0;
+
+      const mod = await import("@/lib/services/rate-limit-service");
+      mod.getStaffInviteGlobalRateLimiter();
+
+      expect(constructed).toEqual([
+        expect.objectContaining({
+          prefix: "ratelimit:staff-invite-global",
+          limiter: "sliding-window:20:1 h",
+        }),
+      ]);
+    });
+
+    it("returns null when Upstash env vars are missing", async () => {
+      vi.resetModules();
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+
+      const mod = await import("@/lib/services/rate-limit-service");
+      expect(mod.getStaffInviteGlobalRateLimiter()).toBeNull();
+
+      vi.unstubAllEnvs();
     });
   });
 });
