@@ -30,6 +30,7 @@ vi.mock("@/lib/logger", () => ({
 
 // Import after mocks
 import { GET, POST } from "@/app/api/bookings/route";
+import { logger } from "@/lib/logger";
 
 describe("Bookings API", () => {
   const mockSession = {
@@ -237,6 +238,42 @@ describe("Bookings API", () => {
         "user-1",
         "user-1"
       );
+    });
+  });
+
+  describe("malformed JSON body", () => {
+    it("POST /api/bookings returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(mockSession);
+      const request = new Request("http://localhost/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockCreateBooking).not.toHaveBeenCalled();
+    });
+
+    it("POST /api/bookings returns 401 for a malformed body without a session", async () => {
+      mockGetServerSession.mockResolvedValue(null);
+      const request = new Request("http://localhost/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.code).toBe("UNAUTHORIZED");
+      expect(mockCreateBooking).not.toHaveBeenCalled();
     });
   });
 });

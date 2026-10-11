@@ -8,6 +8,7 @@ import {
 import { getAllBookings, createBooking } from "@/lib/services/booking";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
 import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/bookings - Get all bookings
 export async function GET(request: Request) {
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
         throw new UnauthorizedError();
       }
 
-      const body = await request.json();
+      const body = await readJsonBody(request);
       const validation = createBookingSchema.safeParse(body);
 
       if (!validation.success) {

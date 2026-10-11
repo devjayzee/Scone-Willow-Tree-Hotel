@@ -10,6 +10,7 @@ import {
   ForbiddenError,
   BusinessRuleError,
 } from "@/lib/api-error-handler";
+import { logger } from "@/lib/logger";
 
 // Mock the logger to avoid console output during tests
 vi.mock("@/lib/logger", () => ({
@@ -224,6 +225,33 @@ describe("API Error Handler", () => {
 
       expect(response.status).toBe(500);
       expect(data.code).toBe("INTERNAL_ERROR");
+    });
+  });
+
+  // ============================================================
+  // handleApiError - SyntaxError outside body parsing (now a 500)
+  // ============================================================
+  describe("handleApiError - SyntaxError", () => {
+    it("treats a SyntaxError from outside body parsing as a 500 and logs it", async () => {
+      const response = handleApiError(new SyntaxError("Unexpected token"), "x");
+      const data = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(data.code).toBe("INTERNAL_ERROR");
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it("still maps a plain Error to 500 and logs it", async () => {
+      const response = handleApiError(new Error("boom"), "x");
+
+      expect(response.status).toBe(500);
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it("still maps a TypeError to 500", async () => {
+      const response = handleApiError(new TypeError("bad"), "x");
+
+      expect(response.status).toBe(500);
     });
   });
 });

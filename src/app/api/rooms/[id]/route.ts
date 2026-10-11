@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/rooms/[id] - Get a single room (GENERAL_MANAGER only —
 // same rationale as GET /api/rooms above).
@@ -49,7 +50,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = updateRoomSchema.safeParse(body);
 
     if (!validation.success) {

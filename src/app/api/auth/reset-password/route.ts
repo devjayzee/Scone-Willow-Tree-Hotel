@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api-error-handler";
 import { AppError } from "@/lib/errors";
 import { isJsonRequest } from "@/lib/utils/is-json-request";
 import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // POST /api/auth/reset-password - Public (Rule 4 /api/auth/** exception).
 // Identity is proven by possession of a valid RESET token, not a session.
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
       if (!isJsonRequest(request)) {
         throw new AppError("Send the request as JSON.", 415);
       }
-      const body = await request.json();
+      const body = await readJsonBody(request);
       const validation = resetPasswordSchema.safeParse(body);
       if (!validation.success) {
         return handleApiError(validation.error, "resetting password");
