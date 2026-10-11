@@ -13,6 +13,7 @@ import {
   ForbiddenError,
 } from "@/lib/api-error-handler";
 import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/staffs/[id] - Get a single staff member
 export async function GET(
@@ -55,7 +56,7 @@ export async function PUT(
       }
 
       const { id } = await params;
-      const body = await request.json();
+      const body = await readJsonBody(request);
       const validation = updateStaffSchema.safeParse(body);
 
       if (!validation.success) {

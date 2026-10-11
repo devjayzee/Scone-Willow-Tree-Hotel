@@ -32,6 +32,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { GET, PUT, PATCH, DELETE } from "@/app/api/bookings/[id]/route";
+import { logger } from "@/lib/logger";
 
 const params = Promise.resolve({ id: "booking-1" });
 
@@ -245,6 +246,44 @@ describe("Bookings [id] API", () => {
       expect(response.status).toBe(200);
       expect(data.deleted).toBe(true);
       expect(mockDeleteBooking).toHaveBeenCalledWith("booking-1", gmSession.user.id);
+    });
+  });
+
+  describe("malformed JSON body", () => {
+    it("PUT returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(staffSession);
+      const request = new Request("http://localhost/api/bookings/booking-1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await PUT(request, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockUpdateBooking).not.toHaveBeenCalled();
+    });
+
+    it("PATCH returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(staffSession);
+      const request = new Request("http://localhost/api/bookings/booking-1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await PATCH(request, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockApplyBookingAction).not.toHaveBeenCalled();
     });
   });
 });

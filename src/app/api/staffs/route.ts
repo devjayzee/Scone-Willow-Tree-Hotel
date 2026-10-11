@@ -9,6 +9,7 @@ import {
   ForbiddenError,
 } from "@/lib/api-error-handler";
 import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/staffs - Get all staff members
 export async function GET() {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
         throw new ForbiddenError("Only general managers can create staff");
       }
 
-      const body = await request.json();
+      const body = await readJsonBody(request);
       const validation = createStaffSchema.safeParse(body);
 
       if (!validation.success) {

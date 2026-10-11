@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       throw new UnauthorizedError();
     }
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = createBookingSchema.safeParse(body);
     if (!validation.success) {
       return handleApiError(validation.error, "creating booking");
@@ -42,6 +42,8 @@ Requirements:
   `@/lib/errors` (never hand-roll a 401 response). Importing the error class
   from `@/lib/api-error-handler` is equivalent — it re-exports the same
   classes for convenience, and most existing routes use that shorter path.
+- Read the JSON body with `readJsonBody(request)` from
+  `@/lib/utils/read-json-body`; a malformed body becomes 400 `INVALID_JSON`.
 - Body/query validated with a zod schema from `@/lib/validations/` via
   `safeParse` before touching a service.
 - Pass session-derived values (e.g. `session.user.id`) into the service as

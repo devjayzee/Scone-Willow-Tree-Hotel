@@ -211,4 +211,23 @@ describe("Staffs API", () => {
       expect(data.code).toBe("RATE_LIMITED");
     });
   });
+
+  describe("malformed JSON body", () => {
+    it("POST /api/staffs returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      const request = new Request("http://localhost/api/staffs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(mockInviteStaff).not.toHaveBeenCalled();
+    });
+  });
 });

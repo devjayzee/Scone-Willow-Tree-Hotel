@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/rooms - Get all rooms (GENERAL_MANAGER only — the /rooms
 // page is GM-only; booking/calendar pages fetch rooms server-side via
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       throw new ForbiddenError("Only general managers can create rooms");
     }
 
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = createRoomSchema.safeParse(body);
 
     if (!validation.success) {
