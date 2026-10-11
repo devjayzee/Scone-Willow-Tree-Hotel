@@ -30,6 +30,7 @@ vi.mock("@/lib/logger", () => ({
 
 // Import after mocks
 import { GET, POST } from "@/app/api/rooms/route";
+import { logger } from "@/lib/logger";
 
 describe("Rooms API", () => {
   const mockStaffSession = {
@@ -236,6 +237,26 @@ describe("Rooms API", () => {
 
       expect(response.status).toBe(500);
       expect(data.code).toBe("INTERNAL_ERROR");
+    });
+  });
+
+  describe("malformed JSON body", () => {
+    it("POST /api/rooms returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(mockManagerSession);
+      const request = new Request("http://localhost/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockCreateRoom).not.toHaveBeenCalled();
     });
   });
 });

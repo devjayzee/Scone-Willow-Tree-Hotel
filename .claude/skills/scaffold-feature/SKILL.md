@@ -135,6 +135,7 @@ import { authOptions } from "@/lib/auth";
 import { create<Domain>Schema } from "@/lib/validations/<domain>";
 import { getAll<Domain>s, create<Domain> } from "@/lib/services/<domain>-service";
 import { handleApiError, UnauthorizedError } from "@/lib/api-error-handler";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 export async function GET() {
   try {
@@ -154,7 +155,7 @@ export async function POST(request: Request) {
     if (!session?.user) {
       throw new UnauthorizedError();
     }
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = create<Domain>Schema.safeParse(body);
     if (!validation.success) {
       return handleApiError(validation.error, "creating <domain>");

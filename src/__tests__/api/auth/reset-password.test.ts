@@ -18,6 +18,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { POST } from "@/app/api/auth/reset-password/route";
+import { logger } from "@/lib/logger";
 
 function makeRequest(body: unknown) {
   return new Request("http://localhost/api/auth/reset-password", {
@@ -207,5 +208,37 @@ describe("POST /api/auth/reset-password content type", () => {
     expect(response.status).toBe(200);
     expect(mockConsumeResetToken).toHaveBeenCalledTimes(1);
     expect(mockTrustCompletingBrowser).toHaveBeenCalledTimes(1);
+  });
+
+  describe("malformed JSON body", () => {
+    it("returns 400 INVALID_JSON for a malformed body", async () => {
+      const request = new Request("http://localhost/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockConsumeResetToken).not.toHaveBeenCalled();
+    });
+
+    it("refuses a malformed body sent as text/plain with 415, not 400", async () => {
+      const request = new Request("http://localhost/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(415);
+      expect(mockConsumeResetToken).not.toHaveBeenCalled();
+    });
   });
 });

@@ -30,6 +30,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { POST } from "@/app/api/auth/forgot-password/route";
+import { logger } from "@/lib/logger";
 
 function makeRequest(body: unknown) {
   return new Request("http://localhost/api/auth/forgot-password", {
@@ -80,5 +81,24 @@ describe("POST /api/auth/forgot-password (route)", () => {
     expect(response.status).toBe(429);
     expect(data.code).toBe("RATE_LIMITED");
     expect(data.error).toMatch(/too many reset requests/i);
+  });
+
+  describe("malformed JSON body", () => {
+    it("returns 400 INVALID_JSON for a malformed body", async () => {
+      const request = new Request("http://localhost/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockRequestPasswordReset).not.toHaveBeenCalled();
+    });
   });
 });
