@@ -10,6 +10,7 @@ import {
   mockUserDelete,
   mockIssueSetupTokenForUser,
   mockVoidActiveTokens,
+  mockRevokeTrustedDevices,
   mockTransaction,
   mockTxClient,
   mockTxUserUpdate,
@@ -661,6 +662,172 @@ describe("Staff Mutations", () => {
       });
     });
 
+    describe("trusted-device revocation", () => {
+      const newEmail = "new.email@sconewillowtree.com";
+      const oldEmail = existingStaff.email;
+      const originalAllowlist = process.env.INVITE_DOMAIN_ALLOWLIST;
+
+      beforeEach(() => {
+        delete process.env.INVITE_DOMAIN_ALLOWLIST;
+      });
+
+      afterEach(() => {
+        if (originalAllowlist === undefined) {
+          delete process.env.INVITE_DOMAIN_ALLOWLIST;
+        } else {
+          process.env.INVITE_DOMAIN_ALLOWLIST = originalAllowlist;
+        }
+      });
+
+      function arrangeEmailChange() {
+        mockUserFindUnique
+          .mockResolvedValueOnce(existingStaff)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({ ...existingStaff, email: newEmail });
+      }
+
+      function arrangeUpdate() {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+      }
+
+      it("S7: an email change revokes the NEW email once, after the spend and before the transaction", async () => {
+        arrangeEmailChange();
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(newEmail);
+        const spendOrder = mockInviteGlobalLimit.mock.invocationCallOrder[0];
+        const revokeOrder = mockRevokeTrustedDevices.mock.invocationCallOrder[0];
+        const txOrder = mockTransaction.mock.invocationCallOrder[0];
+        expect(spendOrder).toBeLessThan(revokeOrder);
+        expect(revokeOrder).toBeLessThan(txOrder);
+      });
+
+      it("S7: a refused invite spend revokes nothing", async () => {
+        arrangeEmailChange();
+        mockInviteLimit.mockResolvedValue({ success: false });
+
+        await expect(
+          updateStaff("staff-1", { email: newEmail }, "gm-1")
+        ).rejects.toThrow(RateLimitError);
+
+        expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+      });
+
+      it("S8: a deactivation revokes the account's devices before the transaction", async () => {
+        arrangeUpdate();
+
+        await updateStaff("staff-1", { isActive: false }, "gm-1");
+
+        expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(oldEmail);
+        expect(mockRevokeTrustedDevices.mock.invocationCallOrder[0]).toBeLessThan(
+          mockTransaction.mock.invocationCallOrder[0]
+        );
+      });
+
+      it.each([
+        ["an email change", { email: newEmail }],
+        ["a deactivation", { isActive: false }],
+      ])(
+        "S9: a revoke error on %s aborts with no transaction, no write and no audit",
+        async (_label, input) => {
+          if ("email" in input) arrangeEmailChange();
+          else arrangeUpdate();
+          mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+          await expect(updateStaff("staff-1", input, "gm-1")).rejects.toThrow(
+            "redis down"
+          );
+
+          expect(mockTransaction).not.toHaveBeenCalled();
+          expect(mockUserUpdate).not.toHaveBeenCalled();
+          expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+          expect(createAuditLog).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each([
+        ["a name edit", { firstName: "Johnny" }, existingStaff],
+        ["a role edit", { role: "MANAGER" as const }, existingStaff],
+        [
+          "an isActive: true edit on an already-active account",
+          { isActive: true },
+          existingStaff,
+        ],
+      ])("S11 (guard): %s does not revoke", async (_label, input, row) => {
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+
+        await updateStaff("staff-1", input, "gm-1");
+
+        expect(mockUserUpdate).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+      });
+
+      describe("reactivation", () => {
+        const inactive = { ...existingStaff, isActive: false };
+
+        it("S12: reactivating an inactive account revokes its email before the transaction", async () => {
+          mockUserFindUnique.mockResolvedValue(inactive);
+          mockUserUpdate.mockResolvedValue(existingStaff);
+
+          await updateStaff("staff-1", { isActive: true }, "gm-1");
+
+          expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+          expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(oldEmail);
+          expect(
+            mockRevokeTrustedDevices.mock.invocationCallOrder[0]
+          ).toBeLessThan(mockTransaction.mock.invocationCallOrder[0]);
+        });
+
+        it("S12: a revoke error on reactivation aborts with no transaction, no write and no audit", async () => {
+          mockUserFindUnique.mockResolvedValue(inactive);
+          mockUserUpdate.mockResolvedValue(existingStaff);
+          mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+          await expect(
+            updateStaff("staff-1", { isActive: true }, "gm-1")
+          ).rejects.toThrow("redis down");
+
+          expect(mockTransaction).not.toHaveBeenCalled();
+          expect(mockUserUpdate).not.toHaveBeenCalled();
+          expect(createAuditLog).not.toHaveBeenCalled();
+        });
+
+        it("S12: an email change with a reactivation revokes the new email exactly once", async () => {
+          mockUserFindUnique
+            .mockResolvedValueOnce(inactive)
+            .mockResolvedValueOnce(null);
+          mockUserUpdate.mockResolvedValue({ ...existingStaff, email: newEmail });
+
+          await updateStaff(
+            "staff-1",
+            { email: newEmail, isActive: true },
+            "gm-1"
+          );
+
+          expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+          expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(newEmail);
+        });
+      });
+
+      it("S13 (guard): an email change with a deactivation revokes the new email exactly once", async () => {
+        arrangeEmailChange();
+
+        await updateStaff(
+          "staff-1",
+          { email: newEmail, isActive: false },
+          "gm-1"
+        );
+
+        expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(newEmail);
+      });
+    });
+
     describe("email change spends the invite limits", () => {
       const newEmail = "new.email@sconewillowtree.com";
       const EMAIL_LIMIT_MESSAGE = "Too many email changes. Try again later.";
@@ -895,6 +1062,53 @@ describe("Staff Mutations", () => {
         deactivated: true,
         message: "Staff deactivated (has active bookings)",
       });
+    });
+
+    it("S10: the deactivate branch revokes the account's devices before the update", async () => {
+      const staffWithBookings = {
+        ...createMockStaff({ id: "staff-1" }),
+        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+      };
+      mockUserFindUnique.mockResolvedValue(staffWithBookings);
+      mockUserUpdate.mockResolvedValue({ ...staffWithBookings, isActive: false });
+
+      await deleteStaff("staff-1", "current-user-id");
+
+      expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+      expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(
+        staffWithBookings.email
+      );
+      expect(mockRevokeTrustedDevices.mock.invocationCallOrder[0]).toBeLessThan(
+        mockUserUpdate.mock.invocationCallOrder[0]
+      );
+    });
+
+    it("S10: a revoke error in the deactivate branch aborts with no write", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        ...createMockStaff({ id: "staff-1" }),
+        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+      });
+      mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+      await expect(deleteStaff("staff-1", "current-user-id")).rejects.toThrow(
+        "redis down"
+      );
+
+      expect(mockUserUpdate).not.toHaveBeenCalled();
+      expect(mockUserDelete).not.toHaveBeenCalled();
+    });
+
+    it("S10: the hard-delete branch does not revoke", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        ...createMockStaff({ id: "staff-1" }),
+        bookings: [],
+      });
+      mockUserDelete.mockResolvedValue(undefined);
+
+      await deleteStaff("staff-1", "current-user-id");
+
+      expect(mockUserDelete).toHaveBeenCalled();
+      expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
     });
 
     it("should allow deletion when staff only has cancelled/checked-out bookings", async () => {

@@ -81,8 +81,11 @@ vi.mock("@/lib/logger", () => ({
 
 const mockRateLimit = vi.fn();
 const mockGetForgotPasswordRateLimiter = vi.fn();
+const mockRevokeTrustedDevices = vi.fn();
 
 vi.mock("@/lib/services/rate-limit-service", () => ({
+  revokeTrustedDevices: (...args: unknown[]) =>
+    mockRevokeTrustedDevices(...args),
   getForgotPasswordRateLimiter: (...args: unknown[]) =>
     mockGetForgotPasswordRateLimiter(...args),
 }));
@@ -150,6 +153,126 @@ describe("Password Reset Service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockTokenUpdateMany.mockResolvedValue({ count: 0 });
+    mockRevokeTrustedDevices.mockReset().mockResolvedValue(null);
+  });
+
+  describe("trusted-device revocation on a password write", () => {
+    const input = { rawToken: "raw-token", newPassword: "NewStr0ng!Pass" };
+
+    it("P1: a reset revokes the user's devices once, before the transaction", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+
+      await consumeResetToken(input);
+
+      expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+      expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe("jane@example.com");
+      expect(mockRevokeTrustedDevices.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTransaction.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("P2: a setup revokes the user's devices once, before the transaction", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      await consumeSetupToken(input);
+
+      expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+      expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe("jane@example.com");
+      expect(mockRevokeTrustedDevices.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTransaction.mock.invocationCallOrder[0],
+      );
+    });
+
+    it.each([
+      ["reset", () => consumeResetToken(input), validToken()],
+      ["setup", () => consumeSetupToken(input), pendingSetupToken()],
+    ])(
+      "P5: a %s returns the userId, the token user's email and the second revoke wrote",
+      async (_label, run, token) => {
+        mockTokenFindUnique.mockResolvedValue(token);
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+        mockUserUpdateMany.mockResolvedValue({ count: 1 });
+        mockRevokeTrustedDevices.mockResolvedValue(1_800_000_123);
+
+        await expect(run()).resolves.toEqual({
+          userId: "u1",
+          email: "jane@example.com",
+          validAfter: 1_800_000_123,
+        });
+      },
+    );
+
+    it.each([
+      ["reset", () => consumeResetToken(input), validToken()],
+      ["setup", () => consumeSetupToken(input), pendingSetupToken()],
+    ])(
+      "P5: a %s returns validAfter null when revoke returns null",
+      async (_label, run, token) => {
+        mockTokenFindUnique.mockResolvedValue(token);
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+        mockUserUpdateMany.mockResolvedValue({ count: 1 });
+        mockRevokeTrustedDevices.mockResolvedValue(null);
+
+        await expect(run()).resolves.toEqual({
+          userId: "u1",
+          email: "jane@example.com",
+          validAfter: null,
+        });
+      },
+    );
+
+    it.each([
+      ["reset", () => consumeResetToken(input), validToken()],
+      ["setup", () => consumeSetupToken(input), pendingSetupToken()],
+    ])(
+      "P3: a revoke error aborts a %s with no database write",
+      async (_label, run, token) => {
+        mockTokenFindUnique.mockResolvedValue(token);
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+        mockUserUpdateMany.mockResolvedValue({ count: 1 });
+        mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+        await expect(run()).rejects.toThrow("redis down");
+
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockTokenUpdateMany).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(mockUserUpdateMany).not.toHaveBeenCalled();
+        expect(mockAuditLogCreate).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ["reset: missing token", () => consumeResetToken(input), null],
+      [
+        "reset: expired token",
+        () => consumeResetToken(input),
+        validToken({ expiresAt: new Date(Date.now() - 1_000) }),
+      ],
+      [
+        "setup: used token",
+        () => consumeSetupToken(input),
+        pendingSetupToken({ usedAt: new Date() }),
+      ],
+      [
+        "setup: non-pending user",
+        () => consumeSetupToken(input),
+        validToken({ purpose: "SETUP" }),
+      ],
+    ])(
+      "P4 (guard): an invalid token (%s) revokes nothing",
+      async (_label, run, token) => {
+        mockTokenFindUnique.mockResolvedValue(token);
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+
+        await expect(run()).rejects.toThrow(NotFoundError);
+
+        expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("hashToken", () => {
@@ -347,7 +470,11 @@ describe("Password Reset Service", () => {
         newPassword: "NewStr0ng!Pass",
       });
 
-      expect(result).toEqual({ userId: "u1" });
+      expect(result).toEqual({
+        userId: "u1",
+        email: "jane@example.com",
+        validAfter: null,
+      });
       expect(mockTransaction).toHaveBeenCalledTimes(1);
 
       // Atomic single-use guard: conditional updateMany on the token row.
@@ -546,7 +673,11 @@ describe("Password Reset Service", () => {
           rawToken: "raw-token",
           newPassword: "NewStr0ng!Pass",
         })
-      ).resolves.toEqual({ userId: "u1" });
+      ).resolves.toEqual({
+        userId: "u1",
+        email: "jane@example.com",
+        validAfter: null,
+      });
 
       expect(mockUserUpdateMany).not.toHaveBeenCalled();
       const data = mockUserUpdate.mock.calls[0][0].data;

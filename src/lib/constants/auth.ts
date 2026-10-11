@@ -66,3 +66,12 @@ export const DEVICE_COOKIE_MAX_AGE = 180 * 24 * 60 * 60;
 
 /** Most device entries kept in one trusted-device cookie. */
 export const DEVICE_COOKIE_MAX_ENTRIES = 10;
+
+/**
+ * TTL of the `trusted-device:valid-after:<email>` key: the cookie lifetime
+ * plus a minute, so the key outlives every entry it can revoke.
+ */
+export const DEVICE_REVOCATION_TTL = DEVICE_COOKIE_MAX_AGE + 60;
+
+/** Longest the sign-in path waits on the valid-after read before treating the entry as revoked. */
+export const DEVICE_REVOCATION_READ_TIMEOUT_MS = 1000;

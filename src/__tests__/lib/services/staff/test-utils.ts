@@ -14,6 +14,9 @@ export const mockUserDelete = vi.fn();
 export const mockIssueSetupTokenForUser = vi.fn();
 export const mockVoidActiveTokens = vi.fn();
 
+// rate-limit-service mock: trusted-device revocation (email change / deactivation)
+export const mockRevokeTrustedDevices = vi.fn();
+
 // Invite guards: limiter, email transport and logger mocks (inviteStaff / resendInvite)
 export const mockInviteLimit = vi.fn();
 export const mockGetStaffInviteRateLimiter = vi.fn();
@@ -94,6 +97,8 @@ export function setupMocks() {
   }));
 
   vi.mock("@/lib/services/rate-limit-service", () => ({
+    revokeTrustedDevices: (...args: unknown[]) =>
+      mockRevokeTrustedDevices(...args),
     getStaffInviteRateLimiter: (...args: unknown[]) =>
       mockGetStaffInviteRateLimiter(...args),
     getStaffInviteGlobalRateLimiter: (...args: unknown[]) =>
@@ -163,6 +168,7 @@ export function resetMocks() {
   mockUserDelete.mockReset();
   mockIssueSetupTokenForUser.mockReset();
   mockVoidActiveTokens.mockReset();
+  mockRevokeTrustedDevices.mockReset();
   mockInviteLimit.mockReset();
   mockGetStaffInviteRateLimiter.mockReset();
   mockInviteGlobalLimit.mockReset();
@@ -175,6 +181,7 @@ export function resetMocks() {
   mockHash.mockResolvedValue("hashed_password");
   mockIssueSetupTokenForUser.mockResolvedValue("stub-setup-token");
   mockVoidActiveTokens.mockResolvedValue(0);
+  mockRevokeTrustedDevices.mockResolvedValue(undefined);
   // Default: limiter configured and allowing; email transport succeeds.
   mockInviteLimit.mockResolvedValue({ success: true });
   mockGetStaffInviteRateLimiter.mockReturnValue({ limit: mockInviteLimit });
