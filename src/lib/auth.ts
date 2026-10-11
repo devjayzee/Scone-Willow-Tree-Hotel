@@ -51,19 +51,22 @@ export const authOptions: NextAuthOptions = {
         const email = normalizeEmail(credentials.email);
 
         // Login rate limits live here, not in the proxy, because a browser
-        // holding a trusted-device cookie for this email skips the IP and
-        // email buckets and spends the shared per-account trusted bucket instead. The check
+        // holding a trusted-device cookie for this email (not revoked) skips
+        // the IP and email buckets and spends the shared per-account trusted bucket instead. The check
         // runs before the user lookup, so the refusal is identical for
         // emails with and without accounts.
         const jar = await cookies();
         const oldDeviceCookie = jar.get(DEVICE_COOKIE_NAME)?.value;
-        const deviceNonce = findTrustedDevice(oldDeviceCookie, email);
+        const deviceIat = findTrustedDevice(oldDeviceCookie, email)?.iat ?? null;
         // NextAuth hands over a plain headers record; Headers accepts it.
         const ip = getClientIp({ headers: new Headers(req?.headers ?? {}) });
-        if (!(await consumeLoginAttempt({ email, ip, deviceNonce }))) {
+        if (!(await consumeLoginAttempt({ email, ip, deviceIat }))) {
           throw new Error(SIGN_IN_PAUSED);
         }
 
+        // Taken before the lookup, so only a sign-in that reads the row
+        // between the revoke and the commit can mint a newer iat.
+        const attemptSec = Math.floor(Date.now() / 1000);
         const user = await prisma.user.findUnique({
           where: { email },
         });
@@ -103,7 +106,7 @@ export const authOptions: NextAuthOptions = {
         try {
           jar.set(
             DEVICE_COOKIE_NAME,
-            issueDeviceCookie(oldDeviceCookie, email),
+            issueDeviceCookie(oldDeviceCookie, email, attemptSec),
             DEVICE_COOKIE_OPTIONS,
           );
         } catch (error) {

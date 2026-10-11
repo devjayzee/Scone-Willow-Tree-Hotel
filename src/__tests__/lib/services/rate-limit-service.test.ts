@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // pattern used in middleware.test.ts and auth.test.ts.
 const mockGetRemaining = vi.fn();
 const mockLimit = vi.fn();
+const mockRedisGet = vi.fn();
+const mockRedisSet = vi.fn();
 const constructed: Array<{ prefix: string; limiter: unknown }> = [];
 // Prefix of the instance each .limit() call came from, to tell limiters apart.
 const limitCallPrefixes: string[] = [];
@@ -36,7 +38,14 @@ vi.mock("@upstash/ratelimit", () => {
 });
 
 vi.mock("@upstash/redis", () => {
-  class Redis {}
+  class Redis {
+    get(...args: unknown[]) {
+      return mockRedisGet(...args);
+    }
+    set(...args: unknown[]) {
+      return mockRedisSet(...args);
+    }
+  }
   return { Redis };
 });
 
@@ -47,6 +56,11 @@ process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
 import { RateLimitError } from "@/lib/errors";
 import {
+  DEVICE_REVOCATION_READ_TIMEOUT_MS,
+  DEVICE_REVOCATION_TTL,
+} from "@/lib/constants/auth";
+import {
+  revokeTrustedDevices,
   getApiRateLimiter,
   getLoginRateLimiter,
   getLoginRateLimitStatus,
@@ -59,6 +73,8 @@ import {
 describe("rate-limit-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRedisGet.mockReset().mockResolvedValue(null); // Upstash: absent key -> null
+    mockRedisSet.mockReset().mockResolvedValue("OK");
     limitCallPrefixes.length = 0;
     limitCalls.length = 0;
     for (const k of Object.keys(limitByPrefix)) delete limitByPrefix[k];
@@ -253,6 +269,8 @@ describe("rate-limit-service", () => {
     const refused = () => ({ success: false });
     const email = "victim@example.com";
     const ip = "203.0.113.7";
+    const IAT = 1_800_000_000;
+    const KEY = "trusted-device:valid-after:victim@example.com";
 
     afterEach(() => {
       vi.unstubAllEnvs();
@@ -261,7 +279,7 @@ describe("rate-limit-service", () => {
     it("untrusted: spends the IP bucket, then the email bucket, and allows", async () => {
       mockLimit.mockResolvedValue({ success: true });
 
-      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: null });
 
       expect(allowed).toBe(true);
       expect(limitCalls).toEqual([
@@ -274,7 +292,7 @@ describe("rate-limit-service", () => {
       limitByPrefix["ratelimit:login"] = refused;
       limitByPrefix["ratelimit:login-email"] = ok;
 
-      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: null });
 
       expect(allowed).toBe(false);
       expect(limitCalls).toEqual([["ratelimit:login", ip]]);
@@ -284,7 +302,7 @@ describe("rate-limit-service", () => {
       limitByPrefix["ratelimit:login"] = ok;
       limitByPrefix["ratelimit:login-email"] = refused;
 
-      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: null });
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: null });
 
       expect(allowed).toBe(false);
     });
@@ -295,7 +313,7 @@ describe("rate-limit-service", () => {
       limitByPrefix["ratelimit:login"] = refused;
       limitByPrefix["ratelimit:login-email"] = refused;
 
-      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" });
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
 
       expect(allowed).toBe(true);
       expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
@@ -304,23 +322,228 @@ describe("rate-limit-service", () => {
     it("trusted: a refusal returns false and still touches only the trusted bucket", async () => {
       limitByPrefix["ratelimit:login-trusted"] = refused;
 
-      const allowed = await consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" });
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
 
       expect(allowed).toBe(false);
       expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
     });
 
-    it("trusted: the nonce does not enter the key, so different devices share one bucket", async () => {
+    it("trusted: the iat does not enter the key, so different devices share one bucket", async () => {
       limitByPrefix["ratelimit:login-trusted"] = ok;
 
-      await consumeLoginAttempt({ email, ip, deviceNonce: "device-a" });
-      await consumeLoginAttempt({ email, ip, deviceNonce: "device-b" });
-      await consumeLoginAttempt({ email: "colleague@example.com", ip, deviceNonce: "device-a" });
+      await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+      await consumeLoginAttempt({ email, ip, deviceIat: IAT + 1 });
+      await consumeLoginAttempt({ email: "colleague@example.com", ip, deviceIat: IAT });
 
       expect(limitCalls).toEqual([
         ["ratelimit:login-trusted", email],
         ["ratelimit:login-trusted", email],
         ["ratelimit:login-trusted", "colleague@example.com"],
+      ]);
+    });
+
+    it("trusted: no valid-after key means trusted, after exactly one GET", async () => {
+      mockRedisGet.mockResolvedValue(null);
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+      limitByPrefix["ratelimit:login"] = refused;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(true);
+      expect(mockRedisGet).toHaveBeenCalledTimes(1);
+      expect(mockRedisGet).toHaveBeenCalledWith(KEY);
+      expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+    });
+
+    it("trusted: iat after valid-after is trusted, after exactly one GET", async () => {
+      mockRedisGet.mockResolvedValue(IAT - 1);
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(true);
+      expect(mockRedisGet).toHaveBeenCalledTimes(1);
+      expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+    });
+
+    it("stale: iat equal to valid-after is untrusted (strict compare): IP then email bucket", async () => {
+      mockRedisGet.mockResolvedValue(IAT);
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(true);
+      expect(limitCalls).toEqual([
+        ["ratelimit:login", ip],
+        ["ratelimit:login-email", email],
+      ]);
+    });
+
+    it("stale: iat before valid-after is untrusted and is refused when the IP bucket is full", async () => {
+      mockRedisGet.mockResolvedValue(IAT + 100);
+      limitByPrefix["ratelimit:login"] = refused;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(false);
+      expect(limitCalls).toEqual([["ratelimit:login", ip]]);
+    });
+
+    it("no GET when there is no verified entry (deviceIat null)", async () => {
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      await consumeLoginAttempt({ email, ip, deviceIat: null });
+
+      expect(mockRedisGet).not.toHaveBeenCalled();
+    });
+
+    it("accepts valid-after as a numeric string", async () => {
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      mockRedisGet.mockResolvedValue(String(IAT - 1));
+      await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+      expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+
+      limitCalls.length = 0;
+      mockRedisGet.mockResolvedValue(String(IAT));
+      await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+      expect(limitCalls).toEqual([
+        ["ratelimit:login", ip],
+        ["ratelimit:login-email", email],
+      ]);
+    });
+
+    it("an unparsable valid-after counts as everything revoked", async () => {
+      mockRedisGet.mockResolvedValue("not-a-number");
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(true);
+      expect(limitCalls).toEqual([
+        ["ratelimit:login", ip],
+        ["ratelimit:login-email", email],
+      ]);
+    });
+
+    it.each([
+      ["true", true],
+      ["false", false],
+      ["an empty array", []],
+      ["an object", {}],
+      ["an empty string", ""],
+      ["a string with a leading space", " 5"],
+      ["a decimal string", "1.5"],
+      ["a string with trailing junk", "12abc"],
+      ["NaN", NaN],
+      ["Infinity", Infinity],
+    ])(
+      "strict parser: a valid-after of %s counts as revoked (untrusted path)",
+      async (_label, raw) => {
+        mockRedisGet.mockResolvedValue(raw);
+        limitByPrefix["ratelimit:login-trusted"] = ok;
+        limitByPrefix["ratelimit:login"] = ok;
+        limitByPrefix["ratelimit:login-email"] = ok;
+
+        await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+        expect(limitCalls).toEqual([
+          ["ratelimit:login", ip],
+          ["ratelimit:login-email", email],
+        ]);
+      },
+    );
+
+    it.each([
+      ["a number", IAT - 1],
+      ["a digit string", String(IAT - 1)],
+    ])(
+      "strict parser (guard): a valid-after of %s older than the entry is trusted",
+      async (_label, raw) => {
+        mockRedisGet.mockResolvedValue(raw);
+        limitByPrefix["ratelimit:login-trusted"] = ok;
+
+        await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+        expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+      },
+    );
+
+    describe("read timeout", () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      // Fake timers plus a settled flag: a failure is an assertion, never a hang.
+      const flush = async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      };
+
+      it("a GET that never resolves counts as revoked: IP then email bucket, no throw", async () => {
+        vi.useFakeTimers();
+        mockRedisGet.mockReturnValue(new Promise(() => {}));
+        limitByPrefix["ratelimit:login-trusted"] = ok;
+        limitByPrefix["ratelimit:login"] = ok;
+        limitByPrefix["ratelimit:login-email"] = ok;
+        let settled: boolean | Error | undefined;
+        const p = consumeLoginAttempt({ email, ip, deviceIat: IAT }).then(
+          (v) => (settled = v),
+          (e: Error) => (settled = e),
+        );
+
+        await vi.advanceTimersByTimeAsync(DEVICE_REVOCATION_READ_TIMEOUT_MS);
+        await flush();
+
+        expect(settled).toBe(true);
+        expect(limitCalls).toEqual([
+          ["ratelimit:login", ip],
+          ["ratelimit:login-email", email],
+        ]);
+        await p;
+      });
+
+      it("a GET that resolves just before the timeout is honored and clears the timer", async () => {
+        vi.useFakeTimers();
+        let resolveGet!: (v: unknown) => void;
+        mockRedisGet.mockReturnValue(
+          new Promise((r) => {
+            resolveGet = r;
+          }),
+        );
+        limitByPrefix["ratelimit:login-trusted"] = ok;
+        const p = consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+        await vi.advanceTimersByTimeAsync(999);
+        resolveGet(null);
+        await p;
+
+        expect(limitCalls).toEqual([["ratelimit:login-trusted", email]]);
+        expect(vi.getTimerCount()).toBe(0);
+      });
+
+      it("the timeout constant is 1000 ms", () => {
+        expect(DEVICE_REVOCATION_READ_TIMEOUT_MS).toBe(1000);
+      });
+    });
+
+    it("a GET error fails closed: untrusted path, no throw", async () => {
+      mockRedisGet.mockRejectedValue(new Error("redis down"));
+      limitByPrefix["ratelimit:login-trusted"] = ok;
+      limitByPrefix["ratelimit:login"] = ok;
+      limitByPrefix["ratelimit:login-email"] = ok;
+
+      const allowed = await consumeLoginAttempt({ email, ip, deviceIat: IAT });
+
+      expect(allowed).toBe(true);
+      expect(limitCalls).toEqual([
+        ["ratelimit:login", ip],
+        ["ratelimit:login-email", email],
       ]);
     });
 
@@ -331,12 +554,84 @@ describe("rate-limit-service", () => {
       const mod = await import("@/lib/services/rate-limit-service");
 
       expect(
-        await mod.consumeLoginAttempt({ email, ip, deviceNonce: null }),
+        await mod.consumeLoginAttempt({ email, ip, deviceIat: null }),
       ).toBe(true);
       expect(
-        await mod.consumeLoginAttempt({ email, ip, deviceNonce: "n0nce" }),
+        await mod.consumeLoginAttempt({ email, ip, deviceIat: IAT }),
       ).toBe(true);
       expect(limitCalls).toEqual([]);
+    });
+  });
+
+  describe("revokeTrustedDevices", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("writes the valid-after key with the TTL", async () => {
+      await revokeTrustedDevices("victim@example.com", 1_800_000_123);
+
+      expect(DEVICE_REVOCATION_TTL).toBe(15_552_060); // cookie max age + 60s
+      expect(mockRedisSet).toHaveBeenCalledTimes(1);
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        "trusted-device:valid-after:victim@example.com",
+        1_800_000_123,
+        { ex: DEVICE_REVOCATION_TTL },
+      );
+    });
+
+    it("normalizes the email (trim, lowercase) in the key", async () => {
+      await revokeTrustedDevices("  Victim@Example.COM ", 1_800_000_123);
+
+      expect(mockRedisSet.mock.calls[0][0]).toBe(
+        "trusted-device:valid-after:victim@example.com",
+      );
+    });
+
+    it("defaults the value to the current Unix second", async () => {
+      const before = Math.floor(Date.now() / 1000);
+      await revokeTrustedDevices("victim@example.com");
+      const after = Math.floor(Date.now() / 1000);
+
+      const value = Number(mockRedisSet.mock.calls[0][1]);
+      expect(value).toBeGreaterThanOrEqual(before);
+      expect(value).toBeLessThanOrEqual(after);
+    });
+
+    it("resolves to the explicit second it wrote", async () => {
+      await expect(
+        revokeTrustedDevices("victim@example.com", 1_800_000_123),
+      ).resolves.toBe(1_800_000_123);
+    });
+
+    it("resolves to the default current second it wrote", async () => {
+      const before = Math.floor(Date.now() / 1000);
+      const result = await revokeTrustedDevices("victim@example.com");
+      const after = Math.floor(Date.now() / 1000);
+
+      expect(result).toBe(mockRedisSet.mock.calls[0][1]);
+      expect(result).toBeGreaterThanOrEqual(before);
+      expect(result).toBeLessThanOrEqual(after);
+    });
+
+    it("does nothing when Upstash is unconfigured", async () => {
+      vi.resetModules();
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+      const mod = await import("@/lib/services/rate-limit-service");
+
+      await expect(
+        mod.revokeTrustedDevices("victim@example.com"),
+      ).resolves.toBeNull();
+      expect(mockRedisSet).not.toHaveBeenCalled();
+    });
+
+    it("propagates a SET error", async () => {
+      mockRedisSet.mockRejectedValue(new Error("redis down"));
+
+      await expect(revokeTrustedDevices("victim@example.com")).rejects.toThrow(
+        "redis down",
+      );
     });
   });
 

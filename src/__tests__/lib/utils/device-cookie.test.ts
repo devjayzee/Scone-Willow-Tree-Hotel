@@ -69,10 +69,35 @@ describe("device-cookie", () => {
       const m = await load();
 
       const value = m.issueDeviceCookie(undefined, EMAIL, T);
-      const nonce = m.findTrustedDevice(value, EMAIL, T);
+      const device = m.findTrustedDevice(value, EMAIL, T);
 
-      expect(nonce).toMatch(/^[A-Za-z0-9_-]{22}$/); // 16 bytes, base64url
-      expect(parts(entriesOf(value)[0]).nonce).toBe(nonce);
+      expect(device?.nonce).toMatch(/^[A-Za-z0-9_-]{22}$/); // 16 bytes, base64url
+      expect(parts(entriesOf(value)[0]).nonce).toBe(device?.nonce);
+    });
+
+    it("returns the nonce and the iat of the verified entry", async () => {
+      const m = await load();
+      const value = m.issueDeviceCookie(undefined, EMAIL, T);
+
+      expect(m.findTrustedDevice(value, EMAIL, T + 5)).toEqual({
+        nonce: parts(value).nonce,
+        iat: T,
+      });
+    });
+
+    it("returns the newest entry when several verify for the email", async () => {
+      const m = await load();
+      const older = m.issueDeviceCookie(undefined, EMAIL, T);
+      const newer = m.issueDeviceCookie(undefined, EMAIL, T + 100);
+      const cookie = [older, newer].join("~"); // older listed first on purpose
+
+      expect(m.findTrustedDevice(cookie, EMAIL, T + 200)).toEqual({
+        nonce: parts(newer).nonce,
+        iat: T + 100,
+      });
+      expect(m.findTrustedDevice([newer, older].join("~"), EMAIL, T + 200)?.iat).toBe(
+        T + 100,
+      );
     });
 
     it("formats an entry as <nonce>.<iat>.<sig> with a 32-byte base64url sig", async () => {
@@ -106,7 +131,7 @@ describe("device-cookie", () => {
         .update(`wt-device.v1|${EMAIL}|${nonce}|${T}`)
         .digest("base64url");
 
-      expect(m.findTrustedDevice(`${nonce}.${T}.${sig}`, EMAIL, T)).toBe(nonce);
+      expect(m.findTrustedDevice(`${nonce}.${T}.${sig}`, EMAIL, T)?.nonce).toBe(nonce);
     });
 
     it("mints a different nonce for each fresh device", async () => {
@@ -121,12 +146,12 @@ describe("device-cookie", () => {
     it("keeps the same nonce on refresh and refreshes iat without duplicating the entry", async () => {
       const m = await load();
       const first = m.issueDeviceCookie(undefined, EMAIL, T);
-      const nonce = m.findTrustedDevice(first, EMAIL, T);
+      const nonce = m.findTrustedDevice(first, EMAIL, T)?.nonce;
 
       const refreshed = m.issueDeviceCookie(first, EMAIL, T + 1000);
 
       expect(entriesOf(refreshed)).toHaveLength(1);
-      expect(m.findTrustedDevice(refreshed, EMAIL, T + 1000)).toBe(nonce);
+      expect(m.findTrustedDevice(refreshed, EMAIL, T + 1000)?.nonce).toBe(nonce);
       expect(parts(refreshed).iat).toBe(T + 1000);
     });
 
@@ -150,8 +175,8 @@ describe("device-cookie", () => {
 
       expect(entriesOf(aba)).toHaveLength(2);
       expect(parts(entriesOf(aba)[0]).iat).toBe(T + 20);
-      expect(m.findTrustedDevice(aba, "a@example.com", T + 20)).toBe(
-        m.findTrustedDevice(a, "a@example.com", T),
+      expect(m.findTrustedDevice(aba, "a@example.com", T + 20)?.nonce).toBe(
+        m.findTrustedDevice(a, "a@example.com", T)?.nonce,
       );
     });
 

@@ -19,6 +19,7 @@ import {
   voidActiveTokens,
 } from "../password-reset-service";
 import { normalizeEmail } from "@/lib/validations/email";
+import { revokeTrustedDevices } from "@/lib/services/rate-limit-service";
 import { staffSelectFieldsMinimal } from "./staff-constants";
 import { logStaffUpdateAudits } from "./staff-audit";
 import {
@@ -171,6 +172,18 @@ export async function updateStaff(
     );
   }
 
+  // Trusted devices stop counting on an email change (new address) or any
+  // real isActive change (deactivation or reactivation). Before the
+  // transaction: a Redis failure aborts the write.
+  if (emailChanged) {
+    await revokeTrustedDevices(data.email!);
+  } else if (
+    data.isActive !== undefined &&
+    data.isActive !== existingStaff.isActive
+  ) {
+    await revokeTrustedDevices(existingStaff.email);
+  }
+
   // Build update data. GMs cannot set another user's password directly:
   // rotation goes through /reset-password, which is also the
   // only writer that bumps tokenVersion (to revoke stolen JWTs after a
@@ -272,6 +285,7 @@ export async function deleteStaff(
 
   // If staff has active bookings, deactivate instead of delete
   if (staff.bookings.length > 0) {
+    await revokeTrustedDevices(staff.email);
     await prisma.user.update({
       where: { id },
       data: { isActive: false },
