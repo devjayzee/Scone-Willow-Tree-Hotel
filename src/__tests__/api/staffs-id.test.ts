@@ -31,6 +31,7 @@ vi.mock("@/lib/logger", () => ({
 
 import { RateLimitError } from "@/lib/errors";
 import { GET, PUT, DELETE } from "@/app/api/staffs/[id]/route";
+import { logger } from "@/lib/logger";
 
 const params = Promise.resolve({ id: "staff-1" });
 
@@ -236,6 +237,26 @@ describe("Staffs [id] API", () => {
 
       expect(response.status).toBe(200);
       expect(data.deactivated).toBe(true);
+    });
+  });
+
+  describe("malformed JSON body", () => {
+    it("PUT returns 400 INVALID_JSON for a malformed body", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      const request = new Request("http://localhost/api/staffs/staff-1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "{not json",
+      });
+
+      const response = await PUT(request, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.code).toBe("INVALID_JSON");
+      expect(data.error).toBe("Request body must be valid JSON");
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(mockUpdateStaff).not.toHaveBeenCalled();
     });
   });
 });

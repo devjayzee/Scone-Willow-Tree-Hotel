@@ -3,6 +3,7 @@ import { forgotPasswordSchema } from "@/lib/validations/auth-token";
 import { requestPasswordReset } from "@/lib/services/password-reset-service";
 import { handleApiError } from "@/lib/api-error-handler";
 import { getClientIp } from "@/lib/utils/get-client-ip";
+import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // POST /api/auth/forgot-password - Public (Rule 4 /api/auth/** exception).
 // Always responds 200 { ok: true } whether or not the email matches a user —
@@ -10,7 +11,7 @@ import { getClientIp } from "@/lib/utils/get-client-ip";
 // surface via handleApiError as 429.
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await readJsonBody(request);
     const validation = forgotPasswordSchema.safeParse(body);
     if (!validation.success) {
       return handleApiError(validation.error, "requesting password reset");
