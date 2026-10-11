@@ -23,6 +23,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { RateLimitError } from "@/lib/errors";
+import { DEVICE_COOKIE_NAME } from "@/lib/utils/device-cookie";
 import { GET } from "@/app/api/auth/rate-limit-status/route";
 
 describe("GET /api/auth/rate-limit-status", () => {
@@ -56,7 +57,39 @@ describe("GET /api/auth/rate-limit-status", () => {
 
     await GET(new NextRequest("http://localhost/api/auth/rate-limit-status"));
 
-    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7");
+    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7", false);
+  });
+
+  it("passes hasDeviceCookie=true when the request carries the device cookie", async () => {
+    mockGetLoginPrecheckStatus.mockResolvedValue({
+      limited: false,
+      remaining: 999,
+      resetAt: 0,
+    });
+
+    await GET(
+      new NextRequest("http://localhost/api/auth/rate-limit-status", {
+        headers: { cookie: `${DEVICE_COOKIE_NAME}=anything; other=1` },
+      }),
+    );
+
+    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7", true);
+  });
+
+  it("passes hasDeviceCookie=false when only unrelated cookies are present", async () => {
+    mockGetLoginPrecheckStatus.mockResolvedValue({
+      limited: false,
+      remaining: 5,
+      resetAt: 0,
+    });
+
+    await GET(
+      new NextRequest("http://localhost/api/auth/rate-limit-status", {
+        headers: { cookie: "next-auth.session-token=abc" },
+      }),
+    );
+
+    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7", false);
   });
 
   it("returns limited=true when the service says so", async () => {
@@ -87,7 +120,7 @@ describe("GET /api/auth/rate-limit-status", () => {
 
     expect(response.status).toBe(429);
     expect(data.code).toBe("RATE_LIMITED");
-    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7");
+    expect(mockGetLoginPrecheckStatus).toHaveBeenCalledWith("203.0.113.7", false);
   });
 
   it("returns 500 via handleApiError when the service throws", async () => {

@@ -24,6 +24,7 @@ vi.mock("@/hooks/auth", async (importOriginal) => ({
 }));
 
 import { AuthApiError } from "@/hooks/auth";
+import { SIGN_IN_PAUSED } from "@/lib/constants/auth";
 import { useLoginForm } from "@/hooks/use-login-form";
 
 // Minimal FormEvent stub — the hook only calls preventDefault().
@@ -461,6 +462,99 @@ describe("useLoginForm", () => {
       expect(result.current.error).toBe("An unexpected error occurred");
       expect(mockRouterPush).not.toHaveBeenCalled();
       expect(result.current.isLoading).toBe(false);
+    });
+  });
+
+  describe("sign-in error codes", () => {
+    const PAUSED_COPY =
+      "Too many attempts for this email. Try again later, or sign in on a device you've used before.";
+    const GENERIC_COPY = "Sign-in failed. Try again.";
+
+    const submit = async () => {
+      const { result } = renderHook(() => useLoginForm());
+      act(() => {
+        result.current.setEmail("user@example.com");
+        result.current.setPassword("correct");
+      });
+      await act(async () => {
+        await result.current.handleSubmit(submitEvent());
+      });
+      return result;
+    };
+
+    it("SignInPaused with a not-limited status shows the paused copy and no count", async () => {
+      mockFetchStatus
+        .mockResolvedValueOnce({ limited: false, remaining: 5, resetAt: 0 })
+        .mockResolvedValueOnce({ limited: false, remaining: 3, resetAt: 0 });
+      mockSignIn.mockResolvedValue({ error: SIGN_IN_PAUSED });
+
+      const result = await submit();
+
+      expect(result.current.error).toBe(PAUSED_COPY);
+      expect(result.current.remaining).toBeNull();
+      expect(result.current.lockedUntil).toBeNull();
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it("SignInPaused with the not-applicable sentinel status shows the paused copy", async () => {
+      mockFetchStatus.mockResolvedValue({ limited: false, remaining: 999, resetAt: 0 });
+      mockSignIn.mockResolvedValue({ error: SIGN_IN_PAUSED });
+
+      const result = await submit();
+
+      expect(result.current.error).toBe(PAUSED_COPY);
+      expect(result.current.remaining).toBeNull();
+    });
+
+    it("SignInPaused when the status fetch fails shows the paused copy", async () => {
+      mockFetchStatus
+        .mockResolvedValueOnce({ limited: false, remaining: 5, resetAt: 0 })
+        .mockRejectedValueOnce(new AuthApiError(429, "Too many requests"));
+      mockSignIn.mockResolvedValue({ error: SIGN_IN_PAUSED });
+
+      const result = await submit();
+
+      expect(result.current.error).toBe(PAUSED_COPY);
+      expect(result.current.remaining).toBeNull();
+      expect(result.current.lockedUntil).toBeNull();
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it("SignInPaused during a real IP lockout shows the countdown, not the paused copy", async () => {
+      const resetAt = Date.now() + 60_000;
+      mockFetchStatus
+        .mockResolvedValueOnce({ limited: false, remaining: 1, resetAt: 0 })
+        .mockResolvedValueOnce({ limited: true, remaining: 0, resetAt });
+      mockSignIn.mockResolvedValue({ error: SIGN_IN_PAUSED });
+
+      const result = await submit();
+
+      expect(result.current.lockedUntil).toBe(resetAt);
+      expect(result.current.remaining).toBe(0);
+      expect(result.current.error).toBe("");
+    });
+
+    it("an unknown error string shows the generic copy, never the raw text", async () => {
+      mockFetchStatus.mockResolvedValue({ limited: false, remaining: 5, resetAt: 0 });
+      mockSignIn.mockResolvedValue({ error: "CredentialsSignin" });
+
+      const result = await submit();
+
+      expect(result.current.error).toBe(GENERIC_COPY);
+      expect(result.current.error).not.toContain("CredentialsSignin");
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it("an unknown error string shows the generic copy when the status fetch fails too", async () => {
+      mockFetchStatus
+        .mockResolvedValueOnce({ limited: false, remaining: 5, resetAt: 0 })
+        .mockRejectedValueOnce(new Error("Failed to check rate limit"));
+      mockSignIn.mockResolvedValue({ error: "Configuration" });
+
+      const result = await submit();
+
+      expect(result.current.error).toBe(GENERIC_COPY);
+      expect(result.current.remaining).toBeNull();
     });
   });
 });

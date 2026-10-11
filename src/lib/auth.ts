@@ -2,15 +2,26 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { cookies } from "next/headers";
 import {
   BCRYPT_COST,
   DUMMY_PASSWORD_HASH,
+  INVALID_CREDENTIALS,
+  SIGN_IN_PAUSED,
   SESSION_MAX_AGE_REMEMBER,
   SESSION_MAX_AGE_STANDARD,
   SESSION_UPDATE_AGE,
 } from "@/lib/constants/auth";
 import { normalizeEmail } from "@/lib/validations/email";
-import { getLoginEmailRateLimiter } from "@/lib/services/rate-limit-service";
+import { consumeLoginAttempt } from "@/lib/services/rate-limit-service";
+import {
+  DEVICE_COOKIE_NAME,
+  DEVICE_COOKIE_OPTIONS,
+  findTrustedDevice,
+  issueDeviceCookie,
+} from "@/lib/utils/device-cookie";
+import { getClientIp } from "@/lib/utils/get-client-ip";
+import { logger } from "@/lib/logger";
 
 // Fail loud at server boot instead of on the first sign-in attempt.
 if (!process.env.NEXTAUTH_SECRET) {
@@ -28,12 +39,10 @@ export const authOptions: NextAuthOptions = {
         // treated as unchecked. NextAuth stringifies all credentials.
         remember: { label: "Remember", type: "text" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         // Security: Use generic error messages to prevent account enumeration
-        const invalidCredentialsError = "Invalid email or password";
-
         if (!credentials?.email || !credentials?.password) {
-          throw new Error(invalidCredentialsError);
+          throw new Error(INVALID_CREDENTIALS);
         }
 
         // Normalize once — this MUST match how emails are stored (staff
@@ -41,16 +50,18 @@ export const authOptions: NextAuthOptions = {
         // mixed-case input silently misses the row.
         const email = normalizeEmail(credentials.email);
 
-        // Per-email rate limit — the normalized value is the bucket key
-        // so casing/whitespace variants share one budget. Blocked attempts
-        // return the same generic error as bad credentials so the limit
-        // isn't distinguishable via response.
-        const limiter = getLoginEmailRateLimiter();
-        if (limiter) {
-          const { success } = await limiter.limit(email);
-          if (!success) {
-            throw new Error(invalidCredentialsError);
-          }
+        // Login rate limits live here, not in the proxy, because a browser
+        // holding a trusted-device cookie for this email skips the IP and
+        // email buckets and spends the shared per-account trusted bucket instead. The check
+        // runs before the user lookup, so the refusal is identical for
+        // emails with and without accounts.
+        const jar = await cookies();
+        const oldDeviceCookie = jar.get(DEVICE_COOKIE_NAME)?.value;
+        const deviceNonce = findTrustedDevice(oldDeviceCookie, email);
+        // NextAuth hands over a plain headers record; Headers accepts it.
+        const ip = getClientIp({ headers: new Headers(req?.headers ?? {}) });
+        if (!(await consumeLoginAttempt({ email, ip, deviceNonce }))) {
+          throw new Error(SIGN_IN_PAUSED);
         }
 
         const user = await prisma.user.findUnique({
@@ -62,7 +73,7 @@ export const authOptions: NextAuthOptions = {
         // time as the wrong-password path.
         if (!user || !user.isActive) {
           await bcrypt.compare(credentials.password, DUMMY_PASSWORD_HASH);
-          throw new Error(invalidCredentialsError);
+          throw new Error(INVALID_CREDENTIALS);
         }
 
         const isValidPassword = await bcrypt.compare(
@@ -71,7 +82,7 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isValidPassword) {
-          throw new Error(invalidCredentialsError);
+          throw new Error(INVALID_CREDENTIALS);
         }
 
         // Transparent bcrypt-cost upgrade: if the stored hash was made
@@ -84,6 +95,20 @@ export const authOptions: NextAuthOptions = {
           await prisma.user.update({
             where: { id: user.id },
             data: { password: rehashed },
+          });
+        }
+
+        // Mark this browser as trusted for this email. A cookie failure must
+        // never block a correct sign-in.
+        try {
+          jar.set(
+            DEVICE_COOKIE_NAME,
+            issueDeviceCookie(oldDeviceCookie, email),
+            DEVICE_COOKIE_OPTIONS,
+          );
+        } catch (error) {
+          logger.warn("could not set trusted-device cookie", {
+            error: error instanceof Error ? error.message : String(error),
           });
         }
 

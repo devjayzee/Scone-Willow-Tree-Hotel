@@ -4,9 +4,14 @@ import { useCallback, useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { fetchLoginRateLimitStatus } from "@/hooks/auth";
+import { INVALID_CREDENTIALS, SIGN_IN_PAUSED } from "@/lib/constants/auth";
 
 /** remaining >= this sentinel means the limiter is disabled (see rate-limit-service). */
 const LIMITER_DISABLED_REMAINING = 999;
+
+const SIGN_IN_PAUSED_MESSAGE =
+  "Too many attempts for this email. Try again later, or sign in on a device you've used before.";
+const SIGN_IN_FAILED_MESSAGE = "Sign-in failed. Try again.";
 
 // claude-allow: rule-5 — auth surface intentionally bypasses TanStack Query.
 // Login runs pre-session against next-auth's signIn (not a normal API
@@ -68,10 +73,24 @@ export function useLoginForm() {
       });
 
       if (result?.error) {
+        if (
+          result.error !== INVALID_CREDENTIALS &&
+          result.error !== SIGN_IN_PAUSED
+        ) {
+          setRemaining(null);
+          setError(SIGN_IN_FAILED_MESSAGE);
+          setIsLoading(false);
+          return;
+        }
+
+        const isPaused = result.error === SIGN_IN_PAUSED;
         try {
           const status = await fetchLoginRateLimitStatus();
           if (isLockedOut(status)) {
             applyLockout(status.resetAt);
+          } else if (isPaused) {
+            setRemaining(null);
+            setError(SIGN_IN_PAUSED_MESSAGE);
           } else {
             setRemaining(
               status.remaining >= LIMITER_DISABLED_REMAINING
@@ -83,7 +102,7 @@ export function useLoginForm() {
         } catch {
           // Count unknown: show the sign-in error and no remaining count.
           setRemaining(null);
-          setError(result.error);
+          setError(isPaused ? SIGN_IN_PAUSED_MESSAGE : result.error);
         }
         setIsLoading(false);
         return;

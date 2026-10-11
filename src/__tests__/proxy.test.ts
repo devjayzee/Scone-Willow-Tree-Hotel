@@ -477,7 +477,9 @@ describe("proxy", () => {
 
 
   describe("credentials rate limit", () => {
-    it("returns 429 when limiter reports success: false", async () => {
+    it("does not rate-limit POST /api/auth/callback/credentials (authorize does)", async () => {
+      // Every limiter refuses; the credentials callback must still pass the
+      // proxy untouched, because authorize() owns the login limits now.
       mockLimit.mockResolvedValue({
         success: false,
         limit: 5,
@@ -491,30 +493,9 @@ describe("proxy", () => {
       });
 
       const response = (await proxy(req)) as NextResponse;
-      const data = await response.json();
 
-      expect(response.status).toBe(429);
-      expect(data.error).toMatch(/too many login attempts/i);
-      expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
-    });
-
-    it("passes through when limiter reports success: true", async () => {
-      mockLimit.mockResolvedValue({
-        success: true,
-        limit: 5,
-        remaining: 4,
-        reset: Date.now() + 60_000,
-      });
-
-      const req = buildReq({
-        path: "/api/auth/callback/credentials",
-        method: "POST",
-      });
-
-      const response = (await proxy(req)) as NextResponse;
-
-      // Not a 429 — the wrapped auth middleware runs next and returns .next()
       expect(response.status).not.toBe(429);
+      expect(mockLimit).not.toHaveBeenCalled();
     });
 
     it("does not rate-limit GET on the credentials callback", async () => {

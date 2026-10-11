@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/utils/get-client-ip";
 import { getLoginPrecheckStatus } from "@/lib/services/rate-limit-service";
+import { DEVICE_COOKIE_NAME } from "@/lib/utils/device-cookie";
 import { handleApiError } from "@/lib/api-error-handler";
 
 // GET /api/auth/rate-limit-status - Pre-check for the login page.
@@ -10,7 +11,10 @@ import { handleApiError } from "@/lib/api-error-handler";
 export async function GET(req: NextRequest) {
   try {
     const ip = getClientIp(req);
-    const status = await getLoginPrecheckStatus(ip);
+    const status = await getLoginPrecheckStatus(
+      ip,
+      req.cookies.has(DEVICE_COOKIE_NAME),
+    );
     return NextResponse.json(status);
   } catch (error) {
     return handleApiError(error, "checking rate limit");

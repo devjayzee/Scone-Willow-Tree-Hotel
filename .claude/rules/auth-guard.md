@@ -12,8 +12,9 @@ paths:
 Three layers of protection:
 
 1. **Proxy — formerly middleware (`src/proxy.ts`, `withAuth`)** — fast-path UX redirect
-   for unauthenticated users on dashboard routes. Also rate-limits credential
-   logins (5 attempts / 15 min on `/api/auth/callback/credentials`). NOT the
+   for unauthenticated users on dashboard routes. Credential logins are
+   not limited here: `authorize` limits them (per IP, per email, and per
+   account for trusted devices). NOT the
    security boundary — `withAuth` calls `getToken()` internally, which decodes
    the JWE but does NOT invoke the `jwt` callback. The proxy copies the expiry
    rule (`hasLiveSession`, mirroring `src/lib/auth.ts:120-123`) but cannot check
