@@ -9,9 +9,11 @@ import type { UpdateStaffSchemaInput } from "@/lib/validations/staff";
 
 /**
  * Classify what changed on a staff update and write the matching audit entries.
- * Fires nothing when performedBy is undefined. Branches on role /
- * active-status / general — password rotation lives on the
- * /reset-password flow, not this path.
+ * Fires nothing when performedBy is undefined. Role and active-status
+ * changes each get their own entry. STAFF_UPDATED fires whenever any other
+ * field changed, even alongside a role or status change, and covers only
+ * those other fields. Password rotation lives on the /reset-password flow,
+ * not this path.
  */
 export async function logStaffUpdateAudits(
   id: string,
@@ -56,13 +58,9 @@ export async function logStaffUpdateAudits(
   const changedFields = getChangedFields(
     existingStaff,
     data as Record<string, unknown>,
-  );
+  ).filter((f) => f !== "role" && f !== "isActive");
 
-  if (
-    changedFields.length > 0 &&
-    !roleChanged &&
-    !activeStatusChanged
-  ) {
+  if (changedFields.length > 0) {
     await createAuditLog(
       performedBy,
       AuditAction.STAFF_UPDATED,

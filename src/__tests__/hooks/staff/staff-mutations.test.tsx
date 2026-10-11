@@ -181,6 +181,155 @@ describe("staff mutation hooks", () => {
       });
       expect(queryClient.getQueryData<Staff[]>(staffKeys.list())).toEqual(snapshot);
     });
+
+    describe("list cache after a successful save", () => {
+      // The service returns a minimal row: no _count.
+      const { _count: _omit, ...minimal } = makeStaff({
+        id: "u-1",
+        email: "right@example.com",
+        setupPending: true,
+        isActive: false,
+      });
+      void _omit;
+
+      it("C1: merges the returned row into the list cache at once, keeping _count", async () => {
+        const other = makeStaff({ id: "u-2", firstName: "Other" });
+        queryClient.setQueryData<Staff[]>(staffKeys.list(), [
+          makeStaff({
+            id: "u-1",
+            email: "wrong@example.com",
+            _count: { bookings: 3 },
+          }),
+          other,
+        ]);
+        mockUpdateStaff.mockResolvedValue(minimal);
+
+        const { result } = renderHook(() => useUpdateStaff(), { wrapper });
+        await result.current.mutateAsync({
+          id: "u-1",
+          data: { email: "right@example.com" },
+        });
+
+        // invalidateWithRelated is mocked, so no refetch has replaced the cache.
+        const cache = queryClient.getQueryData<Staff[]>(staffKeys.list());
+        expect(cache?.[0]).toMatchObject({
+          id: "u-1",
+          email: "right@example.com",
+          setupPending: true,
+          isActive: false,
+          _count: { bookings: 3 },
+        });
+        expect(cache?.[1]).toEqual(other);
+      });
+
+      it("C1 (guard): an empty cache stays empty and does not throw", async () => {
+        mockUpdateStaff.mockResolvedValue(minimal);
+
+        const { result } = renderHook(() => useUpdateStaff(), { wrapper });
+        await result.current.mutateAsync({
+          id: "u-1",
+          data: { email: "right@example.com" },
+        });
+
+        expect(queryClient.getQueryData(staffKeys.list())).toBeUndefined();
+      });
+    });
+
+    describe("email-change toast", () => {
+      const TOAST = "Email changed. Use Resend invite to send a setup link.";
+
+      async function run(
+        cached: Staff[] | undefined,
+        returned: Staff,
+        data: { firstName?: string; email?: string }
+      ) {
+        if (cached) queryClient.setQueryData<Staff[]>(staffKeys.list(), cached);
+        mockUpdateStaff.mockResolvedValue(returned);
+        const { result } = renderHook(() => useUpdateStaff(), { wrapper });
+        await result.current.mutateAsync({ id: "u-1", data });
+        await waitFor(() => {
+          expect(mockInvalidateWithRelated).toHaveBeenCalled();
+        });
+      }
+
+      it("H1: toasts when the result is pending and its email differs from the cached one", async () => {
+        await run(
+          [makeStaff({ id: "u-1", email: "wrong@example.com" })],
+          makeStaff({
+            id: "u-1",
+            email: "right@example.com",
+            setupPending: true,
+            isActive: false,
+          }),
+          { email: "right@example.com" }
+        );
+
+        expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+        expect(mockToastSuccess).toHaveBeenCalledWith(TOAST);
+      });
+
+      it("H2 (guard): no toast for a name-only edit", async () => {
+        await run(
+          [makeStaff({ id: "u-1", firstName: "Old" })],
+          makeStaff({ id: "u-1", firstName: "New" }),
+          { firstName: "New" }
+        );
+
+        expect(mockToastSuccess).not.toHaveBeenCalled();
+      });
+
+      it("H2 (guard): no toast when the email changed but the result is not pending", async () => {
+        await run(
+          [makeStaff({ id: "u-1", email: "alice@example.com" })],
+          makeStaff({ id: "u-1", email: "me@example.com", setupPending: false }),
+          { email: "me@example.com" }
+        );
+
+        expect(mockToastSuccess).not.toHaveBeenCalled();
+      });
+
+      it("H2 (guard): no toast when the pending result has only a case-different email", async () => {
+        await run(
+          [makeStaff({ id: "u-1", email: "Alice@Example.com" })],
+          makeStaff({
+            id: "u-1",
+            email: "alice@example.com",
+            setupPending: true,
+          }),
+          { firstName: "Alice" }
+        );
+
+        expect(mockToastSuccess).not.toHaveBeenCalled();
+      });
+
+      it("H2 (guard): no toast when there is no cached previous entry for the id", async () => {
+        await run(
+          [makeStaff({ id: "someone-else", email: "wrong@example.com" })],
+          makeStaff({
+            id: "u-1",
+            email: "right@example.com",
+            setupPending: true,
+          }),
+          { email: "right@example.com" }
+        );
+
+        expect(mockToastSuccess).not.toHaveBeenCalled();
+      });
+
+      it("H2 (guard): no toast when the list is not cached at all", async () => {
+        await run(
+          undefined,
+          makeStaff({
+            id: "u-1",
+            email: "right@example.com",
+            setupPending: true,
+          }),
+          { email: "right@example.com" }
+        );
+
+        expect(mockToastSuccess).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("useDeleteStaff", () => {

@@ -484,7 +484,7 @@ describe("Password Reset Service", () => {
       expect(claimCall).toBeDefined();
       expect(claimCall![0]).toEqual(
         expect.objectContaining({
-          where: { id: "t1", usedAt: null },
+          where: { id: "t1", usedAt: null, expiresAt: { gt: expect.any(Date) } },
           data: { usedAt: expect.any(Date) },
         })
       );
@@ -564,6 +564,27 @@ describe("Password Reset Service", () => {
 
   describe("consumeSetupToken", () => {
     const input = { rawToken: "raw-token", newPassword: "NewStr0ng!Pass" };
+
+    it("claims the token only while it is unexpired (expiresAt gt a Date)", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      await consumeSetupToken(input);
+
+      expect(mockTokenUpdateMany).toHaveBeenCalledWith({
+        where: { id: "t1", usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { usedAt: expect.any(Date) },
+      });
+    });
+
+    it("a token that expired between validation and claim (count 0) is refused with no password write", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 0 });
+
+      await expect(consumeSetupToken(input)).rejects.toThrow(NotFoundError);
+      expect(mockUserUpdateMany).not.toHaveBeenCalled();
+    });
 
     it("activates a pending account via a conditional updateMany and audits the state change", async () => {
       mockTokenFindUnique.mockResolvedValue(pendingSetupToken());

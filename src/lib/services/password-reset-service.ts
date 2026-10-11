@@ -188,7 +188,8 @@ async function consumeToken(
     // consumed it during the bcrypt window above, count === 0 and this
     // throw aborts the transaction (no password write, no audit).
     const claim = await tx.passwordResetToken.updateMany({
-      where: { id: token.id, usedAt: null },
+      // expiresAt: a link that expired since validation cannot be claimed.
+      where: { id: token.id, usedAt: null, expiresAt: { gt: new Date() } },
       data: { usedAt: new Date() },
     });
     if (claim.count === 0) {

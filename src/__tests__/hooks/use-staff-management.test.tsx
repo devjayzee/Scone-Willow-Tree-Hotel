@@ -130,6 +130,49 @@ describe("useStaffManagement", () => {
     });
   });
 
+  describe("saveStaff email payload on update", () => {
+    const edit = {
+      firstName: "Janet",
+      lastName: "Smythe",
+      role: "MANAGER" as const,
+    };
+
+    it.each([
+      ["unchanged", "jane@sconewillowtree.com"],
+      ["case-only changed", "  JANE@SconeWillowTree.com "],
+    ])("omits the email when it is %s", async (_label, email) => {
+      mockUpdate.mutateAsync.mockResolvedValue(makeStaff());
+      const { result } = setup();
+      act(() => result.current.openEditDialog(makeStaff({ id: "s-9" })));
+
+      await act(async () => {
+        await result.current.saveStaff({ ...edit, email });
+      });
+
+      const arg = mockUpdate.mutateAsync.mock.calls[0][0];
+      expect(arg.data).not.toHaveProperty("email");
+      expect(arg).toEqual({ id: "s-9", data: edit });
+    });
+
+    it("sends the email when it really changed", async () => {
+      mockUpdate.mutateAsync.mockResolvedValue(makeStaff());
+      const { result } = setup();
+      act(() => result.current.openEditDialog(makeStaff({ id: "s-9" })));
+
+      await act(async () => {
+        await result.current.saveStaff({
+          ...edit,
+          email: "right.person@sconewillowtree.com",
+        });
+      });
+
+      expect(mockUpdate.mutateAsync).toHaveBeenCalledWith({
+        id: "s-9",
+        data: { ...edit, email: "right.person@sconewillowtree.com" },
+      });
+    });
+  });
+
   describe("confirmDelete", () => {
     it("does nothing when no staff is selected", async () => {
       const { result } = setup();
