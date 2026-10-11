@@ -54,3 +54,15 @@ export const RESET_TOKEN_TTL_MINUTES = 30;
 
 /** How long a new-staff invite / setup link stays valid. */
 export const SETUP_TOKEN_TTL_HOURS = 72;
+
+/** The message `authorize()` throws for any failed credential check. */
+export const INVALID_CREDENTIALS = "Invalid email or password";
+
+/** `authorize()` error code for a login-limit refusal; URL-safe. */
+export const SIGN_IN_PAUSED = "SignInPaused";
+
+/** Trusted-device cookie lifetime in seconds (180 days). */
+export const DEVICE_COOKIE_MAX_AGE = 180 * 24 * 60 * 60;
+
+/** Most device entries kept in one trusted-device cookie. */
+export const DEVICE_COOKIE_MAX_ENTRIES = 10;

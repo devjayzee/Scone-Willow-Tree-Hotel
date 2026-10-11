@@ -14,7 +14,7 @@ staff, calendar, and reports behind a role-gated dashboard.
   project-wide decision, not a per-component one.
 - **Server state:** TanStack Query 5 (query-key factories)
 - **UI:** shadcn/ui (Radix + CVA) + Tailwind 4, lucide-react icons, sonner toasts
-- **Rate limiting:** Upstash Redis via seven limiters in `rate-limit-service.ts` (login, api, forgot-password, auth-endpoint, staff-invite, rate-limit-status, session-endpoint), applied in `src/proxy.ts` and at the route level
+- **Rate limiting:** Upstash Redis via ten limiters in `rate-limit-service.ts` (login, login-email, login-trusted, api, forgot-password, auth-endpoint, staff-invite, staff-invite-global, rate-limit-status, session-endpoint), applied in `src/proxy.ts`, in `authorize` and at the route level
 - **Testing:** Vitest 4 + jsdom + Testing Library
 
 ## Commands

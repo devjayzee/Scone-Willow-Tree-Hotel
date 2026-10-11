@@ -52,8 +52,9 @@ links to the current implementation on `main`.
   [`.claude/rules/`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/tree/main/.claude/rules)
   and are machine-enforced via
   [`eslint.config.mjs`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/eslint.config.mjs).
-- **Edge-proxy defence in depth.** Body-size cap, credential-login rate
-  limit, and per-user API rate limit all run before any handler is reached.
+- **Edge-proxy defence in depth.** Body-size cap, session and auth-endpoint
+  rate limits, and per-user API rate limit all run before any handler is
+  reached. Credential logins are rate-limited inside `authorize()`.
   See
   [`src/proxy.ts`](https://github.com/devjayzee/Scone-Willow-Tree-Hotel/blob/main/src/proxy.ts).
 - **Session revocation via `tokenVersion` bump.** JWT sessions can be
