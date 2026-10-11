@@ -110,6 +110,7 @@ export function StaffsClient({ initialStaffs, currentUserId, fetchTime }: Staffs
         staff={selectedStaff}
         onSubmit={saveStaff}
         isLoading={isProcessing}
+        currentUserId={currentUserId}
       />
 
       <DeleteStaffDialog

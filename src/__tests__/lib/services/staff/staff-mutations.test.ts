@@ -20,6 +20,7 @@ import {
   mockGetStaffInviteGlobalRateLimiter,
 } from "./test-utils";
 import { createAuditLog } from "@/lib/services/audit-service";
+import { Prisma } from "@prisma/client";
 import { ValidationError, RateLimitError } from "@/lib/errors";
 
 // Setup mocks before importing services
@@ -168,7 +169,7 @@ describe("Staff Mutations", () => {
       const result = await updateStaff("staff-1", updateData, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1" },
+        where: { id: "staff-1", setupPending: false },
         data: {
           firstName: "Johnny",
           lastName: "Updated",
@@ -256,7 +257,7 @@ describe("Staff Mutations", () => {
 
       expect(mockHash).not.toHaveBeenCalled();
       expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1" },
+        where: { id: "staff-1", setupPending: false },
         data: {
           firstName: "Updated",
         },
@@ -271,7 +272,7 @@ describe("Staff Mutations", () => {
       await updateStaff("staff-1", { isActive: false }, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1" },
+        where: { id: "staff-1", setupPending: false },
         data: {
           isActive: false,
         },
@@ -286,7 +287,7 @@ describe("Staff Mutations", () => {
       await updateStaff("staff-1", { role: "GENERAL_MANAGER" }, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1" },
+        where: { id: "staff-1", setupPending: false },
         data: {
           role: "GENERAL_MANAGER",
         },
@@ -373,7 +374,7 @@ describe("Staff Mutations", () => {
         await updateStaff("staff-8", { isActive: true }, "current-user-id");
 
         expect(mockUserUpdate).toHaveBeenCalledWith({
-          where: { id: "staff-8" },
+          where: { id: "staff-8", setupPending: false },
           data: { isActive: true },
           select: expect.any(Object),
         });
@@ -797,14 +798,18 @@ describe("Staff Mutations", () => {
           expect(createAuditLog).not.toHaveBeenCalled();
         });
 
-        it("S12: an email change with a reactivation revokes the new email exactly once", async () => {
+        // B: on a set-up account that is not the caller's, this combination is
+        // now refused (see "access reset"). It stays allowed on the caller's
+        // own account, so the exactly-once revoke is checked there.
+        it("S12: an email change with a reactivation on the caller's own account revokes the new email exactly once", async () => {
+          const selfInactive = { ...inactive, id: "gm-1" };
           mockUserFindUnique
-            .mockResolvedValueOnce(inactive)
+            .mockResolvedValueOnce(selfInactive)
             .mockResolvedValueOnce(null);
-          mockUserUpdate.mockResolvedValue({ ...existingStaff, email: newEmail });
+          mockUserUpdate.mockResolvedValue({ ...selfInactive, email: newEmail });
 
           await updateStaff(
-            "staff-1",
+            "gm-1",
             { email: newEmail, isActive: true },
             "gm-1"
           );
@@ -814,8 +819,18 @@ describe("Staff Mutations", () => {
         });
       });
 
-      it("S13 (guard): an email change with a deactivation revokes the new email exactly once", async () => {
-        arrangeEmailChange();
+      // B: on a set-up, non-self account the combination is refused. A pending
+      // account is not reset, so the combination still reaches the revoke.
+      it("S13 (guard): an email change with isActive:false on a pending account revokes the new email exactly once", async () => {
+        const pending = createMockStaff({
+          id: "staff-1",
+          isActive: false,
+          setupPending: true,
+        });
+        mockUserFindUnique
+          .mockResolvedValueOnce(pending)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({ ...pending, email: newEmail });
 
         await updateStaff(
           "staff-1",
@@ -825,6 +840,438 @@ describe("Staff Mutations", () => {
 
         expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
         expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(newEmail);
+      });
+    });
+
+    describe("access reset on an email change (B)", () => {
+      const newEmail = "right.person@sconewillowtree.com";
+      const originalAllowlist = process.env.INVITE_DOMAIN_ALLOWLIST;
+      const RESET_HASH = "reset_placeholder_hash";
+      const MIXED_MESSAGE =
+        "Change the email on its own. The account will need a new invite.";
+
+      beforeEach(() => {
+        delete process.env.INVITE_DOMAIN_ALLOWLIST;
+        mockHash.mockResolvedValue(RESET_HASH);
+      });
+
+      afterEach(() => {
+        if (originalAllowlist === undefined) {
+          delete process.env.INVITE_DOMAIN_ALLOWLIST;
+        } else {
+          process.env.INVITE_DOMAIN_ALLOWLIST = originalAllowlist;
+        }
+      });
+
+      const setUp = createMockStaff({
+        id: "staff-1",
+        email: "wrong.person@sconewillowtree.com",
+        password: "chosen_by_wrong_person",
+        isActive: true,
+        setupPending: false,
+        role: "MANAGER",
+      });
+
+      function arrange(row: ReturnType<typeof createMockStaff>) {
+        mockUserFindUnique
+          .mockResolvedValueOnce(row)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({
+          ...row,
+          email: newEmail,
+          isActive: false,
+          setupPending: true,
+        });
+      }
+
+      function actionCalls(action: string) {
+        return vi
+          .mocked(createAuditLog)
+          .mock.calls.filter((c) => (c[1] as string) === action);
+      }
+
+      it("S1: an active set-up account resets: placeholder hash, tokenVersion + 1, pending, inactive, new email", async () => {
+        arrange(setUp);
+
+        const result = await updateStaff(
+          "staff-1",
+          { email: newEmail },
+          "gm-1"
+        );
+
+        expect(mockHash).toHaveBeenCalledTimes(1);
+        expect(mockHash.mock.calls[0][0]).toEqual(expect.any(String));
+        expect(mockHash.mock.calls[0][0]).not.toBe(setUp.password);
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-1", setupPending: false },
+          data: {
+            email: newEmail,
+            password: RESET_HASH,
+            tokenVersion: { increment: 1 },
+            setupPending: true,
+            isActive: false,
+          },
+          select: expect.any(Object),
+        });
+        expect(result.setupPending).toBe(true);
+        expect(result.isActive).toBe(false);
+      });
+
+      it("S1: the reset writes on the transaction client and voids SETUP and RESET tokens first", async () => {
+        arrange(setUp);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+        expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "SETUP",
+          mockTxClient
+        );
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "RESET",
+          mockTxClient
+        );
+        expect(
+          Math.max(...mockVoidActiveTokens.mock.invocationCallOrder)
+        ).toBeLessThan(mockTxUserUpdate.mock.invocationCallOrder[0]);
+      });
+
+      it("S2: writes one STAFF_ACCESS_RESET audit entry with previous, current and a reason", async () => {
+        arrange(setUp);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(1);
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_ACCESS_RESET",
+          "STAFF",
+          "staff-1",
+          {
+            previous: {
+              email: setUp.email,
+              isActive: true,
+              setupPending: false,
+              role: "MANAGER",
+            },
+            current: {
+              email: newEmail,
+              isActive: false,
+              setupPending: true,
+              role: "MANAGER",
+            },
+            reason: expect.any(String),
+          }
+        );
+      });
+
+      it("S2: a role change sent with the email is recorded in current.role, previous.role keeps the old one", async () => {
+        arrange(setUp);
+
+        await updateStaff(
+          "staff-1",
+          { email: newEmail, role: "GENERAL_MANAGER" },
+          "gm-1"
+        );
+
+        const [call] = actionCalls("STAFF_ACCESS_RESET");
+        const details = call[4] as {
+          previous: { role: string };
+          current: { role: string };
+        };
+        expect(details.previous.role).toBe("MANAGER");
+        expect(details.current.role).toBe("GENERAL_MANAGER");
+      });
+
+      it("S2: writes no STAFF_DEACTIVATED entry for a reset", async () => {
+        arrange(setUp);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(actionCalls("STAFF_DEACTIVATED")).toHaveLength(0);
+      });
+
+      it("S3: a deactivated set-up account resets the same way and records isActive false as previous", async () => {
+        const deactivated = { ...setUp, isActive: false };
+        arrange(deactivated);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-1", setupPending: false },
+          data: {
+            email: newEmail,
+            password: RESET_HASH,
+            tokenVersion: { increment: 1 },
+            setupPending: true,
+            isActive: false,
+          },
+          select: expect.any(Object),
+        });
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_ACCESS_RESET",
+          "STAFF",
+          "staff-1",
+          expect.objectContaining({
+            previous: {
+              email: setUp.email,
+              isActive: false,
+              setupPending: false,
+              role: "MANAGER",
+            },
+          })
+        );
+      });
+
+      it("a role change sent with the email still applies and is audited", async () => {
+        arrange(setUp);
+
+        await updateStaff(
+          "staff-1",
+          { email: newEmail, role: "GENERAL_MANAGER" },
+          "gm-1"
+        );
+
+        const arg = mockUserUpdate.mock.calls[0][0];
+        expect(arg.data).toEqual({
+          email: newEmail,
+          role: "GENERAL_MANAGER",
+          password: RESET_HASH,
+          tokenVersion: { increment: 1 },
+          setupPending: true,
+          isActive: false,
+        });
+        expect(actionCalls("STAFF_ROLE_CHANGED")).toHaveLength(1);
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(1);
+      });
+
+      it("revokes the new email once, and hashes the placeholder after the spend and revoke, before the transaction", async () => {
+        arrange(setUp);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockHash).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(newEmail);
+        const spend = mockInviteGlobalLimit.mock.invocationCallOrder[0];
+        const revoke = mockRevokeTrustedDevices.mock.invocationCallOrder[0];
+        const hash = mockHash.mock.invocationCallOrder[0];
+        const tx = mockTransaction.mock.invocationCallOrder[0];
+        expect(spend).toBeLessThan(revoke);
+        expect(revoke).toBeLessThan(hash);
+        expect(hash).toBeLessThan(tx);
+      });
+
+      it("a revoke error aborts the reset before any hash, transaction or write", async () => {
+        arrange(setUp);
+        mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+        await expect(
+          updateStaff("staff-1", { email: newEmail }, "gm-1")
+        ).rejects.toThrow("redis down");
+
+        expect(mockHash).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["isActive: false", false],
+        ["isActive: true", true],
+      ])(
+        "S6: an email change with %s is refused before any spend, revoke, hash or write",
+        async (_label, isActive) => {
+          mockUserFindUnique.mockResolvedValueOnce(setUp);
+
+          const error = await updateStaff(
+            "staff-1",
+            { email: newEmail, isActive },
+            "gm-1"
+          ).catch((e: unknown) => e);
+
+          expect(error).toBeInstanceOf(BusinessRuleError);
+          expect((error as Error).message).toBe(MIXED_MESSAGE);
+          expect(mockUserFindUnique).toHaveBeenCalledTimes(1); // existing row only, no conflict lookup
+          expect(mockGetStaffInviteRateLimiter).not.toHaveBeenCalled();
+          expect(mockInviteLimit).not.toHaveBeenCalled();
+          expect(mockInviteGlobalLimit).not.toHaveBeenCalled();
+          expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+          expect(mockHash).not.toHaveBeenCalled();
+          expect(mockTransaction).not.toHaveBeenCalled();
+          expect(mockUserUpdate).not.toHaveBeenCalled();
+          expect(createAuditLog).not.toHaveBeenCalled();
+        }
+      );
+
+      it("S6: the mixed refusal comes before the recipient-allowlist check", async () => {
+        process.env.INVITE_DOMAIN_ALLOWLIST = "hotel.test";
+        mockUserFindUnique.mockResolvedValueOnce(setUp);
+
+        await expect(
+          updateStaff(
+            "staff-1",
+            { email: "someone@elsewhere.example", isActive: false },
+            "gm-1"
+          )
+        ).rejects.toThrow(BusinessRuleError);
+      });
+
+      describe("conditional write (account changed while editing)", () => {
+        const staleMessage = "This account changed while you were editing. Try again.";
+        const p2025 = () =>
+          new Prisma.PrismaClientKnownRequestError("No record", {
+            code: "P2025",
+            clientVersion: "x",
+          });
+
+        it.each([
+          ["a reset", setUp, { email: newEmail }, false],
+          [
+            "a pending account's email change",
+            createMockStaff({
+              id: "staff-1",
+              email: "wrong.person@sconewillowtree.com",
+              isActive: false,
+              setupPending: true,
+            }),
+            { email: newEmail },
+            true,
+          ],
+          ["a plain name edit", setUp, { firstName: "Johnny" }, false],
+        ])("%s carries setupPending in the update where", async (_l, row, input, pending) => {
+          mockUserFindUnique
+            .mockResolvedValueOnce(row)
+            .mockResolvedValueOnce(null);
+          mockUserUpdate.mockResolvedValue(row);
+
+          await updateStaff("staff-1", input, "gm-1");
+
+          expect(mockUserUpdate.mock.calls[0][0].where).toEqual({
+            id: "staff-1",
+            setupPending: pending,
+          });
+        });
+
+        it("P2025 from the update becomes a ConflictError and writes no audit entry", async () => {
+          arrange(setUp);
+          mockUserUpdate.mockRejectedValue(p2025());
+
+          const error = await updateStaff(
+            "staff-1",
+            { email: newEmail },
+            "gm-1"
+          ).catch((e: unknown) => e);
+
+          expect(error).toBeInstanceOf(ConflictError);
+          expect((error as Error).message).toBe(staleMessage);
+          expect(createAuditLog).not.toHaveBeenCalled();
+        });
+
+        it("any other error passes through unchanged", async () => {
+          arrange(setUp);
+          const boom = new Error("db down");
+          mockUserUpdate.mockRejectedValue(boom);
+
+          await expect(
+            updateStaff("staff-1", { email: newEmail }, "gm-1")
+          ).rejects.toBe(boom);
+          expect(createAuditLog).not.toHaveBeenCalled();
+        });
+
+        it("a Prisma error with another code passes through unchanged", async () => {
+          arrange(setUp);
+          const other = new Prisma.PrismaClientKnownRequestError("Unique", {
+            code: "P2002",
+            clientVersion: "x",
+          });
+          mockUserUpdate.mockRejectedValue(other);
+
+          await expect(
+            updateStaff("staff-1", { email: newEmail }, "gm-1")
+          ).rejects.toBe(other);
+        });
+      });
+
+      it("S4 (guard): a pending account's email change only voids tokens: no reset fields, no hash", async () => {
+        const pending = createMockStaff({
+          id: "staff-1",
+          email: "wrong.person@sconewillowtree.com",
+          isActive: false,
+          setupPending: true,
+        });
+        arrange(pending);
+
+        await updateStaff("staff-1", { email: newEmail }, "gm-1");
+
+        expect(mockHash).not.toHaveBeenCalled();
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-1", setupPending: true },
+          data: { email: newEmail },
+          select: expect.any(Object),
+        });
+        expect(mockVoidActiveTokens).toHaveBeenCalledTimes(2);
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(0);
+      });
+
+      it("S5 (guard): the caller's own email change does not reset", async () => {
+        const self = { ...setUp, id: "gm-1", role: "GENERAL_MANAGER" as const };
+        mockUserFindUnique
+          .mockResolvedValueOnce(self)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue({ ...self, email: newEmail });
+
+        await updateStaff("gm-1", { email: newEmail }, "gm-1");
+
+        expect(mockHash).not.toHaveBeenCalled();
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "gm-1", setupPending: false },
+          data: { email: newEmail },
+          select: expect.any(Object),
+        });
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(0);
+      });
+
+      it.each([
+        ["a case-only edit", "WRONG.Person@SconeWillowTree.com"],
+        ["a case-and-whitespace edit", "  Wrong.Person@sconewillowtree.com "],
+      ])("guard: %s does not reset", async (_label, edited) => {
+        // existing row, then an empty conflict lookup on the raw edited string
+        mockUserFindUnique
+          .mockResolvedValueOnce(setUp)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue(setUp);
+
+        await updateStaff("staff-1", { email: edited }, "gm-1");
+
+        expect(mockHash).not.toHaveBeenCalled();
+        const data = mockUserUpdate.mock.calls[0][0].data;
+        expect(data).not.toHaveProperty("password");
+        expect(data).not.toHaveProperty("tokenVersion");
+        expect(data).not.toHaveProperty("setupPending");
+        expect(data).not.toHaveProperty("isActive");
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(0);
+      });
+
+      it.each([
+        ["a name edit", { firstName: "Johnny" }],
+        ["a role edit", { role: "GENERAL_MANAGER" as const }],
+      ])("guard: %s does not reset or touch tokenVersion", async (_label, input) => {
+        mockUserFindUnique.mockResolvedValue(setUp);
+        mockUserUpdate.mockResolvedValue(setUp);
+
+        await updateStaff("staff-1", input, "gm-1");
+
+        expect(mockHash).not.toHaveBeenCalled();
+        const data = mockUserUpdate.mock.calls[0][0].data;
+        expect(data).not.toHaveProperty("password");
+        expect(data).not.toHaveProperty("tokenVersion");
+        expect(data).not.toHaveProperty("setupPending");
+        expect(actionCalls("STAFF_ACCESS_RESET")).toHaveLength(0);
       });
     });
 
@@ -1096,6 +1543,175 @@ describe("Staff Mutations", () => {
 
       expect(mockUserUpdate).not.toHaveBeenCalled();
       expect(mockUserDelete).not.toHaveBeenCalled();
+    });
+
+    describe("deactivating a pending (reset) account", () => {
+      const pendingWithBookings = () => ({
+        ...createMockStaff({
+          id: "staff-1",
+          isActive: false,
+          setupPending: true,
+        }),
+        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+      });
+
+      it("voids SETUP and RESET tokens then deactivates without touching setupPending, in one transaction", async () => {
+        const row = pendingWithBookings();
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue({ ...row, setupPending: false });
+
+        const result = await deleteStaff("staff-1", "gm-1");
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "SETUP",
+          mockTxClient
+        );
+        expect(mockVoidActiveTokens).toHaveBeenCalledWith(
+          "staff-1",
+          "RESET",
+          mockTxClient
+        );
+        expect(mockVoidActiveTokens).toHaveBeenCalledTimes(2);
+        expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
+        expect(mockTxUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-1" },
+          data: { isActive: false },
+        });
+        expect(
+          Math.max(...mockVoidActiveTokens.mock.invocationCallOrder)
+        ).toBeLessThan(mockTxUserUpdate.mock.invocationCallOrder[0]);
+        expect(mockUserDelete).not.toHaveBeenCalled();
+        expect(result.deactivated).toBe(true);
+      });
+
+      it("revokes trusted devices before the transaction and writes the STAFF_DEACTIVATED audit", async () => {
+        const row = pendingWithBookings();
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+
+        await deleteStaff("staff-1", "gm-1");
+
+        expect(mockRevokeTrustedDevices).toHaveBeenCalledTimes(1);
+        expect(mockRevokeTrustedDevices.mock.calls[0][0]).toBe(row.email);
+        expect(mockRevokeTrustedDevices.mock.invocationCallOrder[0]).toBeLessThan(
+          mockTransaction.mock.invocationCallOrder[0]
+        );
+        expect(createAuditLog).toHaveBeenCalledTimes(1);
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_DEACTIVATED",
+          "STAFF",
+          "staff-1",
+          {
+            reason: "Deactivated instead of deleted (has active bookings)",
+            current: { isActive: false, activeBookings: 1 },
+          }
+        );
+      });
+
+      it("writes a STAFF_TOKENS_VOIDED audit when the voids cancelled a link", async () => {
+        const row = pendingWithBookings();
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+        mockVoidActiveTokens.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+        await deleteStaff("staff-1", "gm-1");
+
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_TOKENS_VOIDED",
+          "STAFF",
+          "staff-1",
+          expect.objectContaining({ reason: expect.any(String) })
+        );
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_DEACTIVATED",
+          "STAFF",
+          "staff-1",
+          expect.anything()
+        );
+      });
+
+      it("counts both voids: a link cancelled only by the RESET void still audits", async () => {
+        const row = pendingWithBookings();
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+        mockVoidActiveTokens.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
+
+        await deleteStaff("staff-1", "gm-1");
+
+        expect(createAuditLog).toHaveBeenCalledWith(
+          "gm-1",
+          "STAFF_TOKENS_VOIDED",
+          "STAFF",
+          "staff-1",
+          expect.objectContaining({ reason: expect.any(String) })
+        );
+      });
+
+      it("guard: no STAFF_TOKENS_VOIDED audit when nothing was voided", async () => {
+        const row = pendingWithBookings();
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+        mockVoidActiveTokens.mockResolvedValue(0);
+
+        await deleteStaff("staff-1", "gm-1");
+
+        expect(
+          vi
+            .mocked(createAuditLog)
+            .mock.calls.filter((c) => c[1] === "STAFF_TOKENS_VOIDED")
+        ).toHaveLength(0);
+      });
+
+      it("a revoke error aborts with no transaction, void or write", async () => {
+        mockUserFindUnique.mockResolvedValue(pendingWithBookings());
+        mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toThrow(
+          "redis down"
+        );
+
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("guard: a set-up account keeps the plain update with no voiding or transaction", async () => {
+        const row = {
+          ...createMockStaff({ id: "staff-1", setupPending: false }),
+          bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+        };
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+
+        await deleteStaff("staff-1", "gm-1");
+
+        expect(mockUserUpdate).toHaveBeenCalledWith({
+          where: { id: "staff-1" },
+          data: { isActive: false },
+        });
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockVoidActiveTokens).not.toHaveBeenCalled();
+      });
+
+      it("guard: a set-up account's revoke error aborts with no write", async () => {
+        mockUserFindUnique.mockResolvedValue({
+          ...createMockStaff({ id: "staff-1", setupPending: false }),
+          bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+        });
+        mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toThrow(
+          "redis down"
+        );
+        expect(mockUserUpdate).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
     });
 
     it("S10: the hard-delete branch does not revoke", async () => {

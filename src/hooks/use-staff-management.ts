@@ -66,13 +66,17 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
       if (selectedStaff) {
         // Update existing staff. Password rotation is deliberately
         // absent from this payload — rotation happens via the
-        // /reset-password flow.
+        // /reset-password flow. Email is sent only when it changed: the
+        // dialog's row can be stale, and a stale email would reset access.
+        const emailChanged =
+          formData.email.trim().toLowerCase() !==
+          selectedStaff.email.trim().toLowerCase();
         await updateMutation.mutateAsync({
           id: selectedStaff.id,
           data: {
             firstName: formData.firstName,
             lastName: formData.lastName,
-            email: formData.email,
+            ...(emailChanged && { email: formData.email }),
             role: formData.role,
           },
         });

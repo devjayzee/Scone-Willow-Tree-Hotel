@@ -105,6 +105,22 @@ export function useUpdateStaff() {
       }
       toast.error(error.message);
     },
+    onSuccess: (staff, variables, context) => {
+      queryClient.setQueryData<Staff[]>(staffKeys.list(), (old) =>
+        old?.map((s) => (s.id === staff.id ? { ...s, ...staff } : s))
+      );
+      const previous = context?.previousStaffs?.find(
+        (s) => s.id === variables.id
+      );
+      if (
+        staff.setupPending === true &&
+        previous &&
+        previous.email.trim().toLowerCase() !==
+          staff.email.trim().toLowerCase()
+      ) {
+        toast.success("Email changed. Use Resend invite to send a setup link.");
+      }
+    },
     onSettled: () => {
       invalidateWithRelated(queryClient, "staffs");
     },
