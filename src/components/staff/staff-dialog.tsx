@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +38,7 @@ interface StaffDialogProps {
   staff: Staff | null;
   onSubmit: (data: StaffFormData) => Promise<void>;
   isLoading?: boolean;
+  currentUserId?: string;
 }
 
 function generateEmail(firstName: string, lastName: string): string {
@@ -53,6 +54,7 @@ export function StaffDialog({
   staff,
   onSubmit,
   isLoading = false,
+  currentUserId,
 }: StaffDialogProps) {
   const [formData, setFormData] = useState<StaffFormData>({
     firstName: "",
@@ -63,6 +65,14 @@ export function StaffDialog({
   const [formError, setFormError] = useState("");
 
   const isEditing = staff !== null;
+  const resetWarningId = useId();
+
+  // Fixing the email of a set-up account (not your own) resets its access.
+  const resetsAccess =
+    staff !== null &&
+    staff.setupPending === false &&
+    staff.id !== currentUserId &&
+    formData.email.trim().toLowerCase() !== staff.email.trim().toLowerCase();
 
   // Reset form when dialog opens/closes or staff changes
   useEffect(() => {
@@ -157,6 +167,7 @@ export function StaffDialog({
               <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
+                className="mb-0"
                 type="email"
                 value={formData.email}
                 onChange={(e) =>
@@ -164,7 +175,18 @@ export function StaffDialog({
                 }
                 placeholder="john.doe@sconewillowtree.com"
                 required
+                aria-describedby={resetsAccess ? resetWarningId : undefined}
               />
+              {/* Always mounted so screen readers announce the text when it appears. */}
+              <p
+                id={resetWarningId}
+                role="status"
+                className="mt-2 text-xs text-destructive empty:mt-0"
+              >
+                {resetsAccess
+                  ? `Changing the email resets access. ${staff.firstName} will be signed out and their password will stop working. After saving, use Resend invite to send a setup link.`
+                  : null}
+              </p>
             </div>
 
             {!isEditing && (
@@ -212,6 +234,8 @@ export function StaffDialog({
             >
               {isLoading
                 ? "Saving..."
+                : resetsAccess
+                ? "Save and reset access"
                 : isEditing
                 ? "Save Changes"
                 : "Add Staff"}

@@ -27,6 +27,12 @@ import {
   spendInviteLimit,
 } from "./staff-invite-limits";
 
+/** Random, unknown-plaintext bcrypt hash: nobody can log in against it. */
+async function newPlaceholderHash(): Promise<string> {
+  const placeholderPassword = randomBytes(24).toString("base64url");
+  return bcrypt.hash(placeholderPassword, BCRYPT_COST);
+}
+
 /**
  * Create a new staff member via the invite flow.
  *
@@ -67,8 +73,7 @@ export async function createStaff(
   // database. The random hash stays as defence in depth, so each
   // pending account still cannot be logged into if both guards fail.
   // consumeSetupToken overwrites this with the user's real password.
-  const placeholderPassword = randomBytes(24).toString("base64url");
-  const placeholderHash = await bcrypt.hash(placeholderPassword, BCRYPT_COST);
+  const placeholderHash = await newPlaceholderHash();
 
   const staff = await prisma.user.create({
     data: {
@@ -111,7 +116,11 @@ export async function createStaff(
  * @throws ConflictError if new email already exists
  * @throws ValidationError if a changed email is outside the recipient-domain allowlist
  * @throws RateLimitError if an email change is past the per-GM or deployment-wide invite limit
- * @throws BusinessRuleError if the caller tries to change their own role or deactivate themselves
+ * @throws BusinessRuleError if the caller tries to change their own role or deactivate themselves,
+ *   or sends isActive together with an email change that resets access
+ *
+ * Changing the email of a set-up account that is not the caller's own resets
+ * access: new placeholder password, tokenVersion + 1, back to Pending.
  */
 export async function updateStaff(
   id: string,
@@ -146,6 +155,17 @@ export async function updateStaff(
   const emailChanged =
     data.email !== undefined &&
     normalizeEmail(data.email) !== normalizeEmail(existingStaff.email);
+
+  // A set-up account (not the caller's own) gets a new email: the old holder
+  // may be the wrong person, so their session and password must stop working.
+  const resetsAccess =
+    emailChanged && !existingStaff.setupPending && id !== currentUserId;
+
+  if (resetsAccess && data.isActive !== undefined) {
+    throw new BusinessRuleError(
+      "Change the email on its own. The account will need a new invite."
+    );
+  }
 
   // Same recipient-domain gate as invites. Only a changed email is checked,
   // so legacy accounts on other domains can still be edited.
@@ -184,21 +204,26 @@ export async function updateStaff(
     await revokeTrustedDevices(existingStaff.email);
   }
 
-  // Build update data. GMs cannot set another user's password directly:
-  // rotation goes through /reset-password, which is also the
-  // only writer that bumps tokenVersion (to revoke stolen JWTs after a
-  // credential change). Role and isActive changes intentionally do NOT
-  // bump tokenVersion: the jwt callback in @/lib/auth rehydrates role
-  // (and firstName) from the DB on every session poll, so demotion /
-  // promotion / rename take effect within the poll interval without
-  // forcing a re-login. Deactivation is caught by the same callback's
-  // isActive check. Do not add a tokenVersion write here.
+  // The placeholder hash is built before the transaction (bcrypt is slow).
+  const placeholderHash = resetsAccess ? await newPlaceholderHash() : null;
+
+  // Build update data. GMs cannot set another user's password directly.
+  // tokenVersion is bumped only on a credential change (to revoke stolen
+  // JWTs): a password write in /reset-password or setup, or the access
+  // reset below, which replaces the password. Role, name and isActive
+  // changes intentionally do NOT bump it: the jwt callback in @/lib/auth
+  // rehydrates role (and firstName) from the DB on every session poll, so
+  // they take effect within the poll interval without forcing a re-login,
+  // and deactivation is caught by the same callback's isActive check.
   const updateData: {
     firstName?: string;
     lastName?: string;
     email?: string;
     role?: "GENERAL_MANAGER" | "MANAGER" | "STAFF";
     isActive?: boolean;
+    password?: string;
+    tokenVersion?: { increment: number };
+    setupPending?: boolean;
   } = {};
 
   if (data.firstName) updateData.firstName = data.firstName;
@@ -206,25 +231,73 @@ export async function updateStaff(
   if (data.email) updateData.email = data.email;
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (placeholderHash) {
+    updateData.password = placeholderHash;
+    updateData.tokenVersion = { increment: 1 };
+    updateData.setupPending = true;
+    updateData.isActive = false;
+  }
 
-  const { staff, voidedCount } = await prisma.$transaction(async (tx) => {
-    // An email change cancels outstanding setup/reset links sent to the old
-    // address, atomically with the update.
-    // Void tokens before the user update: consumeToken locks token then
-    // user, so the same order avoids a deadlock with a concurrent redemption.
-    const voidedCount = emailChanged
-      ? (await voidActiveTokens(id, "SETUP", tx)) +
-        (await voidActiveTokens(id, "RESET", tx))
-      : 0;
-    const staff = await tx.user.update({
-      where: { id },
-      data: updateData,
-      select: staffSelectFieldsMinimal,
+  let result: { staff: MinimalStaff; voidedCount: number };
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      // An email change cancels outstanding setup/reset links sent to the old
+      // address, atomically with the update.
+      // Void tokens before the user update: consumeToken locks token then
+      // user, so the same order avoids a deadlock with a concurrent redemption.
+      const voidedCount = emailChanged
+        ? (await voidActiveTokens(id, "SETUP", tx)) +
+          (await voidActiveTokens(id, "RESET", tx))
+        : 0;
+      // The where carries setupPending so the write only lands if the account
+      // is still in the state read above. If the invitee redeemed their link
+      // in between, resetsAccess was decided on a stale row: no row matches
+      // (P2025), the transaction rolls back and the GM retries.
+      const staff = await tx.user.update({
+        where: { id, setupPending: existingStaff.setupPending },
+        data: updateData,
+        select: staffSelectFieldsMinimal,
+      });
+      return { staff, voidedCount };
     });
-    return { staff, voidedCount };
-  });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new ConflictError(
+        "This account changed while you were editing. Try again."
+      );
+    }
+    throw error;
+  }
+  const { staff, voidedCount } = result;
 
   await logStaffUpdateAudits(id, existingStaff, data, currentUserId);
+
+  if (resetsAccess) {
+    await createAuditLog(
+      currentUserId,
+      AuditAction.STAFF_ACCESS_RESET,
+      EntityType.STAFF,
+      id,
+      {
+        previous: {
+          email: existingStaff.email,
+          isActive: existingStaff.isActive,
+          setupPending: false,
+          role: existingStaff.role,
+        },
+        current: {
+          email: data.email,
+          isActive: false,
+          setupPending: true,
+          role: data.role ?? existingStaff.role,
+        },
+        reason: "Email changed on a set-up account; access reset until a new invite is redeemed",
+      }
+    );
+  }
 
   if (voidedCount > 0) {
     await createAuditLog(
@@ -286,10 +359,27 @@ export async function deleteStaff(
   // If staff has active bookings, deactivate instead of delete
   if (staff.bookings.length > 0) {
     await revokeTrustedDevices(staff.email);
-    await prisma.user.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    let voidedCount = 0;
+    if (staff.setupPending) {
+      // A Pending account (e.g. after an access reset) stays Pending: its
+      // links are cancelled so nobody can redeem them, a later Resend invite
+      // still works, and Activate stays blocked (ADR-006).
+      voidedCount = await prisma.$transaction(async (tx) => {
+        const voided =
+          (await voidActiveTokens(id, "SETUP", tx)) +
+          (await voidActiveTokens(id, "RESET", tx));
+        await tx.user.update({
+          where: { id },
+          data: { isActive: false },
+        });
+        return voided;
+      });
+    } else {
+      await prisma.user.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    }
 
     // Audit log for deactivation
     await createAuditLog(
@@ -302,6 +392,18 @@ export async function deleteStaff(
         current: { isActive: false, activeBookings: staff.bookings.length },
       }
     );
+
+    if (voidedCount > 0) {
+      await createAuditLog(
+        currentUserId,
+        AuditAction.STAFF_TOKENS_VOIDED,
+        EntityType.STAFF,
+        id,
+        {
+          reason: `Deactivated instead of deleted; ${voidedCount} unused setup/reset link(s) cancelled`,
+        }
+      );
+    }
 
     return {
       deleted: false,

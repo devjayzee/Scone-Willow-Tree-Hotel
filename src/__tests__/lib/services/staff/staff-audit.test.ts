@@ -183,4 +183,97 @@ describe("logStaffUpdateAudits", () => {
       }),
     );
   });
+
+  it("U1: an email change saved with a role change logs STAFF_ROLE_CHANGED and a STAFF_UPDATED limited to the email", async () => {
+    await logStaffUpdateAudits(
+      "staff-1",
+      existingStaff,
+      { email: "new@example.com", role: "MANAGER" },
+      "manager-1",
+    );
+
+    expect(mockAuditLogCreate).toHaveBeenCalledTimes(2);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "manager-1",
+        action: "STAFF_ROLE_CHANGED",
+        entityType: "STAFF",
+        entityId: "staff-1",
+        details: {
+          previous: { role: "STAFF" },
+          current: { role: "MANAGER" },
+        },
+      },
+    });
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "manager-1",
+        action: "STAFF_UPDATED",
+        entityType: "STAFF",
+        entityId: "staff-1",
+        details: {
+          previous: { email: "jane@example.com" },
+          current: { email: "new@example.com" },
+          changedFields: ["email"],
+        },
+      },
+    });
+  });
+
+  it("U2: an email change saved with an isActive change logs the status entry and a STAFF_UPDATED limited to the email", async () => {
+    await logStaffUpdateAudits(
+      "staff-1",
+      existingStaff,
+      { email: "new@example.com", isActive: false },
+      "manager-1",
+    );
+
+    expect(mockAuditLogCreate).toHaveBeenCalledTimes(2);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "manager-1",
+        action: "STAFF_DEACTIVATED",
+        entityType: "STAFF",
+        entityId: "staff-1",
+        details: {
+          previous: { isActive: true },
+          current: { isActive: false },
+        },
+      },
+    });
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "manager-1",
+        action: "STAFF_UPDATED",
+        entityType: "STAFF",
+        entityId: "staff-1",
+        details: {
+          previous: { email: "jane@example.com" },
+          current: { email: "new@example.com" },
+          changedFields: ["email"],
+        },
+      },
+    });
+  });
+
+  it("U3: role, isActive and a name change together log three entries, and STAFF_UPDATED lists only the name", async () => {
+    await logStaffUpdateAudits(
+      "staff-1",
+      existingStaff,
+      { firstName: "Janet", role: "MANAGER", isActive: false },
+      "manager-1",
+    );
+
+    expect(mockAuditLogCreate).toHaveBeenCalledTimes(3);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "STAFF_UPDATED",
+        details: {
+          previous: { firstName: "Jane" },
+          current: { firstName: "Janet" },
+          changedFields: ["firstName"],
+        },
+      }),
+    });
+  });
 });
