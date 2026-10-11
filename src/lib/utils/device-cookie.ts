@@ -10,7 +10,8 @@
  *   - sig: base64url HMAC-SHA256(key, `wt-device.v1|<normalizedEmail>|<nonce>|<iat>`).
  *   - The email itself is never stored in the cookie.
  * - Key: hkdfSync("sha256", NEXTAUTH_SECRET, "", "wt-device-cookie-v1", 32).
- *   Rotating NEXTAUTH_SECRET revokes every device.
+ *   Rotating NEXTAUTH_SECRET revokes every device; per email, the
+ *   `trusted-device:valid-after:<email>` key revokes entries issued before it.
  * - A valid entry: the signature matches (compared with timingSafeEqual),
  *   iat <= now + 60, and now - iat <= DEVICE_COOKIE_MAX_AGE.
  * - Input caps: the value is capped at 2048 chars and at most 10 entries are
@@ -100,19 +101,29 @@ function isSignedFor(key: Buffer, email: string, e: Entry): boolean {
 const toValue = (entries: Entry[]) =>
   entries.map((e) => `${e.nonce}.${e.iat}.${e.sig}`).join("~");
 
+export interface TrustedDevice {
+  nonce: string;
+  iat: number;
+}
+
 /**
- * Returns the nonce of the first valid entry minted for `email`, or null
+ * Returns the newest valid entry minted for `email` (nonce and iat), or null
  * when the cookie is absent, malformed or holds no valid entry for it.
  */
 export function findTrustedDevice(
   cookieValue: string | undefined,
   email: string,
   nowSec: number = Math.floor(Date.now() / 1000),
-): string | null {
+): TrustedDevice | null {
   const entries = parseEntries(cookieValue, nowSec);
   if (entries.length === 0) return null;
   const key = signingKey();
-  return entries.find((e) => isSignedFor(key, email, e))?.nonce ?? null;
+  let newest: TrustedDevice | null = null;
+  for (const e of entries) {
+    if (!isSignedFor(key, email, e)) continue;
+    if (!newest || e.iat > newest.iat) newest = { nonce: e.nonce, iat: e.iat };
+  }
+  return newest;
 }
 
 /**

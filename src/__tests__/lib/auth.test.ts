@@ -14,6 +14,7 @@ import {
   DEVICE_COOKIE_NAME,
   DEVICE_COOKIE_OPTIONS,
   findTrustedDevice,
+  issueDeviceCookie,
 } from "@/lib/utils/device-cookie";
 
 // Mock Prisma
@@ -91,8 +92,25 @@ vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
+// Fake Redis for the trusted-device "valid after" key: a string map plus a
+// log of every GET key, so tests can assert how many reads a sign-in made.
+const redisState = {
+  store: new Map<string, unknown>(),
+  gets: [] as string[],
+  sets: [] as unknown[][],
+};
 vi.mock("@upstash/redis", () => {
-  class Redis {}
+  class Redis {
+    async get(key: string) {
+      redisState.gets.push(key);
+      return redisState.store.get(key) ?? null;
+    }
+    async set(...args: unknown[]) {
+      redisState.sets.push(args);
+      redisState.store.set(String(args[0]), args[1]);
+      return "OK";
+    }
+  }
   return { Redis };
 });
 
@@ -127,6 +145,9 @@ beforeEach(() => {
   cookieJar.clear();
   cookieState.setThrows = false;
   fakeLimits.counts.clear();
+  redisState.store.clear();
+  redisState.gets.length = 0;
+  redisState.sets.length = 0;
 });
 
 describe("Auth - authorize function", () => {
@@ -775,6 +796,8 @@ const EMAIL_BUCKET = `ratelimit:login-email:${VICTIM}`;
 const TRUSTED_BUCKET = `ratelimit:login-trusted:${VICTIM}`;
 const FULL = { email: 10, ip: 5, trusted: 10 };
 const countOf = (key: string) => fakeLimits.counts.get(key) ?? 0;
+const VALID_AFTER_KEY = `trusted-device:valid-after:${VICTIM}`;
+const IP_BUCKET = "ratelimit:login:198.51.100.1";
 
 describe("Auth - login limits and trusted device", () => {
   const user = {
@@ -997,6 +1020,112 @@ describe("Auth - login limits and trusted device", () => {
     });
   });
 
+  describe("a device entry issued before a revocation", () => {
+    // Entry issued 100s ago; the account's devices became valid 50s ago.
+    const staleEntry = () => mintEntry(VICTIM, { iat: nowSec() - 100 }).entry;
+    const revokeAt = (sec: number) => redisState.store.set(VALID_AFTER_KEY, sec);
+
+    it("A1: spends the IP and email buckets and not the trusted bucket", async () => {
+      revokeAt(nowSec() - 50);
+      cookieJar.set(DEVICE_COOKIE_NAME, staleEntry());
+
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      expect(countOf(IP_BUCKET)).toBe(1);
+      expect(countOf(EMAIL_BUCKET)).toBe(1);
+      expect(countOf(TRUSTED_BUCKET)).toBe(0);
+    });
+
+    it("A2: is paused before the lookup when the email bucket is full", async () => {
+      revokeAt(nowSec() - 50);
+      fakeLimits.counts.set(EMAIL_BUCKET, FULL.email);
+      cookieJar.set(DEVICE_COOKIE_NAME, staleEntry());
+
+      await expect(
+        getAuthorize()(creds(), from("198.51.100.1")),
+      ).rejects.toThrow(SIGN_IN_PAUSED);
+
+      expect(mockFindUnique).not.toHaveBeenCalled();
+      expect(vi.mocked(bcrypt.compare)).not.toHaveBeenCalled();
+      expect(countOf(TRUSTED_BUCKET)).toBe(0);
+    });
+
+    it("A3: signs in untrusted with the right password, then the reissued cookie is trusted", async () => {
+      revokeAt(nowSec() - 50);
+      cookieJar.set(DEVICE_COOKIE_NAME, staleEntry());
+      const authorize = getAuthorize();
+
+      await expect(
+        authorize(creds(), from("198.51.100.1")),
+      ).resolves.toMatchObject({ id: "user-123" });
+      expect(countOf(TRUSTED_BUCKET)).toBe(0);
+      expect(countOf(EMAIL_BUCKET)).toBe(1);
+
+      // The jar now holds the reissued entry. Fill the untrusted buckets: only
+      // a trusted attempt can still get in.
+      fakeLimits.counts.set(EMAIL_BUCKET, FULL.email);
+      fakeLimits.counts.set(IP_BUCKET, FULL.ip);
+      await expect(
+        authorize(creds(), from("198.51.100.1")),
+      ).resolves.toMatchObject({ id: "user-123" });
+      expect(countOf(TRUSTED_BUCKET)).toBe(1);
+    });
+
+    it("A4 (guard): a junk cookie, or none, causes no Redis read", async () => {
+      cookieJar.set(DEVICE_COOKIE_NAME, "not-a-device-cookie");
+      await getAuthorize()(creds(), from("198.51.100.1"));
+      cookieJar.clear();
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      expect(redisState.gets).toEqual([]);
+    });
+
+    it("A4b: a tampered entry causes no Redis read", async () => {
+      const [n, i, sig] = mintEntry(VICTIM).entry.split(".");
+      cookieJar.set(
+        DEVICE_COOKIE_NAME,
+        `${n}.${i}.${sig[0] === "A" ? "B" : "A"}${sig.slice(1)}`,
+      );
+
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      expect(redisState.gets).toEqual([]);
+    });
+
+    it("A5 (guard): an entry issued after the revocation is trusted", async () => {
+      revokeAt(nowSec() - 500);
+      fakeLimits.counts.set(EMAIL_BUCKET, FULL.email);
+      fakeLimits.counts.set(IP_BUCKET, FULL.ip);
+      cookieJar.set(DEVICE_COOKIE_NAME, mintEntry(VICTIM).entry);
+
+      await expect(
+        getAuthorize()(creds(), from("198.51.100.1")),
+      ).resolves.toMatchObject({ id: "user-123" });
+
+      expect(countOf(TRUSTED_BUCKET)).toBe(1);
+    });
+
+    it("A5b: a verified entry causes exactly one read of the valid-after key", async () => {
+      cookieJar.set(DEVICE_COOKIE_NAME, mintEntry(VICTIM).entry);
+
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      expect(redisState.gets).toEqual([VALID_AFTER_KEY]);
+    });
+
+    it("A6 (guard): a stale entry does not get a deactivated account in", async () => {
+      revokeAt(nowSec() - 50);
+      cookieJar.set(DEVICE_COOKIE_NAME, staleEntry());
+      mockFindUnique.mockResolvedValue({ ...user, isActive: false });
+
+      await expect(
+        getAuthorize()(creds(), from("198.51.100.1")),
+      ).rejects.toThrow(INVALID_CREDENTIALS);
+
+      expect(mockCookieSet).not.toHaveBeenCalled();
+    });
+  });
+
   describe("client IP source", () => {
     afterEach(() => {
       vi.unstubAllEnvs();
@@ -1112,6 +1241,73 @@ describe("Auth - login limits and trusted device", () => {
     });
   });
 
+  describe("verified-entry guards", () => {
+    it.each([
+      ["an entry minted for another email", () => mintEntry("other@example.com").entry],
+      [
+        "an expired entry (older than 180 days)",
+        () => mintEntry(VICTIM, { iat: nowSec() - DEVICE_COOKIE_MAX_AGE - 10 }).entry,
+      ],
+    ])("%s causes zero reads of the valid-after key", async (_n, build) => {
+      cookieJar.set(DEVICE_COOKIE_NAME, build());
+
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      expect(redisState.gets).toEqual([]);
+    });
+  });
+
+  describe("issued entry timestamp", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("carries the second taken before the user lookup, not after bcrypt", async () => {
+      const T = 1_900_000_000;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(T * 1000);
+      mockFindUnique.mockImplementation(async () => {
+        vi.setSystemTime((T + 3) * 1000);
+        return user;
+      });
+      vi.mocked(bcrypt.compare).mockImplementation((async () => {
+        vi.setSystemTime((T + 7) * 1000);
+        return true;
+      }) as never);
+
+      await getAuthorize()(creds(), from("198.51.100.1"));
+
+      const value = mockCookieSet.mock.calls[0][1] as string;
+      expect(findTrustedDevice(value, VICTIM, T + 10)?.iat).toBe(T);
+    });
+  });
+
+  describe("the browser that completed a reset or setup", () => {
+    // Shape trustCompletingBrowser writes: iat = validAfter + 1. Guard: it
+    // passes today because it only exercises issueDeviceCookie and authorize.
+    const V = nowSec() - 100;
+
+    it("guard: is trusted in a lockout flood; a browser holding only an older entry stays paused", async () => {
+      redisState.store.set(VALID_AFTER_KEY, V);
+      fakeLimits.counts.set(EMAIL_BUCKET, FULL.email);
+      fakeLimits.counts.set(IP_BUCKET, FULL.ip);
+      const authorize = getAuthorize();
+
+      cookieJar.set(DEVICE_COOKIE_NAME, issueDeviceCookie(undefined, VICTIM, V + 1));
+      await expect(
+        authorize(creds(), from("198.51.100.1")),
+      ).resolves.toMatchObject({ id: "user-123" });
+      expect(countOf(TRUSTED_BUCKET)).toBe(1);
+      expect(countOf(EMAIL_BUCKET)).toBe(FULL.email + 0);
+
+      cookieJar.set(DEVICE_COOKIE_NAME, issueDeviceCookie(undefined, VICTIM, V));
+      await expect(
+        authorize(creds(), from("198.51.100.1")),
+      ).rejects.toThrow(SIGN_IN_PAUSED);
+      expect(countOf(TRUSTED_BUCKET)).toBe(1);
+    });
+  });
+
   describe("issuing the cookie", () => {
     it("sets the device cookie with the agreed name and flags on a successful sign-in", async () => {
       await getAuthorize()(creds(), from("198.51.100.1"));
@@ -1135,7 +1331,7 @@ describe("Auth - login limits and trusted device", () => {
 
       expect(mockCookieSet).toHaveBeenCalledTimes(1);
       const value = mockCookieSet.mock.calls[0][1] as string;
-      expect(findTrustedDevice(value, VICTIM)).toBe(nonce);
+      expect(findTrustedDevice(value, VICTIM)?.nonce).toBe(nonce);
     });
 
     it("still signs the user in when setting the cookie throws", async () => {

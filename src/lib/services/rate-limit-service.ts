@@ -1,7 +1,12 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import type { LoginRateLimitStatus } from "@/types/auth";
-import { SESSION_POLL_INTERVAL_SECONDS } from "@/lib/constants/auth";
+import {
+  DEVICE_REVOCATION_READ_TIMEOUT_MS,
+  DEVICE_REVOCATION_TTL,
+  SESSION_POLL_INTERVAL_SECONDS,
+} from "@/lib/constants/auth";
+import { normalizeEmail } from "@/lib/validations/email";
 import { RateLimitError } from "@/lib/errors";
 
 // Fail loud at server boot when Upstash is unconfigured in production.
@@ -20,6 +25,22 @@ if (
   );
 }
 
+/** Shared Redis client; null when Upstash is unconfigured. */
+let redisClient: Redis | null = null;
+function getRedis(): Redis | null {
+  if (
+    !redisClient &&
+    process.env.UPSTASH_REDIS_REST_URL &&
+    process.env.UPSTASH_REDIS_REST_TOKEN
+  ) {
+    redisClient = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+  }
+  return redisClient;
+}
+
 /**
  * Per-process singleton factories for Upstash-backed rate limiters. Vercel
  * edge + serverless runtimes each get their own module graph — instances are
@@ -28,9 +49,9 @@ if (
  * (IP, email, trusted) are spent by `consumeLoginAttempt` inside `authorize`;
  * the status route pre-check only reads them.
  *
- * Every limiter below shares the same env vars and the same shape (env check
- * → new Redis → new Ratelimit); the extracted `makeRateLimiter` closure
- * captures the per-config memo. Callers still get null when Upstash is
+ * Every limiter below shares the same env vars and the same shape (shared
+ * `getRedis()` client → new Ratelimit); the extracted `makeRateLimiter`
+ * closure captures the per-config memo. Callers still get null when Upstash is
  * unconfigured, which they already handle as "rate limiting disabled".
  */
 function makeRateLimiter(config: {
@@ -39,15 +60,8 @@ function makeRateLimiter(config: {
 }): () => Ratelimit | null {
   let instance: Ratelimit | null = null;
   return () => {
-    if (
-      !instance &&
-      process.env.UPSTASH_REDIS_REST_URL &&
-      process.env.UPSTASH_REDIS_REST_TOKEN
-    ) {
-      const redis = new Redis({
-        url: process.env.UPSTASH_REDIS_REST_URL,
-        token: process.env.UPSTASH_REDIS_REST_TOKEN,
-      });
+    const redis = !instance ? getRedis() : null;
+    if (redis) {
       instance = new Ratelimit({
         redis,
         limiter: config.limiter,
@@ -177,23 +191,83 @@ export const getSessionEndpointRateLimiter = makeRateLimiter({
 
 export type { LoginRateLimitStatus };
 
+const validAfterKey = (email: string) => `trusted-device:valid-after:${email}`;
+
+/**
+ * Whether a verified trusted-device entry (issued at `deviceIat`) is still
+ * valid: the valid-after key is absent or older than the entry. One GET. An
+ * unparsable value counts as everything revoked, and a GET error fails
+ * closed (untrusted path), never throws.
+ */
+async function isDeviceCurrent(email: string, deviceIat: number): Promise<boolean> {
+  const redis = getRedis();
+  if (!redis) return true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("valid-after read timed out")),
+        DEVICE_REVOCATION_READ_TIMEOUT_MS,
+      );
+    });
+    const raw = await Promise.race([
+      redis.get<unknown>(validAfterKey(email)),
+      timeout,
+    ]);
+    if (raw === null || raw === undefined) return true;
+    let validAfter: number;
+    if (typeof raw === "number" && Number.isFinite(raw)) validAfter = raw;
+    else if (typeof raw === "string" && /^\d+$/.test(raw)) validAfter = Number(raw);
+    else return false;
+    return deviceIat > validAfter;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Marks every trusted-device entry for `email` issued up to now as revoked
+ * (the key holds Unix seconds; `isDeviceCurrent` compares entries against it).
+ * Callers run it BEFORE the database write it guards: a Redis error
+ * propagates, so the write never happens. Returns the second written, or
+ * null (no-op) when Upstash is unset.
+ */
+export async function revokeTrustedDevices(
+  email: string,
+  nowSec: number = Math.floor(Date.now() / 1000),
+): Promise<number | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  await redis.set(validAfterKey(normalizeEmail(email)), nowSec, {
+    ex: DEVICE_REVOCATION_TTL,
+  });
+  return nowSec;
+}
+
 /**
  * Spends one login attempt; returns false when the attempt is refused.
- * - trusted (deviceNonce set): the shared trusted bucket only (key = email, not
- *   the nonce), never the IP or email bucket. One bucket per account caps every
- *   trusted device for that email together, so one account gets at most 10
- *   trusted plus 10 untrusted password checks per 15 min.
- * - untrusted: IP bucket (`ratelimit:login`, key = ip, so the pre-check keeps
- *   reading it); if refused, return false WITHOUT spending the email bucket;
- *   otherwise the email bucket.
+ * - trusted (deviceIat set and newer than the email's valid-after key, or the
+ *   key absent): the shared trusted bucket only (key = email, not the nonce),
+ *   never the IP or email bucket. One bucket per account caps every trusted
+ *   device for that email together, so one account gets at most 10 trusted
+ *   plus 10 untrusted password checks per 15 min.
+ * - untrusted (no entry, or an entry revoked by a password write,
+ *   deactivation or email change): IP bucket (`ratelimit:login`, key = ip, so
+ *   the pre-check keeps reading it); if refused, return false WITHOUT
+ *   spending the email bucket; otherwise the email bucket.
  * - a null limiter (Upstash unset in dev) skips that check.
  */
 export async function consumeLoginAttempt(input: {
   email: string;
   ip: string;
-  deviceNonce: string | null;
+  deviceIat: number | null;
 }): Promise<boolean> {
-  if (input.deviceNonce) {
+  if (
+    input.deviceIat !== null &&
+    (await isDeviceCurrent(input.email, input.deviceIat))
+  ) {
     const trusted = getLoginTrustedRateLimiter();
     if (!trusted) return true;
     const { success } = await trusted.limit(input.email);
@@ -238,7 +312,9 @@ export async function getLoginRateLimitStatus(
  * (429) rather than a fake "limited" status, so the login form can tell
  * "unknown" from a real lockout (ADR-008). `hasDeviceCookie` means the
  * client skips the IP bucket, so it gets the "not applicable" sentinel
- * (`{ limited: false, remaining: 999, resetAt: 0 }`) without reading it.
+ * (`{ limited: false, remaining: 999, resetAt: 0 }`) without reading it. The
+ * cookie is not verified here, nor checked for revocation, so `authorize`
+ * may still pause the attempt.
  */
 export async function getLoginPrecheckStatus(
   ip: string,

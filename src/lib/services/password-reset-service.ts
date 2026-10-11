@@ -13,7 +13,10 @@ import {
 } from "@/lib/constants/auth";
 import { NotFoundError, RateLimitError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { getForgotPasswordRateLimiter } from "@/lib/services/rate-limit-service";
+import {
+  getForgotPasswordRateLimiter,
+  revokeTrustedDevices,
+} from "@/lib/services/rate-limit-service";
 import { getEmailTransport } from "@/lib/email/email-transport";
 import { passwordResetEmail } from "@/lib/email/templates/password-reset";
 import {
@@ -161,13 +164,23 @@ export async function resolveSetupInvite(
   };
 }
 
+export interface ConsumeResult {
+  userId: string;
+  email: string;
+  /** Second the trusted devices were revoked, or null without Upstash. */
+  validAfter: number | null;
+}
+
 async function consumeToken(
   rawToken: string,
   newPassword: string,
   purpose: PasswordResetTokenPurpose
-): Promise<{ userId: string }> {
+): Promise<ConsumeResult> {
   const token = await findValidToken(rawToken, purpose);
   const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+  // Before the transaction: a Redis failure aborts with nothing written.
+  const validAfter = await revokeTrustedDevices(token.user.email);
 
   await prisma.$transaction(async (tx) => {
     // Claim the token first: the conditional updateMany + count check is
@@ -225,20 +238,20 @@ async function consumeToken(
     }
   );
 
-  return { userId: token.userId };
+  return { userId: token.userId, email: token.user.email, validAfter };
 }
 
 export async function consumeResetToken(input: {
   rawToken: string;
   newPassword: string;
-}): Promise<{ userId: string }> {
+}): Promise<ConsumeResult> {
   return consumeToken(input.rawToken, input.newPassword, "RESET");
 }
 
 export async function consumeSetupToken(input: {
   rawToken: string;
   newPassword: string;
-}): Promise<{ userId: string }> {
+}): Promise<ConsumeResult> {
   return consumeToken(input.rawToken, input.newPassword, "SETUP");
 }
 
