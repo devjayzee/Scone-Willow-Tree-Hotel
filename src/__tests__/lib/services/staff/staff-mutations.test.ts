@@ -1437,10 +1437,10 @@ describe("Staff Mutations", () => {
   // deleteStaff
   // ============================================================
   describe("deleteStaff", () => {
-    it("should delete staff member when they have no active bookings", async () => {
+    it("should delete staff member when they have no bookings", async () => {
       const staffWithNoBookings = {
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [],
+        _count: { bookings: 0 },
       };
       mockUserFindUnique.mockResolvedValue(staffWithNoBookings);
       mockUserDelete.mockResolvedValue(undefined);
@@ -1449,13 +1449,7 @@ describe("Staff Mutations", () => {
 
       expect(mockUserFindUnique).toHaveBeenCalledWith({
         where: { id: "staff-1" },
-        include: {
-          bookings: {
-            where: {
-              status: { in: ["CONFIRMED", "CHECKED_IN"] },
-            },
-          },
-        },
+        include: { _count: { select: { bookings: true } } },
       });
       expect(mockUserDelete).toHaveBeenCalledWith({
         where: { id: "staff-1" },
@@ -1486,13 +1480,10 @@ describe("Staff Mutations", () => {
       expect(mockUserDelete).not.toHaveBeenCalled();
     });
 
-    it("should deactivate staff member when they have active bookings", async () => {
+    it("should deactivate staff member when they have bookings", async () => {
       const staffWithBookings = {
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [
-          { id: "booking-1", status: "CONFIRMED" },
-          { id: "booking-2", status: "CHECKED_IN" },
-        ],
+        _count: { bookings: 2 },
       };
       mockUserFindUnique.mockResolvedValue(staffWithBookings);
       mockUserUpdate.mockResolvedValue({ ...staffWithBookings, isActive: false });
@@ -1507,14 +1498,14 @@ describe("Staff Mutations", () => {
       expect(result).toEqual({
         deleted: false,
         deactivated: true,
-        message: "Staff deactivated (has active bookings)",
+        message: "Staff deactivated (has bookings)",
       });
     });
 
     it("S10: the deactivate branch revokes the account's devices before the update", async () => {
       const staffWithBookings = {
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+        _count: { bookings: 1 },
       };
       mockUserFindUnique.mockResolvedValue(staffWithBookings);
       mockUserUpdate.mockResolvedValue({ ...staffWithBookings, isActive: false });
@@ -1533,7 +1524,7 @@ describe("Staff Mutations", () => {
     it("S10: a revoke error in the deactivate branch aborts with no write", async () => {
       mockUserFindUnique.mockResolvedValue({
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+        _count: { bookings: 1 },
       });
       mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
 
@@ -1552,7 +1543,7 @@ describe("Staff Mutations", () => {
           isActive: false,
           setupPending: true,
         }),
-        bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+        _count: { bookings: 1 },
       });
 
       it("voids SETUP and RESET tokens then deactivates without touching setupPending, in one transaction", async () => {
@@ -1605,8 +1596,8 @@ describe("Staff Mutations", () => {
           "STAFF",
           "staff-1",
           {
-            reason: "Deactivated instead of deleted (has active bookings)",
-            current: { isActive: false, activeBookings: 1 },
+            reason: "Deactivated instead of deleted (has bookings)",
+            current: { isActive: false, bookings: 1 },
           }
         );
       });
@@ -1684,7 +1675,7 @@ describe("Staff Mutations", () => {
       it("guard: a set-up account keeps the plain update with no voiding or transaction", async () => {
         const row = {
           ...createMockStaff({ id: "staff-1", setupPending: false }),
-          bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+          _count: { bookings: 1 },
         };
         mockUserFindUnique.mockResolvedValue(row);
         mockUserUpdate.mockResolvedValue(row);
@@ -1702,7 +1693,7 @@ describe("Staff Mutations", () => {
       it("guard: a set-up account's revoke error aborts with no write", async () => {
         mockUserFindUnique.mockResolvedValue({
           ...createMockStaff({ id: "staff-1", setupPending: false }),
-          bookings: [{ id: "booking-1", status: "CONFIRMED" }],
+          _count: { bookings: 1 },
         });
         mockRevokeTrustedDevices.mockRejectedValue(new Error("redis down"));
 
@@ -1717,7 +1708,7 @@ describe("Staff Mutations", () => {
     it("S10: the hard-delete branch does not revoke", async () => {
       mockUserFindUnique.mockResolvedValue({
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [],
+        _count: { bookings: 0 },
       });
       mockUserDelete.mockResolvedValue(undefined);
 
@@ -1727,20 +1718,122 @@ describe("Staff Mutations", () => {
       expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
     });
 
-    it("should allow deletion when staff only has cancelled/checked-out bookings", async () => {
-      // The query filters for CONFIRMED/CHECKED_IN, so cancelled bookings
-      // won't be in the result
-      const staffWithNoActiveBookings = {
+    it("deactivates (does not delete) when every booking is CHECKED_OUT or CANCELLED", async () => {
+      const row = {
         ...createMockStaff({ id: "staff-1" }),
-        bookings: [], // Empty because query filtered out CANCELLED/CHECKED_OUT
+        _count: { bookings: 2 },
       };
-      mockUserFindUnique.mockResolvedValue(staffWithNoActiveBookings);
+      mockUserFindUnique.mockResolvedValue(row);
+      mockUserUpdate.mockResolvedValue({ ...row, isActive: false });
+
+      const result = await deleteStaff("staff-1", "current-user-id");
+
+      // Counts every booking, whatever its status: no status filter in the lookup.
+      expect(mockUserFindUnique).toHaveBeenCalledWith({
+        where: { id: "staff-1" },
+        include: { _count: { select: { bookings: true } } },
+      });
+      expect(mockUserDelete).not.toHaveBeenCalled();
+      expect(mockUserUpdate).toHaveBeenCalledWith({
+        where: { id: "staff-1" },
+        data: { isActive: false },
+      });
+      expect(result).toEqual({
+        deleted: false,
+        deactivated: true,
+        message: "Staff deactivated (has bookings)",
+      });
+    });
+
+    it("the deactivate audit records the booking count under the bookings key", async () => {
+      const row = {
+        ...createMockStaff({ id: "staff-1" }),
+        _count: { bookings: 2 },
+      };
+      mockUserFindUnique.mockResolvedValue(row);
+      mockUserUpdate.mockResolvedValue(row);
+
+      await deleteStaff("staff-1", "gm-1");
+
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "gm-1",
+        "STAFF_DEACTIVATED",
+        "STAFF",
+        "staff-1",
+        {
+          reason: "Deactivated instead of deleted (has bookings)",
+          current: { isActive: false, bookings: 2 },
+        }
+      );
+    });
+
+    it("hard-deletes and audits STAFF_DELETED when there are no bookings at all", async () => {
+      mockUserFindUnique.mockResolvedValue({
+        ...createMockStaff({ id: "staff-1" }),
+        _count: { bookings: 0 },
+      });
       mockUserDelete.mockResolvedValue(undefined);
 
       const result = await deleteStaff("staff-1", "current-user-id");
 
       expect(mockUserDelete).toHaveBeenCalled();
+      expect(mockUserUpdate).not.toHaveBeenCalled();
       expect(result.deleted).toBe(true);
+      expect(createAuditLog).toHaveBeenCalledWith(
+        "current-user-id",
+        "STAFF_DELETED",
+        "STAFF",
+        "staff-1",
+        expect.anything()
+      );
+    });
+
+    describe("delete races a new booking", () => {
+      const zeroBookings = () => ({
+        ...createMockStaff({ id: "staff-1" }),
+        _count: { bookings: 0 },
+      });
+
+      it("P2003 from the delete becomes a ConflictError and writes no STAFF_DELETED audit", async () => {
+        mockUserFindUnique.mockResolvedValue(zeroBookings());
+        mockUserDelete.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("FK", {
+            code: "P2003",
+            clientVersion: "x",
+          })
+        );
+
+        const error = await deleteStaff("staff-1", "gm-1").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(ConflictError);
+        expect((error as Error).message).toBe(
+          "This staff member now has bookings. Try again."
+        );
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("any other error from the delete is rethrown unchanged", async () => {
+        mockUserFindUnique.mockResolvedValue(zeroBookings());
+        const boom = new Error("db down");
+        mockUserDelete.mockRejectedValue(boom);
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toBe(boom);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("a Prisma error with another code is rethrown unchanged", async () => {
+        mockUserFindUnique.mockResolvedValue(zeroBookings());
+        const other = new Prisma.PrismaClientKnownRequestError("Missing", {
+          code: "P2025",
+          clientVersion: "x",
+        });
+        mockUserDelete.mockRejectedValue(other);
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toBe(other);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
     });
   });
 });

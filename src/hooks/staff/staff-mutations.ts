@@ -152,7 +152,7 @@ export function useDeleteStaff() {
     },
     onSuccess: (result) => {
       if (result.deactivated) {
-        toast.success("Staff deactivated (has active bookings)");
+        toast.success("Staff deactivated (has bookings)");
       } else {
         toast.success("Staff deleted successfully");
       }

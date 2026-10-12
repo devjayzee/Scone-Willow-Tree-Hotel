@@ -364,7 +364,7 @@ describe("staff mutation hooks", () => {
 
       await waitFor(() => {
         expect(mockToastSuccess).toHaveBeenCalledWith(
-          "Staff deactivated (has active bookings)"
+          "Staff deactivated (has bookings)"
         );
       });
     });
