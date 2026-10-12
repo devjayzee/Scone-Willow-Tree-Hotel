@@ -23,10 +23,12 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 // "no console errors" IS the hydration check.
 
 const AUTH_PAGES = [
+  "/", // redirects to /login for signed-out visitors
   "/login",
   "/forgot-password",
   "/reset-password?token=fake-token-for-render-check",
   "/setup-password?token=fake-token-for-render-check",
+  "/this-page-does-not-exist", // not-found page (h1 "404")
 ];
 
 // Browser-emitted network errors ("Failed to load resource: the
@@ -86,3 +88,143 @@ for (const path of AUTH_PAGES) {
     });
   });
 }
+
+// Nonce-based CSP checks (plan feat-nonce-csp, tests 17-19). Every HTML
+// response must carry a per-request nonce CSP, every <script> must carry
+// that nonce, and the browser must report no violations. A static page
+// (no nonce) or a stale nonce fails here, which is the #130 class.
+
+// Records securitypolicyviolation events in the page. Read back with
+// readViolations(). The init script runs before any page script.
+async function recordViolations(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __cspViolations: string[] };
+    w.__cspViolations = [];
+    document.addEventListener("securitypolicyviolation", (e) => {
+      w.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+    });
+  });
+}
+
+async function readViolations(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __cspViolations?: string[] }).__cspViolations ??
+      [],
+  );
+}
+
+function cspHeaders(headers: Record<string, string>): string[] {
+  return Object.entries(headers)
+    .filter(([name]) => name.toLowerCase() === "content-security-policy")
+    .map(([, value]) => value);
+}
+
+for (const path of AUTH_PAGES) {
+  test.describe(`nonce CSP: ${path}`, () => {
+    test("response CSP is nonce-based and every server-rendered script carries the nonce", async ({
+      page,
+    }) => {
+      const { consoleErrors, pageErrors } = captureBrowserErrors(page);
+      await recordViolations(page);
+
+      const response = await page.goto(path);
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator("h1").first()).toBeVisible();
+
+      const csps = cspHeaders(await response!.allHeaders());
+      expect(csps, "exactly one CSP header").toHaveLength(1);
+      const csp = csps[0];
+
+      const scriptSrc = csp
+        .split(";")
+        .map((d) => d.trim())
+        .find((d) => d.startsWith("script-src "));
+      expect(scriptSrc, "script-src directive").toBeDefined();
+      expect(scriptSrc).toContain("'strict-dynamic'");
+      expect(scriptSrc).not.toContain("'unsafe-inline'");
+      const nonce = /'nonce-([^']+)'/.exec(scriptSrc!)?.[1];
+      expect(nonce, "nonce in script-src").toBeTruthy();
+
+      // Check the server HTML, not the live DOM: Turbopack's runtime adds
+      // chunk <script>s with no nonce, which 'strict-dynamic' allows.
+      // Every script the server rendered must carry the header's nonce.
+      const html = await response!.text();
+      // Parse with the browser's HTML parser (no regex). DOMParser documents
+      // are inert (no scripts run, no nonce hiding), so getAttribute returns
+      // what the server wrote.
+      const scripts = await page.evaluate(
+        (h) =>
+          Array.from(
+            new DOMParser()
+              .parseFromString(h, "text/html")
+              .querySelectorAll("script"),
+          ).map((s) => ({
+            nonce: s.getAttribute("nonce"),
+            tag: s.outerHTML.slice(0, 120),
+          })),
+        html,
+      );
+      expect(scripts.length, "server HTML has scripts").toBeGreaterThan(0);
+      for (const s of scripts) {
+        expect(
+          s.nonce,
+          `server-rendered script carries the nonce: ${s.tag}`,
+        ).toBe(nonce);
+      }
+
+      expect(await readViolations(page), "no CSP violations").toEqual([]);
+      expect(pageErrors, "no uncaught page errors").toEqual([]);
+      expect(consoleErrors, "no console errors").toEqual([]);
+    });
+  });
+}
+
+test.describe("hydration under the nonce CSP", () => {
+  test("/login password visibility toggle flips the input type", async ({
+    page,
+  }) => {
+    await page.goto("/login");
+    await page.waitForLoadState("networkidle");
+
+    const password = page.locator("#password");
+    await password.fill("not-a-real-password");
+    await expect(password).toHaveAttribute("type", "password");
+
+    await page.getByRole("button", { name: "Show password" }).click();
+    await expect(password).toHaveAttribute("type", "text");
+  });
+
+  // Detector: proves this smoke can see a #130-class failure. The
+  // response CSP is rewritten to a nonce the page's scripts don't carry,
+  // so the browser blocks them and the page never hydrates.
+  test("a wrong nonce in the CSP is caught: violations, and the toggle stays dead", async ({
+    page,
+  }) => {
+    await recordViolations(page);
+    await page.route("**/login", async (route) => {
+      if (route.request().resourceType() !== "document") {
+        return route.continue();
+      }
+      const response = await route.fetch();
+      const headers = response.headers();
+      headers["content-security-policy"] = headers[
+        "content-security-policy"
+      ].replace(/'nonce-[^']+'/, "'nonce-d3Jvbmctbm9uY2U='");
+      await route.fulfill({ response, headers });
+    });
+
+    await page.goto("/login");
+    await page.waitForLoadState("networkidle");
+
+    const password = page.locator("#password");
+    await password.fill("not-a-real-password");
+    await page.getByRole("button", { name: "Show password" }).click();
+
+    expect(
+      (await readViolations(page)).length,
+      "blocked scripts are reported",
+    ).toBeGreaterThan(0);
+    await expect(password).toHaveAttribute("type", "password");
+  });
+});
