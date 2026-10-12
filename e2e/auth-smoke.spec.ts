@@ -150,12 +150,27 @@ for (const path of AUTH_PAGES) {
       // chunk <script>s with no nonce, which 'strict-dynamic' allows.
       // Every script the server rendered must carry the header's nonce.
       const html = await response!.text();
-      const tags = html.match(/<script\b[^>]*>/g) ?? [];
-      expect(tags.length, "server HTML has scripts").toBeGreaterThan(0);
-      for (const tag of tags) {
-        expect(tag, "server-rendered script carries the nonce").toContain(
-          `nonce="${nonce}"`,
-        );
+      // Parse with the browser's HTML parser (no regex). DOMParser documents
+      // are inert (no scripts run, no nonce hiding), so getAttribute returns
+      // what the server wrote.
+      const scripts = await page.evaluate(
+        (h) =>
+          Array.from(
+            new DOMParser()
+              .parseFromString(h, "text/html")
+              .querySelectorAll("script"),
+          ).map((s) => ({
+            nonce: s.getAttribute("nonce"),
+            tag: s.outerHTML.slice(0, 120),
+          })),
+        html,
+      );
+      expect(scripts.length, "server HTML has scripts").toBeGreaterThan(0);
+      for (const s of scripts) {
+        expect(
+          s.nonce,
+          `server-rendered script carries the nonce: ${s.tag}`,
+        ).toBe(nonce);
       }
 
       expect(await readViolations(page), "no CSP violations").toEqual([]);
