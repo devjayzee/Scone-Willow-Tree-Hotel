@@ -93,6 +93,7 @@ pages only for now — see `.github/workflows/test.yml` Smoke job).
 - Client-side API calls: plain `fetch` wrapped in per-domain `*-api.ts` functions
   (see `src/hooks/booking/booking-api.ts`), consumed only by query/mutation hooks
 - Audit trail via `audit-service.ts` — mutations to core entities should log
+- CSP lives in `src/proxy.ts` and `src/lib/utils/csp.ts` with a per-request nonce; the root layout is `force-dynamic` so every page gets it; no route may use `revalidate` or `force-static`. `/api/*` gets a strict static CSP from `next.config.ts` instead, which also covers NextAuth's built-in pages.
 
 ## Hard rules
 

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono, Cormorant_Garamond } from "next/font/google";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { NONCE_HEADER } from "@/lib/utils/csp";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,17 +30,24 @@ export const metadata: Metadata = {
   description: "Hotel booking management system for Scone Willow Tree",
 };
 
-export default function RootLayout({
+// The CSP nonce is generated per request in src/proxy.ts, so every page must
+// render per request. The auth pages are "use client" and can't carry segment
+// config themselves, so the root layout forces it for the whole tree.
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} antialiased`}
       >
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <QueryProvider>
             <SessionProvider>{children}</SessionProvider>
           </QueryProvider>

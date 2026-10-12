@@ -9,6 +9,7 @@ import {
   getSessionEndpointRateLimiter,
 } from "@/lib/services/rate-limit-service";
 import { logger } from "@/lib/logger";
+import { NONCE_HEADER, buildCsp, generateNonce } from "@/lib/utils/csp";
 
 // Shared 429 response shape — every rate limiter reports the same
 // {limit, remaining, reset} triple, surfaced as X-RateLimit-* headers.
@@ -72,6 +73,44 @@ function clearSessionCookies(req: NextRequest, res: NextResponse): void {
       res.cookies.delete({ name, path: "/", secure: name.startsWith("__Secure-") });
     }
   }
+}
+
+// Continues to the page with a per-request CSP. The nonce and policy are set
+// on the request headers too (overwriting any client-sent values) because
+// Next reads the nonce from the request CSP header to tag its own scripts.
+// /api/* responses get no CSP.
+function nextWithCsp(req: NextRequest): NextResponse {
+  if (req.nextUrl.pathname.startsWith("/api/")) return NextResponse.next();
+  const nonce = generateNonce();
+  const csp = buildCsp({ nonce, dev: process.env.NODE_ENV === "development" });
+  const headers = new Headers(req.headers);
+  headers.set(NONCE_HEADER, nonce);
+  headers.set("content-security-policy", csp);
+  const res = NextResponse.next({ request: { headers } });
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
+}
+
+// Mirrors the raw paths of the matcher this file had before it was widened for
+// the CSP: the four auth pages, /api/*, and the dashboard sections with any
+// sub-path. Next matched the old matcher against decoded paths too, so
+// percent-encoded variants (e.g. /%62ookings) now skip withAuth; they are
+// still guarded by requireSession. Any other path only gets the CSP.
+const AUTH_GATED_SECTIONS = [
+  "/bookings",
+  "/rooms",
+  "/calendar",
+  "/reports",
+  "/staff",
+];
+
+function isAuthGated(path: string): boolean {
+  return (
+    PUBLIC_AUTH_PATHS.has(path) ||
+    path === "/api" ||
+    path.startsWith("/api/") ||
+    AUTH_GATED_SECTIONS.some((p) => path === p || path.startsWith(`${p}/`))
+  );
 }
 
 // Routes that require MANAGER or GENERAL_MANAGER role.
@@ -282,14 +321,14 @@ const authMiddleware = withAuth(
     // parameter never adds or suppresses a cookie deletion.
     if (PUBLIC_AUTH_PATHS.has(path)) {
       if (!hasLiveSession(token)) {
-        const res = NextResponse.next();
+        const res = nextWithCsp(req);
         clearSessionCookies(req, res);
         return res;
       }
       if (req.nextUrl.searchParams.get("session") !== "expired") {
         return NextResponse.redirect(new URL("/bookings", req.url));
       }
-      return NextResponse.next();
+      return nextWithCsp(req);
     }
 
     if (MANAGER_PATHS.some((p) => path.startsWith(p))) {
@@ -304,7 +343,7 @@ const authMiddleware = withAuth(
       }
     }
 
-    return NextResponse.next();
+    return nextWithCsp(req);
   },
   {
     callbacks: {
@@ -359,6 +398,9 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Everything else (/, unknown URLs, public files) needs no auth, only the CSP.
+  if (!isAuthGated(path)) return nextWithCsp(req);
+
   // withAuth expects NextRequestWithAuth + NextFetchEvent, but we don't
   // have a real NextFetchEvent at this call site — NextAuth treats {} as
   // a stub. @ts-expect-error fails loudly if the upstream typing gap ever
@@ -368,20 +410,12 @@ export default async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/login",
-    "/forgot-password",
-    "/reset-password",
-    "/setup-password",
-    // Match all API routes (not just /api/auth/*) so the body-size cap
-    // above fires for /api/bookings, /api/staffs, etc. Non-auth API paths
-    // skip withAuth via the early return in `proxy()` at the top of this
-    // file.
-    "/api/:path*",
-    "/bookings/:path*",
-    "/rooms/:path*",
-    "/calendar/:path*",
-    "/reports/:path*",
-    "/staff/:path*",
-  ],
+  // Every path except static assets, so each HTML response gets the CSP.
+  // The exclusions are anchored: /_next/static/*, /_next/image exactly and
+  // /favicon.ico exactly (a looser prefix match lets e.g. /favicon.icox skip
+  // the proxy and render an HTML 404 with no CSP). /api stays matched
+  // (body-size cap and rate limits; non-auth API paths skip withAuth via the
+  // early return in `proxy()`), and so do prefetches (the role redirects run
+  // on them). Paths outside isAuthGated skip withAuth.
+  matcher: ["/((?!_next/static/|_next/image$|favicon\\.ico$).*)"],
 };

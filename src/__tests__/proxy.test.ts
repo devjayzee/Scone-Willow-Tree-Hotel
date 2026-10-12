@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest";
 
 // Mock next-auth/middleware — the real withAuth wraps our inner function and
 // populates req.nextauth.token from the JWT. For unit tests we bypass the JWT
@@ -82,7 +82,7 @@ process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io";
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
 
 import { Readable } from "node:stream";
-import proxy from "@/proxy";
+import proxy, { config } from "@/proxy";
 import { NextRequest, NextResponse } from "next/server";
 
 type NextInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
@@ -1175,6 +1175,302 @@ describe("proxy", () => {
       // Passes through to withAuth (mocked passthrough) — not a 429, not a 500
       expect(response.status).not.toBe(429);
       expect(response.status).not.toBe(500);
+    });
+  });
+
+  describe("nonce CSP", () => {
+    const CSP = "content-security-policy";
+    // NextResponse.next({ request: { headers } }) surfaces the overridden
+    // request headers as x-middleware-request-<name> on the response.
+    const REQ_CSP = "x-middleware-request-content-security-policy";
+    const REQ_NONCE = "x-middleware-request-x-nonce";
+    const GM = { id: "u-1", role: "GENERAL_MANAGER" as const };
+
+    const nonceOf = (csp: string | null) => csp?.match(/'nonce-([^']+)'/)?.[1];
+
+    function expectCsp(response: NextResponse) {
+      const csp = response.headers.get(CSP);
+      expect(csp, "response CSP header").not.toBeNull();
+      const nonce = nonceOf(csp);
+      expect(nonce, "nonce in CSP").toBeTruthy();
+      expect(csp).toContain("'strict-dynamic'");
+      expect(csp).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+      expect(response.headers.get(REQ_CSP)).toBe(csp);
+      expect(response.headers.get(REQ_NONCE)).toBe(nonce);
+      return nonce as string;
+    }
+
+    it("GET /login with no token gets a CSP whose nonce is forwarded as request headers", async () => {
+      const response = (await proxy(buildReq({ path: "/login" }))) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      expectCsp(response);
+    });
+
+    it("/login with an expired token and session cookie gets the CSP and the cookie deletion on the same response (ADR-002)", async () => {
+      const req = buildReq({
+        path: "/login",
+        token: { id: "u-1", role: "STAFF", expiresAt: 1 },
+        cookies: { "__Secure-next-auth.session-token": "stale" },
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expectCsp(response);
+      const c = response.cookies.get("__Secure-next-auth.session-token");
+      expect(c?.value).toBe("");
+      expect(c?.expires).toEqual(new Date(0));
+    });
+
+    for (const path of ["/bookings", "/reports/x"]) {
+      it(`${path} with a live token of the right role gets the CSP`, async () => {
+        const response = (await proxy(
+          buildReq({ path, token: GM }),
+        )) as NextResponse;
+
+        expect(response.headers.get("location")).toBeNull();
+        expectCsp(response);
+      });
+    }
+
+    for (const path of ["/", "/does-not-exist", "/foo.php"]) {
+      it(`${path} with no token passes through with a CSP, no sign-in redirect`, async () => {
+        const response = (await proxy(buildReq({ path }))) as NextResponse;
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("location")).toBeNull();
+        expectCsp(response);
+      });
+    }
+
+    it("gives two GETs to /login different nonces", async () => {
+      const a = (await proxy(buildReq({ path: "/login" }))) as NextResponse;
+      const b = (await proxy(buildReq({ path: "/login" }))) as NextResponse;
+
+      expect(expectCsp(a)).not.toBe(expectCsp(b));
+    });
+
+    it("overwrites client-sent x-nonce and content-security-policy request headers", async () => {
+      const req = buildReq({
+        path: "/login",
+        headers: {
+          "x-nonce": "attacker-nonce",
+          "content-security-policy": "script-src 'unsafe-inline' 'nonce-attacker-nonce'",
+        },
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      const nonce = expectCsp(response);
+      expect(nonce).not.toBe("attacker-nonce");
+      expect(response.headers.get(REQ_CSP)).not.toContain("attacker-nonce");
+      const forwarded = response.headers.get(REQ_CSP) ?? "";
+      expect(forwarded).not.toContain(
+        "script-src 'unsafe-inline' 'nonce-attacker-nonce'",
+      );
+      // style-src legitimately keeps 'unsafe-inline'; only script-src must not.
+      expect(forwarded.match(/script-src[^;]*/)?.[0]).not.toContain(
+        "'unsafe-inline'",
+      );
+    });
+
+    describe("guard: no CSP on non-HTML responses", () => {
+      function expectNoCsp(response: NextResponse) {
+        expect(response.headers.get(CSP)).toBeNull();
+      }
+
+      it("GET /api/bookings", async () => {
+        const response = (await proxy(
+          buildReq({ path: "/api/bookings" }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(200);
+        expectNoCsp(response);
+      });
+
+      it("/api/auth/session and /api/auth/callback/credentials", async () => {
+        const session = (await proxy(
+          buildReq({ path: "/api/auth/session" }),
+        )) as NextResponse;
+        const callback = (await proxy(
+          buildReq({ path: "/api/auth/callback/credentials", method: "POST" }),
+        )) as NextResponse;
+
+        expect(session.status).toBe(200);
+        expect(callback.status).toBe(200);
+        expectNoCsp(session);
+        expectNoCsp(callback);
+      });
+
+      it("413 body-cap response", async () => {
+        const response = (await proxy(
+          buildReq({
+            path: "/api/bookings",
+            method: "POST",
+            headers: { "content-length": "200000" },
+          }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(413);
+        expectNoCsp(response);
+      });
+
+      it("400 body-cap response", async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new Error("boom"));
+          },
+        });
+        const req = new NextRequest(
+          new Request("http://localhost/api/bookings", {
+            method: "POST",
+            body,
+            duplex: "half",
+          } as RequestInit),
+        );
+
+        const response = (await proxy(req)) as NextResponse;
+
+        expect(response.status).toBe(400);
+        expectNoCsp(response);
+      });
+
+      const limited = [
+        { name: "api", path: "/api/bookings", method: "GET" },
+        { name: "session-endpoint", path: "/api/auth/session", method: "GET" },
+        { name: "auth-endpoint", path: "/api/auth/reset-password", method: "POST" },
+      ];
+      for (const { name, path, method } of limited) {
+        it(`429 from the ${name} limiter`, async () => {
+          mockLimit.mockResolvedValue({
+            success: false,
+            limit: 10,
+            remaining: 0,
+            reset: Date.now() + 60_000,
+          });
+
+          const response = (await proxy(buildReq({ path, method }))) as NextResponse;
+
+          expect(response.status).toBe(429);
+          expectNoCsp(response);
+        });
+      }
+
+      it("role redirect (STAFF on /staff)", async () => {
+        const response = (await proxy(
+          buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF" } }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expectNoCsp(response);
+      });
+
+      it("authenticated bounce from /login", async () => {
+        const response = (await proxy(
+          buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expectNoCsp(response);
+      });
+    });
+
+    describe("guard: auth gating is unchanged by the widened matcher", () => {
+      const SIGN_IN = "http://localhost/api/auth/signin";
+
+      it("/calendar with no token redirects to sign-in", async () => {
+        const response = (await proxy(
+          buildReq({ path: "/calendar" }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(SIGN_IN);
+        expect(response.headers.get(CSP)).toBeNull();
+      });
+
+      it("/calendar with an expired token redirects to sign-in", async () => {
+        const response = (await proxy(
+          buildReq({
+            path: "/calendar",
+            token: { id: "u-1", role: "GENERAL_MANAGER", expiresAt: 1 },
+          }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(SIGN_IN);
+      });
+
+      it("/staffing with a STAFF token is not auth-gated: no redirect, gets a CSP", async () => {
+        // It shares the "/staff" prefix but is not the /staff section, so
+        // it must not hit the GM-only redirect.
+        const response = (await proxy(
+          buildReq({ path: "/staffing", token: { id: "u-1", role: "STAFF" } }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("location")).toBeNull();
+        expectCsp(response);
+      });
+
+      it("bare /api goes through withAuth, as /api/:path* did: no token redirects to sign-in", async () => {
+        const response = (await proxy(
+          buildReq({ path: "/api" }),
+        )) as NextResponse;
+
+        expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe(SIGN_IN);
+        expect(response.headers.get(CSP)).toBeNull();
+      });
+    });
+
+    describe("config.matcher", () => {
+      type Matches = (args: {
+        config: typeof config;
+        url: string;
+      }) => boolean;
+      let matches: Matches;
+
+      beforeAll(async () => {
+        // Next's helper reads AsyncLocalStorage off globalThis.
+        const { AsyncLocalStorage } = await import("node:async_hooks");
+        (globalThis as { AsyncLocalStorage?: unknown }).AsyncLocalStorage ??=
+          AsyncLocalStorage;
+        const mod = await import("next/experimental/testing/server");
+        matches = mod.unstable_doesMiddlewareMatch as Matches;
+      });
+
+      const matched = [
+        "/",
+        "/login",
+        "/bookings/x",
+        "/api/bookings",
+        "/api/auth/session",
+        "/does-not-exist",
+        "/foo.php",
+        // Lookalikes of the excluded prefixes: the exclusions must be
+        // anchored, or these HTML-capable paths would skip the CSP.
+        "/favicon.icox",
+        "/favicon.ico/x",
+        "/faviconXico",
+        "/_next/staticfoo",
+        "/_next/imagefoo",
+      ];
+      for (const path of matched) {
+        it(`matches ${path}`, () => {
+          expect(matches({ config, url: path })).toBe(true);
+        });
+      }
+
+      const skipped = [
+        "/_next/static/chunks/a.js",
+        "/_next/image?url=%2Flogo.png&w=64&q=75",
+        "/favicon.ico",
+      ];
+      for (const url of skipped) {
+        it(`does not match ${url}`, () => {
+          expect(matches({ config, url })).toBe(false);
+        });
+      }
     });
   });
 });
