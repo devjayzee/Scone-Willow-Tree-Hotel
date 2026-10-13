@@ -29,6 +29,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+import { BusinessRuleError } from "@/lib/errors";
 import { GET, PUT, DELETE } from "@/app/api/rooms/[id]/route";
 import { logger } from "@/lib/logger";
 
@@ -207,6 +208,20 @@ describe("Rooms [id] API", () => {
       expect(response.status).toBe(200);
       expect(data.message).toBe("Room deleted successfully");
       expect(mockDeleteRoom).toHaveBeenCalledWith("room-1", "u-gm");
+    });
+
+    it("returns 400 BUSINESS_RULE_VIOLATION when the room has bookings", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      mockDeleteRoom.mockRejectedValue(
+        new BusinessRuleError("This room has bookings and can't be deleted.")
+      );
+
+      const response = await DELETE(req, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toBe("This room has bookings and can't be deleted.");
+      expect(data.code).toBe("BUSINESS_RULE_VIOLATION");
     });
   });
 

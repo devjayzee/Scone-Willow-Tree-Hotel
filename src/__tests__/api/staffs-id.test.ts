@@ -29,7 +29,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { RateLimitError } from "@/lib/errors";
+import { RateLimitError, ConflictError } from "@/lib/errors";
 import { GET, PUT, DELETE } from "@/app/api/staffs/[id]/route";
 import { logger } from "@/lib/logger";
 
@@ -229,7 +229,7 @@ describe("Staffs [id] API", () => {
       mockDeleteStaff.mockResolvedValue({
         deleted: false,
         deactivated: true,
-        message: "Staff deactivated (has active bookings)",
+        message: "Staff deactivated (has bookings)",
       });
 
       const response = await DELETE(req, { params });
@@ -237,6 +237,21 @@ describe("Staffs [id] API", () => {
 
       expect(response.status).toBe(200);
       expect(data.deactivated).toBe(true);
+      expect(data.message).toBe("Staff deactivated (has bookings)");
+    });
+
+    it("returns 409 when the service reports the staff member gained bookings mid-delete", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      mockDeleteStaff.mockRejectedValue(
+        new ConflictError("This staff member now has bookings. Try again.")
+      );
+
+      const response = await DELETE(req, { params });
+      const data = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(data.error).toBe("This staff member now has bookings. Try again.");
+      expect(data.code).toBe("CONFLICT");
     });
   });
 

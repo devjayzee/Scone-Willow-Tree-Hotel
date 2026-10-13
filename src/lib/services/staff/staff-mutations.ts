@@ -327,10 +327,11 @@ export interface DeleteStaffResult {
 
 /**
  * Delete a staff member
- * - If staff has active bookings, deactivates instead of deleting
+ * - If staff has any bookings, deactivates instead of deleting
  * - Prevents self-deletion
  * @throws NotFoundError if staff member not found
  * @throws BusinessRuleError if attempting to delete own account
+ * @throws ConflictError if a booking is created between the check and the delete
  */
 export async function deleteStaff(
   id: string,
@@ -343,21 +344,15 @@ export async function deleteStaff(
 
   const staff = await prisma.user.findUnique({
     where: { id },
-    include: {
-      bookings: {
-        where: {
-          status: { in: ["CONFIRMED", "CHECKED_IN"] },
-        },
-      },
-    },
+    include: { _count: { select: { bookings: true } } },
   });
 
   if (!staff) {
     throw new NotFoundError("Staff not found");
   }
 
-  // If staff has active bookings, deactivate instead of delete
-  if (staff.bookings.length > 0) {
+  // If staff has any bookings, deactivate instead of delete
+  if (staff._count.bookings > 0) {
     await revokeTrustedDevices(staff.email);
     let voidedCount = 0;
     if (staff.setupPending) {
@@ -388,8 +383,8 @@ export async function deleteStaff(
       EntityType.STAFF,
       id,
       {
-        reason: "Deactivated instead of deleted (has active bookings)",
-        current: { isActive: false, activeBookings: staff.bookings.length },
+        reason: "Deactivated instead of deleted (has bookings)",
+        current: { isActive: false, bookings: staff._count.bookings },
       }
     );
 
@@ -408,13 +403,24 @@ export async function deleteStaff(
     return {
       deleted: false,
       deactivated: true,
-      message: "Staff deactivated (has active bookings)",
+      message: "Staff deactivated (has bookings)",
     };
   }
 
-  await prisma.user.delete({
-    where: { id },
-  });
+  try {
+    await prisma.user.delete({
+      where: { id },
+    });
+  } catch (error) {
+    // Booking.createdById is ON DELETE RESTRICT: a booking created after the count
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      throw new ConflictError("This staff member now has bookings. Try again.");
+    }
+    throw error;
+  }
 
   // Audit log for deletion
   await createAuditLog(
