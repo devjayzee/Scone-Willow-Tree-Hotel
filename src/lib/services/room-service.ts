@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { Room as PrismaRoom } from "@prisma/client";
 import type { CreateRoomInput, UpdateRoomInput } from "@/lib/validations/room";
 import { NotFoundError, ConflictError, BusinessRuleError } from "@/lib/errors";
@@ -159,30 +160,35 @@ export async function updateRoom(
   return room;
 }
 
-// Delete a room (checks for active bookings)
+// Delete a room (refuses if the room has any bookings)
 export async function deleteRoom(id: string, performedBy?: string): Promise<void> {
   const room = await prisma.room.findUnique({
     where: { id },
-    include: {
-      bookings: {
-        where: {
-          status: { in: ["CONFIRMED", "CHECKED_IN"] },
-        },
-      },
-    },
+    include: { _count: { select: { bookings: true } } },
   });
 
   if (!room) {
     throw new NotFoundError("Room not found");
   }
 
-  if (room.bookings.length > 0) {
-    throw new BusinessRuleError("Cannot delete room with active bookings");
+  if (room._count.bookings > 0) {
+    throw new BusinessRuleError("This room has bookings and can't be deleted.");
   }
 
-  await prisma.room.delete({
-    where: { id },
-  });
+  try {
+    await prisma.room.delete({
+      where: { id },
+    });
+  } catch (error) {
+    // Booking.roomId is ON DELETE RESTRICT, and a booking can be created after the count
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      throw new BusinessRuleError("This room has bookings and can't be deleted.");
+    }
+    throw error;
+  }
 
   if (performedBy) {
     await createAuditLog(
