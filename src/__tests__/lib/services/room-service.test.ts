@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 
 // Mock Prisma client
 const mockRoomFindMany = vi.fn();
@@ -382,10 +383,10 @@ describe("Room Service", () => {
   // deleteRoom
   // ============================================================
   describe("deleteRoom", () => {
-    it("should delete room when it has no active bookings", async () => {
+    it("should delete room when it has no bookings", async () => {
       const roomWithNoBookings = {
         ...createMockRoom({ id: "room-1" }),
-        bookings: [],
+        _count: { bookings: 0 },
       };
       mockRoomFindUnique.mockResolvedValue(roomWithNoBookings);
       mockRoomDelete.mockResolvedValue(undefined);
@@ -394,13 +395,7 @@ describe("Room Service", () => {
 
       expect(mockRoomFindUnique).toHaveBeenCalledWith({
         where: { id: "room-1" },
-        include: {
-          bookings: {
-            where: {
-              status: { in: ["CONFIRMED", "CHECKED_IN"] },
-            },
-          },
-        },
+        include: { _count: { select: { bookings: true } } },
       });
       expect(mockRoomDelete).toHaveBeenCalledWith({
         where: { id: "room-1" },
@@ -415,42 +410,97 @@ describe("Room Service", () => {
       expect(mockRoomDelete).not.toHaveBeenCalled();
     });
 
-    it("should throw BusinessRuleError when room has active bookings", async () => {
+    it("refuses when the room has bookings", async () => {
       const roomWithBookings = {
         ...createMockRoom({ id: "room-1" }),
-        bookings: [
-          { id: "booking-1", status: "CONFIRMED" },
-          { id: "booking-2", status: "CHECKED_IN" },
-        ],
+        _count: { bookings: 2 },
       };
       mockRoomFindUnique.mockResolvedValue(roomWithBookings);
 
       await expect(deleteRoom("room-1")).rejects.toThrow(BusinessRuleError);
       await expect(deleteRoom("room-1")).rejects.toThrow(
-        "Cannot delete room with active bookings"
+        "This room has bookings and can't be deleted."
       );
       expect(mockRoomDelete).not.toHaveBeenCalled();
     });
 
-    it("should allow deletion when room only has cancelled/checked-out bookings", async () => {
-      // Note: The query filters for CONFIRMED/CHECKED_IN, so cancelled bookings
-      // won't be in the result. This test verifies the room can be deleted
-      // when the filtered bookings array is empty.
-      const roomWithNoActiveBookings = {
+    it("refuses when every booking is CHECKED_OUT or CANCELLED, with no delete and no audit", async () => {
+      mockRoomFindUnique.mockResolvedValue({
         ...createMockRoom({ id: "room-1" }),
-        bookings: [], // Empty because query filtered out CANCELLED/CHECKED_OUT
-      };
-      mockRoomFindUnique.mockResolvedValue(roomWithNoActiveBookings);
-      mockRoomDelete.mockResolvedValue(undefined);
+        _count: { bookings: 2 },
+      });
+      const { createAuditLog } = await import("@/lib/services/audit-service");
 
-      await expect(deleteRoom("room-1")).resolves.toBeUndefined();
-      expect(mockRoomDelete).toHaveBeenCalled();
+      const error = await deleteRoom("room-1", "user-42").catch((e: unknown) => e);
+
+      // Counts every booking, whatever its status: no status filter in the lookup.
+      expect(mockRoomFindUnique).toHaveBeenCalledWith({
+        where: { id: "room-1" },
+        include: { _count: { select: { bookings: true } } },
+      });
+      expect(error).toBeInstanceOf(BusinessRuleError);
+      expect((error as Error).message).toBe(
+        "This room has bookings and can't be deleted."
+      );
+      expect(mockRoomDelete).not.toHaveBeenCalled();
+      expect(createAuditLog).not.toHaveBeenCalled();
+    });
+
+    describe("delete races a new booking", () => {
+      const zeroBookings = () => ({
+        ...createMockRoom({ id: "room-1" }),
+        _count: { bookings: 0 },
+      });
+
+      it("P2003 from the delete becomes the same BusinessRuleError and writes no ROOM_DELETED audit", async () => {
+        mockRoomFindUnique.mockResolvedValue(zeroBookings());
+        mockRoomDelete.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("FK", {
+            code: "P2003",
+            clientVersion: "x",
+          })
+        );
+        const { createAuditLog } = await import("@/lib/services/audit-service");
+
+        const error = await deleteRoom("room-1", "user-42").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(BusinessRuleError);
+        expect((error as Error).message).toBe(
+          "This room has bookings and can't be deleted."
+        );
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("any other error from the delete is rethrown unchanged", async () => {
+        mockRoomFindUnique.mockResolvedValue(zeroBookings());
+        const boom = new Error("db down");
+        mockRoomDelete.mockRejectedValue(boom);
+        const { createAuditLog } = await import("@/lib/services/audit-service");
+
+        await expect(deleteRoom("room-1", "user-42")).rejects.toBe(boom);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("a Prisma error with another code is rethrown unchanged", async () => {
+        mockRoomFindUnique.mockResolvedValue(zeroBookings());
+        const other = new Prisma.PrismaClientKnownRequestError("Unreachable", {
+          code: "P1001",
+          clientVersion: "x",
+        });
+        mockRoomDelete.mockRejectedValue(other);
+        const { createAuditLog } = await import("@/lib/services/audit-service");
+
+        await expect(deleteRoom("room-1", "user-42")).rejects.toBe(other);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
     });
 
     it("should log a ROOM_DELETED audit entry when performedBy is provided", async () => {
       const roomWithNoBookings = {
         ...createMockRoom({ id: "room-1" }),
-        bookings: [],
+        _count: { bookings: 0 },
       };
       mockRoomFindUnique.mockResolvedValue(roomWithNoBookings);
       mockRoomDelete.mockResolvedValue(undefined);
@@ -470,7 +520,7 @@ describe("Room Service", () => {
     it("should not log an audit entry when performedBy is omitted", async () => {
       const roomWithNoBookings = {
         ...createMockRoom({ id: "room-1" }),
-        bookings: [],
+        _count: { bookings: 0 },
       };
       mockRoomFindUnique.mockResolvedValue(roomWithNoBookings);
       mockRoomDelete.mockResolvedValue(undefined);
