@@ -117,6 +117,16 @@ describe("Staff invites", () => {
       expect(sent.html).toContain("raw-setup-token");
     });
 
+    it("U8: inviteStaff binds the token to the created row that it emails", async () => {
+      await inviteStaff(input, "gm-1", deferSend);
+      await runDeferred();
+
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith(created);
+      expect(mockEmailSend.mock.calls[0][0].to).toBe(
+        mockIssueSetupTokenForUser.mock.calls[0][0].email
+      );
+    });
+
     it("T8: logs and swallows a mail failure in the deferred task", async () => {
       const mailError = new Error("smtp down");
       mockEmailSend.mockRejectedValue(mailError);
@@ -250,7 +260,7 @@ describe("Staff invites", () => {
         where: { id: "u1" },
         select: expect.objectContaining({ setupPending: true }),
       });
-      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("u1");
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith(pendingInvitee());
       expect(createAuditLog).toHaveBeenCalledWith(
         "manager-1",
         "STAFF_INVITE_RESENT",
@@ -268,6 +278,18 @@ describe("Staff invites", () => {
       expect(sent.to).toBe("invitee@hotel.test");
       expect(sent.text).toContain("Hi Ivy");
       expect(sent.text).toContain("fresh-token");
+    });
+
+    it("U7: binds the token to the same {id, email} it emails", async () => {
+      mockUserFindUnique.mockResolvedValue(pendingInvitee("bound@hotel.test"));
+      mockIssueSetupTokenForUser.mockResolvedValue("fresh-token");
+
+      await resendInvite("u1", "manager-1", deferSend);
+      await runDeferred();
+
+      const recipient = mockIssueSetupTokenForUser.mock.calls[0][0];
+      expect(recipient).toMatchObject({ id: "u1", email: "bound@hotel.test" });
+      expect(mockEmailSend.mock.calls[0][0].to).toBe(recipient.email);
     });
 
     it("logs and swallows a mail failure in the deferred task", async () => {
@@ -358,7 +380,9 @@ describe("Staff invites", () => {
 
       await resendInvite("u1", "manager-1", deferSend);
 
-      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("u1");
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith(
+        pendingInvitee("anyone@anywhere.example")
+      );
       expect(deferSend).toHaveBeenCalledTimes(1);
     });
 

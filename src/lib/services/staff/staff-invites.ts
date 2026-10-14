@@ -75,7 +75,9 @@ export async function inviteStaff(
 /**
  * Reissue a setup invite for a pending invite only.
  * issueSetupTokenForUser voids any prior unused SETUP token for this
- * user by design, so the old link 404s the moment this succeeds.
+ * user by design, so the old link 404s the moment this succeeds. The new
+ * link is bound to the address checked and emailed here: it stops working
+ * if the account's email changes before it is redeemed.
  *
  * @throws NotFoundError if user missing
  * @throws BusinessRuleError if there is no pending invite (deactivated or setup already completed)
@@ -113,7 +115,7 @@ export async function resendInvite(
   assertAllowedRecipient(user.email);
   await spendInviteLimit(performedBy, INVITE_LIMIT_MESSAGE);
 
-  const setupToken = await issueSetupTokenForUser(user.id);
+  const setupToken = await issueSetupTokenForUser(user);
 
   await createAuditLog(
     performedBy,
