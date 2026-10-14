@@ -81,6 +81,7 @@ export async function issueResetTokenForEmail(email: string): Promise<{
       tokenHash: hashToken(rawToken),
       userId: user.id,
       purpose: "RESET",
+      sentTo: user.email,
       expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60_000),
     },
   });
@@ -91,23 +92,31 @@ export async function issueResetTokenForEmail(email: string): Promise<{
   };
 }
 
-export async function issueSetupTokenForUser(userId: string): Promise<string> {
+/**
+ * The link is bound to `recipient.email`: pass the same object the invite is
+ * emailed to, so the address sent to and the address stored cannot drift.
+ */
+export async function issueSetupTokenForUser(recipient: {
+  id: string;
+  email: string;
+}): Promise<string> {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: recipient.id },
     select: { id: true },
   });
   if (!user) {
     throw new NotFoundError("User not found");
   }
 
-  await voidActiveTokens(userId, "SETUP");
+  await voidActiveTokens(recipient.id, "SETUP");
 
   const rawToken = generateRawToken();
   await prisma.passwordResetToken.create({
     data: {
       tokenHash: hashToken(rawToken),
-      userId,
+      userId: recipient.id,
       purpose: "SETUP",
+      sentTo: recipient.email,
       expiresAt: new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3_600_000),
     },
   });
@@ -140,11 +149,14 @@ async function findValidToken(
     token.purpose !== purpose ||
     token.usedAt !== null ||
     token.expiresAt <= new Date() ||
-    (purpose === "SETUP" && !token.user.setupPending)
+    (purpose === "SETUP" && !token.user.setupPending) ||
+    // Bound to the address it was emailed to; null = issued before binding.
+    !token.sentTo ||
+    token.sentTo !== token.user.email
   ) {
     throw new NotFoundError(INVALID_TOKEN_MESSAGE);
   }
-  return token;
+  return { ...token, sentTo: token.sentTo };
 }
 
 export interface ResolvedInvite {
@@ -199,7 +211,7 @@ async function consumeToken(
       // Only a still-pending invite may be redeemed; a deactivated
       // account (setupPending false) must not be switched back on.
       const updated = await tx.user.updateMany({
-        where: { id: token.userId, setupPending: true },
+        where: { id: token.userId, email: token.sentTo, setupPending: true },
         data: {
           password: hashedPassword,
           // Invalidate every live session for this user
@@ -212,14 +224,19 @@ async function consumeToken(
         throw new NotFoundError(INVALID_TOKEN_MESSAGE);
       }
     } else {
-      await tx.user.update({
-        where: { id: token.userId },
+      // email: sentTo closes the race where the email changed after
+      // findValidToken read it; count 0 rolls back the claim.
+      const updated = await tx.user.updateMany({
+        where: { id: token.userId, email: token.sentTo },
         data: {
           password: hashedPassword,
           // Invalidate every live session for this user
           tokenVersion: { increment: 1 },
         },
       });
+      if (updated.count === 0) {
+        throw new NotFoundError(INVALID_TOKEN_MESSAGE);
+      }
     }
   });
 
