@@ -1,0 +1,11 @@
+-- Sign everyone out once, at the release that makes isActive changes bump
+-- tokenVersion. Two kinds of session would otherwise survive the deploy:
+--  * cookies of accounts deactivated and reactivated before this release
+--    (their tokenVersion never moved), and
+--  * tokens minted before 2026-08-10, which carry no expiresAt and so have no
+--    hard expiry.
+-- The jwt callback refuses any token whose tokenVersion differs from
+-- User.tokenVersion, so one increment ends every outstanding session.
+-- Data only, no schema change. There is no safe way back: a decrement would
+-- revive the sessions this ends.
+UPDATE "User" SET "tokenVersion" = "tokenVersion" + 1;

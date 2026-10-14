@@ -275,8 +275,79 @@ describe("Staff Mutations", () => {
         where: { id: "staff-1", setupPending: false },
         data: {
           isActive: false,
+          tokenVersion: { increment: 1 },
         },
         select: expect.any(Object),
+      });
+    });
+
+    describe("isActive changes end old sessions (tokenVersion bump)", () => {
+      const bump = { increment: 1 };
+      const updateDataOf = () => mockUserUpdate.mock.calls[0][0].data;
+
+      it("deactivating (true -> false) bumps tokenVersion", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue({ ...existingStaff, isActive: false });
+
+        await updateStaff("staff-1", { isActive: false }, "gm-1");
+
+        expect(updateDataOf().tokenVersion).toEqual(bump);
+      });
+
+      it("reactivating (false -> true) bumps tokenVersion", async () => {
+        const inactive = { ...existingStaff, isActive: false };
+        mockUserFindUnique.mockResolvedValue(inactive);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { isActive: true }, "gm-1");
+
+        expect(updateDataOf().tokenVersion).toEqual(bump);
+      });
+
+      it.each([
+        ["a role-only edit", { role: "MANAGER" as const }],
+        ["a name-only edit", { firstName: "Johnny", lastName: "Updated" }],
+      ])("%s does not bump tokenVersion", async (_label, input) => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", input, "gm-1");
+
+        expect(updateDataOf()).not.toHaveProperty("tokenVersion");
+      });
+
+      it.each([
+        ["active -> isActive: true", existingStaff, true],
+        ["inactive -> isActive: false", { ...existingStaff, isActive: false }, false],
+      ])("isActive equal to the current value (%s) does not bump", async (_l, row, value) => {
+        mockUserFindUnique.mockResolvedValue(row);
+        mockUserUpdate.mockResolvedValue(row);
+
+        await updateStaff("staff-1", { isActive: value }, "gm-1");
+
+        expect(updateDataOf()).not.toHaveProperty("tokenVersion");
+      });
+
+      it("the access reset still sends exactly one { increment: 1 }", async () => {
+        const setUp = createMockStaff({
+          id: "staff-1",
+          email: "wrong.person@sconewillowtree.com",
+          setupPending: false,
+        });
+        mockHash.mockResolvedValue("placeholder-hash");
+        mockUserFindUnique
+          .mockResolvedValueOnce(setUp)
+          .mockResolvedValueOnce(null);
+        mockUserUpdate.mockResolvedValue(setUp);
+
+        await updateStaff(
+          "staff-1",
+          { email: "right.person@sconewillowtree.com" },
+          "gm-1"
+        );
+
+        expect(updateDataOf().tokenVersion).toEqual(bump);
+        expect(updateDataOf().isActive).toBe(false);
       });
     });
 
@@ -375,7 +446,7 @@ describe("Staff Mutations", () => {
 
         expect(mockUserUpdate).toHaveBeenCalledWith({
           where: { id: "staff-8", setupPending: false },
-          data: { isActive: true },
+          data: { isActive: true, tokenVersion: { increment: 1 } },
           select: expect.any(Object),
         });
         expect(createAuditLog).toHaveBeenCalledWith(
@@ -1492,7 +1563,7 @@ describe("Staff Mutations", () => {
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
-        data: { isActive: false },
+        data: { isActive: false, tokenVersion: { increment: 1 } },
       });
       expect(mockUserDelete).not.toHaveBeenCalled();
       expect(result).toEqual({
@@ -1568,7 +1639,7 @@ describe("Staff Mutations", () => {
         expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
         expect(mockTxUserUpdate).toHaveBeenCalledWith({
           where: { id: "staff-1" },
-          data: { isActive: false },
+          data: { isActive: false, tokenVersion: { increment: 1 } },
         });
         expect(
           Math.max(...mockVoidActiveTokens.mock.invocationCallOrder)
@@ -1684,7 +1755,7 @@ describe("Staff Mutations", () => {
 
         expect(mockUserUpdate).toHaveBeenCalledWith({
           where: { id: "staff-1" },
-          data: { isActive: false },
+          data: { isActive: false, tokenVersion: { increment: 1 } },
         });
         expect(mockTransaction).not.toHaveBeenCalled();
         expect(mockVoidActiveTokens).not.toHaveBeenCalled();
@@ -1736,7 +1807,7 @@ describe("Staff Mutations", () => {
       expect(mockUserDelete).not.toHaveBeenCalled();
       expect(mockUserUpdate).toHaveBeenCalledWith({
         where: { id: "staff-1" },
-        data: { isActive: false },
+        data: { isActive: false, tokenVersion: { increment: 1 } },
       });
       expect(result).toEqual({
         deleted: false,

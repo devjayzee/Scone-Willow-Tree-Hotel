@@ -208,13 +208,14 @@ export async function updateStaff(
   const placeholderHash = resetsAccess ? await newPlaceholderHash() : null;
 
   // Build update data. GMs cannot set another user's password directly.
-  // tokenVersion is bumped only on a credential change (to revoke stolen
-  // JWTs): a password write in /reset-password or setup, or the access
-  // reset below, which replaces the password. Role, name and isActive
-  // changes intentionally do NOT bump it: the jwt callback in @/lib/auth
+  // tokenVersion is bumped on a credential change (to revoke stolen JWTs):
+  // a password write in /reset-password or setup, or the access reset
+  // below, which replaces the password. It is also bumped on any real
+  // isActive change, so a cookie that wasn't used while the account was
+  // inactive can't come back after reactivation. Role and name changes
+  // intentionally do NOT bump it: the jwt callback in @/lib/auth
   // rehydrates role (and firstName) from the DB on every session poll, so
-  // they take effect within the poll interval without forcing a re-login,
-  // and deactivation is caught by the same callback's isActive check.
+  // they take effect within the poll interval without forcing a re-login.
   const updateData: {
     firstName?: string;
     lastName?: string;
@@ -231,6 +232,12 @@ export async function updateStaff(
   if (data.email) updateData.email = data.email;
   if (data.role) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (
+    data.isActive !== undefined &&
+    data.isActive !== existingStaff.isActive
+  ) {
+    updateData.tokenVersion = { increment: 1 };
+  }
   if (placeholderHash) {
     updateData.password = placeholderHash;
     updateData.tokenVersion = { increment: 1 };
@@ -354,6 +361,8 @@ export async function deleteStaff(
   // If staff has any bookings, deactivate instead of delete
   if (staff._count.bookings > 0) {
     await revokeTrustedDevices(staff.email);
+    // Both writes bump tokenVersion, as in updateStaff (any isActive change
+    // ends old sessions). Harmless if the row is already inactive.
     let voidedCount = 0;
     if (staff.setupPending) {
       // A Pending account (e.g. after an access reset) stays Pending: its
@@ -365,14 +374,14 @@ export async function deleteStaff(
           (await voidActiveTokens(id, "RESET", tx));
         await tx.user.update({
           where: { id },
-          data: { isActive: false },
+          data: { isActive: false, tokenVersion: { increment: 1 } },
         });
         return voided;
       });
     } else {
       await prisma.user.update({
         where: { id },
-        data: { isActive: false },
+        data: { isActive: false, tokenVersion: { increment: 1 } },
       });
     }
 
