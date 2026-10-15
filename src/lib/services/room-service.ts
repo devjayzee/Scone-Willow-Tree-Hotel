@@ -180,6 +180,13 @@ export async function deleteRoom(id: string, performedBy?: string): Promise<void
       where: { id },
     });
   } catch (error) {
+    // Deleted by another request after the read above
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError("Room not found");
+    }
     // Booking.roomId is ON DELETE RESTRICT, and a booking can be created after the count
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&

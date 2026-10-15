@@ -100,12 +100,13 @@ export function StayDetailsStep({
       <div className="space-y-2">
         <Label htmlFor="room">Room *</Label>
         <Select
+          name="roomId"
           value={roomId}
           onValueChange={onRoomIdChange}
           required
           disabled={!checkIn || !checkOut || isLoadingRooms}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id="room" className="w-full">
             <SelectValue
               placeholder={
                 !checkIn || !checkOut
@@ -139,12 +140,12 @@ export function StayDetailsStep({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Number of Nights</Label>
-          <Input value={nights > 0 ? nights : "-"} disabled />
+          <Label htmlFor="nights">Number of Nights</Label>
+          <Input id="nights" name="nights" value={nights > 0 ? nights : "-"} disabled />
         </div>
         <div className="space-y-2">
-          <Label>Room Rate</Label>
-          <Input value={selectedRoom ? `$${pricePerNight}/night` : "-"} disabled />
+          <Label htmlFor="roomRate">Room Rate</Label>
+          <Input id="roomRate" name="roomRate" value={selectedRoom ? `$${pricePerNight}/night` : "-"} disabled />
         </div>
       </div>
 

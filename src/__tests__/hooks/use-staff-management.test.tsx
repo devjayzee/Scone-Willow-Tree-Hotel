@@ -227,6 +227,23 @@ describe("useStaffManagement", () => {
         isActive: false,
       });
     });
+
+    it("resolves when the request fails (the mutation's onError already toasted)", async () => {
+      mockToggleActive.mutateAsync.mockRejectedValueOnce(new Error("boom"));
+      const staff = makeStaff({ isActive: true });
+      const { result } = setup();
+
+      let outcome: unknown = "unset";
+      await act(async () => {
+        outcome = await result.current.toggleActive(staff).then(
+          () => "resolved",
+          (e: unknown) => e
+        );
+      });
+
+      expect(mockToggleActive.mutateAsync).toHaveBeenCalledTimes(1);
+      expect(outcome).toBe("resolved");
+    });
   });
 
   describe("resendInvite", () => {
@@ -239,6 +256,23 @@ describe("useStaffManagement", () => {
       });
 
       expect(mockResendInvite.mutateAsync).toHaveBeenCalledWith(staff.id);
+    });
+
+    it("resolves when the request fails (the mutation's onError already toasted)", async () => {
+      mockResendInvite.mutateAsync.mockRejectedValueOnce(new Error("boom"));
+      const staff = makeStaff({ isActive: false });
+      const { result } = setup();
+
+      let outcome: unknown = "unset";
+      await act(async () => {
+        outcome = await result.current.resendInvite(staff).then(
+          () => "resolved",
+          (e: unknown) => e
+        );
+      });
+
+      expect(mockResendInvite.mutateAsync).toHaveBeenCalledTimes(1);
+      expect(outcome).toBe("resolved");
     });
   });
 

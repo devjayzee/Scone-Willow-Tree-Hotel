@@ -40,10 +40,11 @@ export function TablePagination({
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <span>Show</span>
         <Select
+          name="itemsPerPage"
           value={itemsPerPage.toString()}
           onValueChange={(value) => onItemsPerPageChange(parseInt(value))}
         >
-          <SelectTrigger className="w-[70px] h-8">
+          <SelectTrigger aria-label="Rows per page" className="w-[70px] h-8">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
