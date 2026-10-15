@@ -1863,6 +1863,94 @@ describe("Staff Mutations", () => {
       );
     });
 
+    describe("a concurrent delete between the read and the write", () => {
+      const zeroBookings = () => ({
+        ...createMockStaff({ id: "staff-1" }),
+        _count: { bookings: 0 },
+      });
+
+      const p2025 = () =>
+        new Prisma.PrismaClientKnownRequestError("Gone", {
+          code: "P2025",
+          clientVersion: "x",
+        });
+
+      it("P2025 from the delete (staff already gone) becomes NotFoundError and writes no STAFF_DELETED audit", async () => {
+        mockUserFindUnique.mockResolvedValue(zeroBookings());
+        mockUserDelete.mockRejectedValue(p2025());
+
+        const error = await deleteStaff("staff-1", "gm-1").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe("Staff not found");
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("P2025 from the deactivate update (plain write) becomes NotFoundError and writes no STAFF_DEACTIVATED audit", async () => {
+        mockUserFindUnique.mockResolvedValue({
+          ...createMockStaff({ id: "staff-1", setupPending: false }),
+          _count: { bookings: 2 },
+        });
+        mockUserUpdate.mockRejectedValue(p2025());
+
+        const error = await deleteStaff("staff-1", "gm-1").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe("Staff not found");
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("P2025 from the deactivate update inside the pending transaction becomes NotFoundError and writes no audit", async () => {
+        mockUserFindUnique.mockResolvedValue({
+          ...createMockStaff({ id: "staff-1", isActive: false, setupPending: true }),
+          _count: { bookings: 1 },
+        });
+        mockUserUpdate.mockRejectedValue(p2025());
+
+        const error = await deleteStaff("staff-1", "gm-1").catch(
+          (e: unknown) => e
+        );
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+        expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe("Staff not found");
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("another error from the deactivate update is rethrown unchanged", async () => {
+        mockUserFindUnique.mockResolvedValue({
+          ...createMockStaff({ id: "staff-1", setupPending: false }),
+          _count: { bookings: 2 },
+        });
+        const boom = new Error("db down");
+        mockUserUpdate.mockRejectedValue(boom);
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toBe(boom);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
+      it("a non-P2025 error through the pending transaction's update is rethrown unchanged, with no audit", async () => {
+        mockUserFindUnique.mockResolvedValue({
+          ...createMockStaff({ id: "staff-1", isActive: false, setupPending: true }),
+          _count: { bookings: 1 },
+        });
+        const boom = new Error("db down");
+        mockUserUpdate.mockRejectedValue(boom);
+
+        await expect(deleteStaff("staff-1", "gm-1")).rejects.toBe(boom);
+
+        expect(mockTransaction).toHaveBeenCalledTimes(1);
+        expect(mockTxUserUpdate).toHaveBeenCalledTimes(1);
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+    });
+
     describe("delete races a new booking", () => {
       const zeroBookings = () => ({
         ...createMockStaff({ id: "staff-1" }),
@@ -1900,8 +1988,8 @@ describe("Staff Mutations", () => {
 
       it("a Prisma error with another code is rethrown unchanged", async () => {
         mockUserFindUnique.mockResolvedValue(zeroBookings());
-        const other = new Prisma.PrismaClientKnownRequestError("Missing", {
-          code: "P2025",
+        const other = new Prisma.PrismaClientKnownRequestError("Unreachable", {
+          code: "P1001",
           clientVersion: "x",
         });
         mockUserDelete.mockRejectedValue(other);

@@ -364,25 +364,38 @@ export async function deleteStaff(
     // Both writes bump tokenVersion, as in updateStaff (any isActive change
     // ends old sessions). Harmless if the row is already inactive.
     let voidedCount = 0;
-    if (staff.setupPending) {
-      // A Pending account (e.g. after an access reset) stays Pending: its
-      // links are cancelled so nobody can redeem them, a later Resend invite
-      // still works, and Activate stays blocked (ADR-006).
-      voidedCount = await prisma.$transaction(async (tx) => {
-        const voided =
-          (await voidActiveTokens(id, "SETUP", tx)) +
-          (await voidActiveTokens(id, "RESET", tx));
-        await tx.user.update({
+    try {
+      if (staff.setupPending) {
+        // A Pending account (e.g. after an access reset) stays Pending: its
+        // links are cancelled so nobody can redeem them, a later Resend invite
+        // still works, and Activate stays blocked (ADR-006).
+        voidedCount = await prisma.$transaction(async (tx) => {
+          const voided =
+            (await voidActiveTokens(id, "SETUP", tx)) +
+            (await voidActiveTokens(id, "RESET", tx));
+          await tx.user.update({
+            where: { id },
+            data: { isActive: false, tokenVersion: { increment: 1 } },
+          });
+          return voided;
+        });
+      } else {
+        await prisma.user.update({
           where: { id },
           data: { isActive: false, tokenVersion: { increment: 1 } },
         });
-        return voided;
-      });
-    } else {
-      await prisma.user.update({
-        where: { id },
-        data: { isActive: false, tokenVersion: { increment: 1 } },
-      });
+      }
+    } catch (error) {
+      // Deleted by another request after the read above. P2025 only means
+      // "gone" because these writes use a bare where: { id }; with a state
+      // guard it would mean "changed" and should be a 409 like updateStaff.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2025"
+      ) {
+        throw new NotFoundError("Staff not found");
+      }
+      throw error;
     }
 
     // Audit log for deactivation
@@ -421,6 +434,13 @@ export async function deleteStaff(
       where: { id },
     });
   } catch (error) {
+    // Deleted by another request after the read above
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError("Staff not found");
+    }
     // Booking.createdById is ON DELETE RESTRICT: a booking created after the count
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
