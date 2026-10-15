@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 // Mock dependencies
@@ -31,6 +31,7 @@ vi.mock("@/lib/logger", () => ({
 // Import after mocks
 import { GET, POST } from "@/app/api/rooms/route";
 import { logger } from "@/lib/logger";
+import { getAuditContext } from "@/lib/services/audit-context";
 
 describe("Rooms API", () => {
   const mockStaffSession = {
@@ -164,6 +165,23 @@ describe("Rooms API", () => {
       expect(data.code).toBe("FORBIDDEN");
     });
 
+    it("should return 403 for a MANAGER (GM-only) without creating a room", async () => {
+      mockGetServerSession.mockResolvedValue({
+        user: { id: "user-3", email: "mgr@example.com", role: "MANAGER" },
+      });
+
+      const request = new NextRequest("http://localhost/api/rooms", {
+        method: "POST",
+        body: JSON.stringify(validRoomInput),
+      });
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.code).toBe("FORBIDDEN");
+      expect(mockCreateRoom).not.toHaveBeenCalled();
+    });
+
     it("should create room when GENERAL_MANAGER with valid data", async () => {
       mockGetServerSession.mockResolvedValue(mockManagerSession);
       const mockCreatedRoom = {
@@ -185,6 +203,40 @@ describe("Rooms API", () => {
         expect.objectContaining(validRoomInput),
         "user-2",
       );
+    });
+
+    describe("request audit context", () => {
+      const AUDIT_HEADERS = {
+        "x-forwarded-for": "198.51.100.7",
+        "user-agent": "vitest-ua",
+      };
+      const savedVercel = process.env.VERCEL;
+      beforeEach(() => {
+        delete process.env.VERCEL;
+      });
+      afterEach(() => {
+        if (savedVercel === undefined) delete process.env.VERCEL;
+        else process.env.VERCEL = savedVercel;
+      });
+
+      it("T5.1: POST runs the service inside the request's audit context (IP and user agent)", async () => {
+        mockGetServerSession.mockResolvedValue(mockManagerSession);
+        let seen: ReturnType<typeof getAuditContext> = { ipAddress: "unset" };
+        mockCreateRoom.mockImplementation(async () => {
+          seen = getAuditContext();
+          return { id: "room-1", ...validRoomInput };
+        });
+
+        const request = new NextRequest("http://localhost/api/rooms", {
+          method: "POST",
+          headers: AUDIT_HEADERS,
+          body: JSON.stringify(validRoomInput),
+        });
+        const response = await POST(request);
+
+        expect(response.status).toBe(201);
+        expect(seen).toEqual({ ipAddress: "198.51.100.7", userAgent: "vitest-ua" });
+      });
     });
 
     it("should return 400 for invalid input", async () => {

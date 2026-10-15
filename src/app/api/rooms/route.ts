@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
 import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/rooms - Get all rooms (GENERAL_MANAGER only — the /rooms
@@ -34,26 +35,28 @@ export async function GET() {
 
 // POST /api/rooms - Create a new room
 export async function POST(request: Request) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only general managers can create rooms");
+      }
+
+      const body = await readJsonBody(request);
+      const validation = createRoomSchema.safeParse(body);
+
+      if (!validation.success) {
+        return handleApiError(validation.error, "creating room");
+      }
+
+      const room = await createRoom(validation.data, session.user.id);
+      return NextResponse.json(room, { status: 201 });
+    } catch (error) {
+      return handleApiError(error, "creating room");
     }
-
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only general managers can create rooms");
-    }
-
-    const body = await readJsonBody(request);
-    const validation = createRoomSchema.safeParse(body);
-
-    if (!validation.success) {
-      return handleApiError(validation.error, "creating room");
-    }
-
-    const room = await createRoom(validation.data, session.user.id);
-    return NextResponse.json(room, { status: 201 });
-  } catch (error) {
-    return handleApiError(error, "creating room");
-  }
+  });
 }

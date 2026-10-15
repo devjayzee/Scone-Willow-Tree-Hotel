@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockGetServerSession = vi.fn();
@@ -32,6 +32,7 @@ vi.mock("@/lib/logger", () => ({
 import { BusinessRuleError } from "@/lib/errors";
 import { GET, PUT, DELETE } from "@/app/api/rooms/[id]/route";
 import { logger } from "@/lib/logger";
+import { getAuditContext } from "@/lib/services/audit-context";
 
 const params = Promise.resolve({ id: "room-1" });
 
@@ -222,6 +223,58 @@ describe("Rooms [id] API", () => {
       expect(response.status).toBe(400);
       expect(data.error).toBe("This room has bookings and can't be deleted.");
       expect(data.code).toBe("BUSINESS_RULE_VIOLATION");
+    });
+  });
+
+  describe("request audit context", () => {
+    const AUDIT_HEADERS = {
+      "x-forwarded-for": "198.51.100.7",
+      "user-agent": "vitest-ua",
+    };
+    const EXPECTED = { ipAddress: "198.51.100.7", userAgent: "vitest-ua" };
+    const savedVercel = process.env.VERCEL;
+    beforeEach(() => {
+      delete process.env.VERCEL;
+    });
+    afterEach(() => {
+      if (savedVercel === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = savedVercel;
+    });
+
+    it("T5.2: PUT runs the service inside the request's audit context (IP and user agent)", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      let seen: ReturnType<typeof getAuditContext> = { ipAddress: "unset" };
+      mockUpdateRoom.mockImplementation(async () => {
+        seen = getAuditContext();
+        return { id: "room-1", roomNumber: "202" };
+      });
+      const request = new NextRequest("http://localhost/api/rooms/room-1", {
+        method: "PUT",
+        headers: AUDIT_HEADERS,
+        body: JSON.stringify({ roomNumber: "202" }),
+      });
+
+      const response = await PUT(request, { params });
+
+      expect(response.status).toBe(200);
+      expect(seen).toEqual(EXPECTED);
+    });
+
+    it("T5.3: DELETE runs the service inside the request's audit context (IP and user agent)", async () => {
+      mockGetServerSession.mockResolvedValue(gmSession);
+      let seen: ReturnType<typeof getAuditContext> = { ipAddress: "unset" };
+      mockDeleteRoom.mockImplementation(async () => {
+        seen = getAuditContext();
+      });
+      const request = new Request("http://localhost/api/rooms/room-1", {
+        method: "DELETE",
+        headers: AUDIT_HEADERS,
+      });
+
+      const response = await DELETE(request, { params });
+
+      expect(response.status).toBe(200);
+      expect(seen).toEqual(EXPECTED);
     });
   });
 
