@@ -83,6 +83,7 @@ export async function inviteStaff(
  * @throws BusinessRuleError if there is no pending invite (deactivated or setup already completed)
  * @throws ValidationError if the account's email domain is not allowed
  * @throws RateLimitError past the per-GM or deployment-wide invite limit
+ * @throws ConflictError if the account's email changed after the read, so no link is issued
  */
 export async function resendInvite(
   userId: string,

@@ -11,7 +11,7 @@ import {
   RESET_TOKEN_TTL_MINUTES,
   SETUP_TOKEN_TTL_HOURS,
 } from "@/lib/constants/auth";
-import { NotFoundError, RateLimitError } from "@/lib/errors";
+import { ConflictError, NotFoundError, RateLimitError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
   getForgotPasswordRateLimiter,
@@ -95,6 +95,9 @@ export async function issueResetTokenForEmail(email: string): Promise<{
 /**
  * The link is bound to `recipient.email`: pass the same object the invite is
  * emailed to, so the address sent to and the address stored cannot drift.
+ *
+ * @throws NotFoundError if the user is missing
+ * @throws ConflictError if the account's email changed after the caller read it
  */
 export async function issueSetupTokenForUser(recipient: {
   id: string;
@@ -102,10 +105,13 @@ export async function issueSetupTokenForUser(recipient: {
 }): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { id: recipient.id },
-    select: { id: true },
+    select: { id: true, email: true },
   });
   if (!user) {
     throw new NotFoundError("User not found");
+  }
+  if (user.email !== recipient.email) {
+    throw new ConflictError("This account's email changed. Refresh and try again.");
   }
 
   await voidActiveTokens(recipient.id, "SETUP");
