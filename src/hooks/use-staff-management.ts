@@ -112,10 +112,14 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
   // Toggle staff active status
   const toggleActive = useCallback(
     async (staff: Staff) => {
-      await toggleActiveMutation.mutateAsync({
-        id: staff.id,
-        isActive: !staff.isActive,
-      });
+      try {
+        await toggleActiveMutation.mutateAsync({
+          id: staff.id,
+          isActive: !staff.isActive,
+        });
+      } catch {
+        // Error is handled by the mutation's onError
+      }
     },
     [toggleActiveMutation]
   );
@@ -123,7 +127,11 @@ export function useStaffManagement({ initialStaffs, fetchTime }: UseStaffManagem
   // Resend a setup invite to a pending staff member.
   const resendInvite = useCallback(
     async (staff: Staff) => {
-      await resendInviteMutation.mutateAsync(staff.id);
+      try {
+        await resendInviteMutation.mutateAsync(staff.id);
+      } catch {
+        // Error is handled by the mutation's onError
+      }
     },
     [resendInviteMutation]
   );
