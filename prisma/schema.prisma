@@ -73,7 +73,7 @@ model Room {
 model Booking {
   id         String @id @default(cuid())
   bookingRef String @unique
-  room       Room   @relation(fields: [roomId], references: [id])
+  room       Room   @relation(fields: [roomId], references: [id], onDelete: Restrict) // RESTRICT: deleteRoom/deleteStaff rely on P2003 (ADR-014, ADR-015)
   roomId     String
 
   // Guest Details
@@ -100,7 +100,7 @@ model Booking {
   status      BookingStatus @default(CONFIRMED)
   isPaid      Boolean       @default(false)
   notes       String?
-  createdBy   User          @relation("CreatedBy", fields: [createdById], references: [id])
+  createdBy   User          @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict) // RESTRICT: deleteRoom/deleteStaff rely on P2003 (ADR-014, ADR-015)
   createdById String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
