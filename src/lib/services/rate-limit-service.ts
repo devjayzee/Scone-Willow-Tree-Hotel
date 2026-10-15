@@ -4,7 +4,7 @@ import type { LoginRateLimitStatus } from "@/types/auth";
 import {
   DEVICE_REVOCATION_READ_TIMEOUT_MS,
   DEVICE_REVOCATION_TTL,
-  SESSION_POLL_INTERVAL_SECONDS,
+  SESSION_ENDPOINT_LIMIT_PER_MINUTE,
 } from "@/lib/constants/auth";
 import { normalizeEmail } from "@/lib/validations/email";
 import { RateLimitError } from "@/lib/errors";
@@ -177,15 +177,15 @@ export const getRateLimitStatusLimiter = makeRateLimiter({
 });
 
 /**
- * Per-user limiter for `/api/auth/session`. NextAuth hits
- * `prisma.user.findUnique` on every call and the session provider polls
- * at refetchInterval=60s, so an unlimited endpoint means any signed-in
- * client can drive unbounded DB reads by opening a script or many tabs.
- * Bucket: 60 / 1 min per user — allows ~60 tabs polling every 60s
- * comfortably, throttles scripted floods at 1/s.
+ * Limiter for `/api/auth/session`. NextAuth hits `prisma.user.findUnique`
+ * on every call, so an unlimited endpoint lets any signed-in client drive
+ * unbounded DB reads. Bucket: 180 / 1 min per live session identity (keyed
+ * in `src/proxy.ts`), sized for the multi-tab poll and focus fan-out; see
+ * the budget note on SESSION_POLL_INTERVAL_SECONDS. Scripted floods are
+ * still throttled at 3/s.
  */
 export const getSessionEndpointRateLimiter = makeRateLimiter({
-  limiter: Ratelimit.slidingWindow(SESSION_POLL_INTERVAL_SECONDS, "1 m"),
+  limiter: Ratelimit.slidingWindow(SESSION_ENDPOINT_LIMIT_PER_MINUTE, "1 m"),
   prefix: "ratelimit:session-endpoint",
 });
 
