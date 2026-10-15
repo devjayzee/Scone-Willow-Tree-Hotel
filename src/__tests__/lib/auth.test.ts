@@ -20,11 +20,13 @@ import {
 // Mock Prisma
 const mockFindUnique = vi.fn();
 const mockUpdate = vi.fn();
+const mockUpdateMany = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   default: {
     user: {
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
       update: (...args: unknown[]) => mockUpdate(...args),
+      updateMany: (...args: unknown[]) => mockUpdateMany(...args),
     },
   },
 }));
@@ -1434,5 +1436,142 @@ describe("Auth - login limits and trusted device", () => {
 
       expect(mockCookieSet).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("Auth - signOut event", () => {
+  const NOW = Date.UTC(2026, 9, 15, 12, 0, 0);
+  const nowS = NOW / 1000;
+  const signOut = async (token: unknown) => {
+    const handler = (
+      authOptions.events as
+        | { signOut?: (message: { token: any }) => Promise<void> | void }
+        | undefined
+    )?.signOut;
+    if (!handler) throw new TypeError("authOptions.events.signOut is missing");
+    await handler({ token } as any);
+  };
+  const liveToken = (over: Record<string, unknown> = {}) => ({
+    id: "user-123",
+    email: "leak@example.com",
+    expiresAt: nowS + 3600,
+    tokenVersion: 4,
+    ...over,
+  });
+  const prismaCalls = () =>
+    mockUpdateMany.mock.calls.length +
+    mockUpdate.mock.calls.length +
+    mockFindUnique.mock.calls.length;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(NOW);
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("defines events.signOut as a function", () => {
+    expect(typeof authOptions.events?.signOut).toBe("function");
+  });
+
+  it("bumps tokenVersion once for a live token", async () => {
+    await signOut(liveToken());
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    expect(mockUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: "user-123", tokenVersion: 4 },
+      data: { tokenVersion: { increment: 1 } },
+    });
+  });
+
+  it("still bumps when expiresAt equals now", async () => {
+    await signOut(liveToken({ expiresAt: nowS }));
+
+    expect(mockUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes no write when expiresAt is one second in the past", async () => {
+    await signOut(liveToken({ expiresAt: nowS - 1 }));
+
+    expect(prismaCalls()).toBe(0);
+  });
+
+  it.each([
+    ["a null token", null],
+    ["an undefined token", undefined],
+    ["id null", liveToken({ id: null })],
+    ["id missing", liveToken({ id: undefined })],
+    ["id empty", liveToken({ id: "" })],
+    ["id not a string", liveToken({ id: 123 })],
+    ["expiresAt missing", liveToken({ expiresAt: undefined })],
+    ["expiresAt null", liveToken({ expiresAt: null })],
+    ["expiresAt a string", liveToken({ expiresAt: "9999999999" })],
+    ["tokenVersion missing", liveToken({ tokenVersion: undefined })],
+    ["tokenVersion a string", liveToken({ tokenVersion: "4" })],
+  ])("makes no Prisma call for %s", async (_name, token) => {
+    await signOut(token);
+
+    expect(prismaCalls()).toBe(0);
+  });
+
+  it("resolves when the version is stale and no row matches", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 0 });
+
+    await expect(signOut(liveToken())).resolves.toBeUndefined();
+    expect(mockUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and resolves when the database write fails", async () => {
+    mockUpdateMany.mockRejectedValue(new Error("db down"));
+    const token = liveToken();
+
+    await expect(signOut(token)).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Error),
+    );
+    const logged = [
+      ...vi.mocked(logger.error).mock.calls,
+      ...vi.mocked(logger.warn).mock.calls,
+    ];
+    expect(logged.length).toBeGreaterThanOrEqual(1);
+    for (const args of logged) {
+      expect(args).not.toContain(token);
+      expect(JSON.stringify(args)).not.toContain("leak@example.com");
+    }
+  });
+
+  it("resolves and warns when the database write hangs past 2000 ms", async () => {
+    mockUpdateMany.mockReturnValue(new Promise(() => {}));
+    const token = liveToken();
+    let settled = false;
+    const done = signOut(token).then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+
+    expect(settled).toBe(true);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ userId: "user-123" }),
+    );
+    for (const args of vi.mocked(logger.warn).mock.calls) {
+      expect(args).not.toContain(token);
+      expect(JSON.stringify(args)).not.toContain("leak@example.com");
+    }
   });
 });

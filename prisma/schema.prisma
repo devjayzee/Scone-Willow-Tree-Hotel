@@ -37,7 +37,7 @@ model User {
   role                Role                 @default(STAFF)
   isActive            Boolean              @default(true)
   setupPending        Boolean              @default(false) // true from invite (or an access reset) until the SETUP link is redeemed
-  tokenVersion        Int                  @default(0) // incremented on a password change, an access reset or an isActive change to invalidate sessions
+  tokenVersion        Int                  @default(0) // incremented on a password change, an access reset, an isActive change or a sign-out to invalidate sessions
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   bookings            Booking[]            @relation("CreatedBy")

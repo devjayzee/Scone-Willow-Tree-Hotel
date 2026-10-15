@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
+import { hardReload, hardReplace } from "@/lib/utils/hard-navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -10,10 +11,19 @@ import { Toaster } from "@/components/ui/sonner";
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: session, status } = useSession();
+  const previousStatus = useRef(status);
 
   useEffect(() => {
-    if (status === "unauthenticated" || (status === "authenticated" && !session?.user)) {
-      signOut({ callbackUrl: "/login" });
+    const previous = previousStatus.current;
+    previousStatus.current = status;
+
+    if (status === "authenticated" && !session?.user) {
+      hardReplace("/login");
+    } else if (status === "unauthenticated" && previous === "authenticated") {
+      // Never signOut() here: a live cookie would end every device's session,
+      // and a failed poll also reports "unauthenticated". Reload once and let
+      // the server decide.
+      hardReload();
     }
   }, [session, status]);
 
