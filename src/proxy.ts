@@ -49,15 +49,16 @@ const PUBLIC_AUTH_PATHS = new Set([
 
 // getToken() only decodes the JWE; it never runs the jwt callback, so a
 // session that expired or was revoked still decodes with a real `id`.
-// The expiry half of that check is copied here from the jwt callback in
-// src/lib/auth.ts:120-123: only a numeric expiresAt can expire a token, a
-// missing one falls through to NextAuth's own maxAge. Revocation
-// (tokenVersion / isActive) needs a DB read and stays in requireSession.
+// The expiry half of that check is copied here from
+// authOptions.callbacks.jwt in src/lib/auth.ts: a missing or non-numeric
+// expiresAt is refused. Both copies must change together (ADR-002/018).
+// Revocation (tokenVersion / isActive) needs a DB read and stays in
+// requireSession.
 function hasLiveSession(token: JWT | null): boolean {
   if (!token?.id) return false;
-  return !(
+  return (
     typeof token.expiresAt === "number" &&
-    Math.floor(Date.now() / 1000) > token.expiresAt
+    Math.floor(Date.now() / 1000) <= token.expiresAt
   );
 }
 

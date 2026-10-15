@@ -448,6 +448,9 @@ describe("Auth - per-email rate limit", () => {
   });
 });
 
+// A live-token fixture needs a numeric expiresAt in the future; a token without one is refused before the DB gate.
+const FAR_FUTURE_SEC = 4_102_444_800; // 2100-01-01
+
 describe("Auth - JWT callback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -500,13 +503,15 @@ describe("Auth - JWT callback", () => {
     });
 
     const result = await jwtCallback({
-      token: { id: "user-123", tokenVersion: 0 }, // Old tokenVersion
+      token: { id: "user-123", tokenVersion: 0, expiresAt: FAR_FUTURE_SEC }, // Old tokenVersion
       user: undefined,
       account: null,
       trigger: "update",
     } as any);
 
     expect(result.id).toBeNull();
+    // Reached the DB gate: a refusal before it would pass this test vacuously.
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 
   it("should invalidate token when user is deactivated", async () => {
@@ -520,13 +525,15 @@ describe("Auth - JWT callback", () => {
     });
 
     const result = await jwtCallback({
-      token: { id: "user-123", tokenVersion: 0 },
+      token: { id: "user-123", tokenVersion: 0, expiresAt: FAR_FUTURE_SEC },
       user: undefined,
       account: null,
       trigger: "update",
     } as any);
 
     expect(result.id).toBeNull();
+    // Reached the DB gate: a refusal before it would pass this test vacuously.
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 
   it("should invalidate token when user is deleted", async () => {
@@ -535,13 +542,15 @@ describe("Auth - JWT callback", () => {
     mockFindUnique.mockResolvedValue(null);
 
     const result = await jwtCallback({
-      token: { id: "user-123", tokenVersion: 0 },
+      token: { id: "user-123", tokenVersion: 0, expiresAt: FAR_FUTURE_SEC },
       user: undefined,
       account: null,
       trigger: "update",
     } as any);
 
     expect(result.id).toBeNull();
+    // Reached the DB gate: a refusal before it would pass this test vacuously.
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 
   it("should keep token valid when tokenVersion matches", async () => {
@@ -555,7 +564,7 @@ describe("Auth - JWT callback", () => {
     });
 
     const result = await jwtCallback({
-      token: { id: "user-123", tokenVersion: 0, role: "STAFF" },
+      token: { id: "user-123", tokenVersion: 0, role: "STAFF", expiresAt: FAR_FUTURE_SEC },
       user: undefined,
       account: null,
       trigger: "update",
@@ -584,6 +593,7 @@ describe("Auth - JWT callback", () => {
         tokenVersion: 0,
         role: "STAFF",
         firstName: "John",
+        expiresAt: FAR_FUTURE_SEC,
       },
       user: undefined,
       account: null,
@@ -665,23 +675,86 @@ describe("Auth - JWT callback", () => {
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 
-  it("passes through legacy tokens without token.expiresAt (backward compat)", async () => {
+  it("keeps a token whose expiresAt equals now (strict >, equality is live) and reaches the DB gate", async () => {
     const jwtCallback = authOptions.callbacks!.jwt!;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-05T12:00:00Z"));
+      const nowSec = Math.floor(Date.now() / 1000);
+      mockFindUnique.mockResolvedValue({
+        tokenVersion: 0,
+        isActive: true,
+        role: "STAFF",
+        firstName: "John",
+      });
+
+      const result = await jwtCallback({
+        token: { id: "user-123", tokenVersion: 0, role: "STAFF", expiresAt: nowSec },
+        user: undefined,
+        account: null,
+        trigger: "update",
+      } as any);
+
+      expect(result.id).toBe("user-123");
+      expect(mockFindUnique).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["a numeric string", "9999999999"],
+  ])(
+    "T1.1: refuses a token whose expiresAt is %s with id: null and no DB read",
+    async (_label, expiresAt) => {
+      const jwtCallback = authOptions.callbacks!.jwt!;
+      mockFindUnique.mockResolvedValue({
+        tokenVersion: 0,
+        isActive: true,
+        role: "STAFF",
+        firstName: "John",
+      });
+
+      const result = await jwtCallback({
+        token: { id: "user-123", tokenVersion: 0, role: "STAFF", expiresAt },
+        user: undefined,
+        account: null,
+        trigger: "update",
+      } as any);
+
+      expect(result.id).toBeNull();
+      expect(mockFindUnique).not.toHaveBeenCalled();
+    }
+  );
+
+  it("control: a token minted by the sign-in branch keeps its id when fed back in on the next poll", async () => {
+    const jwtCallback = authOptions.callbacks!.jwt!;
+    const minted = (await jwtCallback({
+      token: {},
+      user: { ...mockUser, remember: false },
+      account: null,
+      trigger: "signIn",
+    } as any)) as { id: string; tokenVersion: number; expiresAt: number };
+    expect(typeof minted.expiresAt).toBe("number");
+    mockFindUnique.mockClear();
     mockFindUnique.mockResolvedValue({
-      tokenVersion: 0,
+      tokenVersion: minted.tokenVersion,
       isActive: true,
       role: "STAFF",
       firstName: "John",
     });
 
-    const result = await jwtCallback({
-      token: { id: "user-123", tokenVersion: 0, role: "STAFF" },
+    const next = await jwtCallback({
+      token: { ...minted },
       user: undefined,
       account: null,
       trigger: "update",
     } as any);
 
-    expect(result.id).toBe("user-123");
+    expect(next.id).toBe(minted.id);
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 });
 

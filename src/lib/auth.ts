@@ -143,10 +143,11 @@ export const authOptions: NextAuthOptions = {
 
       // Custom per-login expiry. The session cookie's own maxAge is
       // set to the remember-me ceiling so both flows share one cookie
-      // config; the actual per-user duration is enforced here. Legacy
-      // tokens without expiresAt fall through to NextAuth's own maxAge.
+      // config; the actual per-user duration is enforced here. A missing or
+      // non-numeric expiresAt is refused: such tokens predate 2026-08-10 and
+      // the 2026-10-14 tokenVersion bump (ADR-018, amending ADR-002).
       if (
-        typeof token.expiresAt === "number" &&
+        typeof token.expiresAt !== "number" ||
         Math.floor(Date.now() / 1000) > token.expiresAt
       ) {
         return { ...token, id: null };

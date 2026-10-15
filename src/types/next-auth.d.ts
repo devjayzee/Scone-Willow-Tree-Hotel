@@ -32,9 +32,8 @@ declare module "next-auth/jwt" {
     /** Persisted remember-device choice. */
     remember?: boolean;
     /**
-     * Per-login expiry in seconds since epoch. Optional for
-     * backward compatibility with tokens issued before this feature
-     * shipped — those fall through to NextAuth's own maxAge check.
+     * Per-login expiry in seconds since epoch. Missing = refused
+     * (pre-2026-08-10 token). Kept optional so decoded old tokens type-check.
      */
     expiresAt?: number;
   }

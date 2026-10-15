@@ -85,6 +85,9 @@ import { Readable } from "node:stream";
 import proxy, { config } from "@/proxy";
 import { NextRequest, NextResponse } from "next/server";
 
+// A live-token fixture needs a numeric expiresAt in the future; a token without one is dead.
+const FAR_FUTURE_SEC = 4_102_444_800; // 2100-01-01
+
 type NextInit = NonNullable<ConstructorParameters<typeof NextRequest>[1]>;
 
 type Token = {
@@ -151,7 +154,7 @@ describe("proxy", () => {
 
     for (const { path, role } of stafflikeCases) {
       it(`redirects ${path} to /bookings when token role is ${role}`, async () => {
-        const req = buildReq({ path, token: { id: "u-1", role } });
+        const req = buildReq({ path, token: { id: "u-1", role, expiresAt: FAR_FUTURE_SEC } });
 
         const response = (await proxy(req)) as NextResponse;
 
@@ -166,7 +169,7 @@ describe("proxy", () => {
       // /rooms tightened to GENERAL_MANAGER-only — every mutation on
       // the page is GM-gated at the API, so MANAGER got a page where
       // every action 403'd. See plans/fix-rooms-page-gm-only.md.
-      const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER" } });
+      const req = buildReq({ path: "/rooms", token: { id: "u-1", role: "MANAGER", expiresAt: FAR_FUTURE_SEC } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -179,7 +182,7 @@ describe("proxy", () => {
     it("allows /rooms for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/rooms",
-        token: { id: "u-1", role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER", expiresAt: FAR_FUTURE_SEC },
       });
 
       const response = (await proxy(req)) as NextResponse;
@@ -191,7 +194,7 @@ describe("proxy", () => {
     it("allows /reports for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/reports",
-        token: { id: "u-1", role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER", expiresAt: FAR_FUTURE_SEC },
       });
 
       const response = (await proxy(req)) as NextResponse;
@@ -200,7 +203,7 @@ describe("proxy", () => {
     });
 
     it("redirects /staff to /bookings when token role is MANAGER", async () => {
-      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "MANAGER" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "MANAGER", expiresAt: FAR_FUTURE_SEC } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -211,7 +214,7 @@ describe("proxy", () => {
     });
 
     it("redirects /staff to /bookings when token role is STAFF", async () => {
-      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF" } });
+      const req = buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -224,7 +227,7 @@ describe("proxy", () => {
     it("allows /staff for GENERAL_MANAGER", async () => {
       const req = buildReq({
         path: "/staff",
-        token: { id: "u-1", role: "GENERAL_MANAGER" },
+        token: { id: "u-1", role: "GENERAL_MANAGER", expiresAt: FAR_FUTURE_SEC },
       });
 
       const response = (await proxy(req)) as NextResponse;
@@ -233,7 +236,7 @@ describe("proxy", () => {
     });
 
     it("redirects authenticated user from /login to /bookings", async () => {
-      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } });
+      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } });
 
       const response = (await proxy(req)) as NextResponse;
 
@@ -251,7 +254,7 @@ describe("proxy", () => {
 
     for (const path of recoveryPaths) {
       it(`redirects authenticated user from ${path} to /bookings`, async () => {
-        const req = buildReq({ path, token: { id: "u-1", role: "STAFF" } });
+        const req = buildReq({ path, token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } });
 
         const response = (await proxy(req)) as NextResponse;
 
@@ -369,14 +372,28 @@ describe("proxy", () => {
       expectNoCookieChanges(response);
     });
 
-    it("/login with a token that has no expiresAt counts as live", async () => {
-      const req = buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } });
+    it.each([
+      ["undefined", undefined],
+      ["null", null],
+      ["a numeric string", "9999999999"],
+    ])(
+      "T1.2: /login with an expiresAt of %s is dead: the form renders and every session cookie is deleted",
+      async (_label, expiresAt) => {
+        const req = buildReq({
+          path: "/login",
+          token: { id: "u-1", role: "STAFF", expiresAt },
+          cookies: allCookies,
+        });
 
-      const response = (await proxy(req)) as NextResponse;
+        const response = (await proxy(req)) as NextResponse;
 
-      expect(response.status).toBe(307);
-      expect(response.headers.get("location")).toBe("http://localhost/bookings");
-    });
+        expect(response.headers.get("location")).toBeNull();
+        for (const name of SESSION_NAMES) expectDeleted(response, name);
+        for (const name of Object.keys(UNRELATED)) {
+          expect(response.cookies.get(name)).toBeUndefined();
+        }
+      },
+    );
 
     it("/login with expiresAt equal to now is still live (strict >)", async () => {
       const req = buildReq({
@@ -418,7 +435,42 @@ describe("proxy", () => {
       for (const name of SESSION_NAMES) expectDeleted(response, name);
     });
 
+    it("T1.3: /login?session=expired with no expiresAt: no bounce, cookies deleted", async () => {
+      const req = buildReq({
+        path: "/login",
+        search: "?session=expired",
+        token: { id: "u-1", role: "STAFF" },
+        cookies: allCookies,
+      });
+
+      const response = (await proxy(req)) as NextResponse;
+
+      expect(response.headers.get("location")).toBeNull();
+      for (const name of SESSION_NAMES) expectDeleted(response, name);
+    });
+
     describe("dashboard path /bookings", () => {
+      it.each([
+        ["undefined", undefined],
+        ["null", null],
+        ["a numeric string", "9999999999"],
+      ])(
+        "T1.4: sends a token with an expiresAt of %s to /api/auth/signin",
+        async (_label, expiresAt) => {
+          const req = buildReq({
+            path: "/bookings",
+            token: { id: "u-1", role: "STAFF", expiresAt },
+          });
+
+          const response = (await proxy(req)) as NextResponse;
+
+          expect(response.status).toBe(307);
+          expect(response.headers.get("location")).toBe(
+            "http://localhost/api/auth/signin",
+          );
+        },
+      );
+
       it("sends an expired token to /api/auth/signin", async () => {
         const req = buildReq({ path: "/bookings", token: expired() });
 
@@ -981,7 +1033,7 @@ describe("proxy", () => {
       const req = buildReq({
         path: "/bookings",
         method: "GET",
-        token: { id: "u-1", role: "STAFF" },
+        token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC },
       });
       await proxy(req);
 
@@ -1184,7 +1236,7 @@ describe("proxy", () => {
     // request headers as x-middleware-request-<name> on the response.
     const REQ_CSP = "x-middleware-request-content-security-policy";
     const REQ_NONCE = "x-middleware-request-x-nonce";
-    const GM = { id: "u-1", role: "GENERAL_MANAGER" as const };
+    const GM = { id: "u-1", role: "GENERAL_MANAGER" as const, expiresAt: FAR_FUTURE_SEC };
 
     const nonceOf = (csp: string | null) => csp?.match(/'nonce-([^']+)'/)?.[1];
 
@@ -1358,16 +1410,17 @@ describe("proxy", () => {
 
       it("role redirect (STAFF on /staff)", async () => {
         const response = (await proxy(
-          buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF" } }),
+          buildReq({ path: "/staff", token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } }),
         )) as NextResponse;
 
         expect(response.status).toBe(307);
+        expect(response.headers.get("location")).toBe("http://localhost/bookings");
         expectNoCsp(response);
       });
 
       it("authenticated bounce from /login", async () => {
         const response = (await proxy(
-          buildReq({ path: "/login", token: { id: "u-1", role: "STAFF" } }),
+          buildReq({ path: "/login", token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } }),
         )) as NextResponse;
 
         expect(response.status).toBe(307);
@@ -1404,7 +1457,7 @@ describe("proxy", () => {
         // It shares the "/staff" prefix but is not the /staff section, so
         // it must not hit the GM-only redirect.
         const response = (await proxy(
-          buildReq({ path: "/staffing", token: { id: "u-1", role: "STAFF" } }),
+          buildReq({ path: "/staffing", token: { id: "u-1", role: "STAFF", expiresAt: FAR_FUTURE_SEC } }),
         )) as NextResponse;
 
         expect(response.status).toBe(200);
