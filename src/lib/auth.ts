@@ -28,6 +28,8 @@ if (!process.env.NEXTAUTH_SECRET) {
   throw new Error("NEXTAUTH_SECRET is required — set it in .env");
 }
 
+const SIGN_OUT_REVOKE_TIMEOUT_MS = 2000;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -209,6 +211,47 @@ export const authOptions: NextAuthOptions = {
       }
 
       return session;
+    },
+  },
+  // Sign-out ends every session of the user (user's choice, 2026-10-15) by
+  // bumping tokenVersion. Only a live token bumps, so a dead or stale cookie
+  // can't sign out the user's other devices. Any automatic signOut() call
+  // with a live cookie would end every device's session, so don't add one.
+  events: {
+    async signOut({ token }) {
+      if (
+        typeof token?.id !== "string" ||
+        token.id === "" ||
+        typeof token.expiresAt !== "number" ||
+        Math.floor(Date.now() / 1000) > token.expiresAt ||
+        typeof token.tokenVersion !== "number"
+      ) {
+        return;
+      }
+      // NextAuth awaits this event before clearing the cookie, so a stalled
+      // database must not hang sign-out.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), SIGN_OUT_REVOKE_TIMEOUT_MS);
+      });
+      try {
+        const result = await Promise.race([
+          prisma.user.updateMany({
+            where: { id: token.id, tokenVersion: token.tokenVersion },
+            data: { tokenVersion: { increment: 1 } },
+          }),
+          timeout,
+        ]);
+        if (result === "timeout") {
+          logger.warn("session revoke on sign-out timed out", {
+            userId: token.id,
+          });
+        }
+      } catch (error) {
+        logger.error("could not revoke sessions on sign-out", error);
+      } finally {
+        clearTimeout(timer);
+      }
     },
   },
   pages: {
