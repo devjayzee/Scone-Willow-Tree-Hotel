@@ -8,6 +8,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "@/lib/api-error-handler";
+import { withRequestAuditContext } from "@/lib/utils/with-request-audit-context";
 import { readJsonBody } from "@/lib/utils/read-json-body";
 
 // GET /api/rooms/[id] - Get a single room (GENERAL_MANAGER only —
@@ -39,50 +40,54 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
+
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only general managers can update rooms");
+      }
+
+      const { id } = await params;
+      const body = await readJsonBody(request);
+      const validation = updateRoomSchema.safeParse(body);
+
+      if (!validation.success) {
+        return handleApiError(validation.error, "updating room");
+      }
+
+      const room = await updateRoom(id, validation.data, session.user.id);
+      return NextResponse.json(room);
+    } catch (error) {
+      return handleApiError(error, "updating room");
     }
-
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only general managers can update rooms");
-    }
-
-    const { id } = await params;
-    const body = await readJsonBody(request);
-    const validation = updateRoomSchema.safeParse(body);
-
-    if (!validation.success) {
-      return handleApiError(validation.error, "updating room");
-    }
-
-    const room = await updateRoom(id, validation.data, session.user.id);
-    return NextResponse.json(room);
-  } catch (error) {
-    return handleApiError(error, "updating room");
-  }
+  });
 }
 
 // DELETE /api/rooms/[id] - Delete a room
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      throw new UnauthorizedError();
-    }
+  return withRequestAuditContext(request, async () => {
+    try {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        throw new UnauthorizedError();
+      }
 
-    if (session.user.role !== "GENERAL_MANAGER") {
-      throw new ForbiddenError("Only general managers can delete rooms");
-    }
+      if (session.user.role !== "GENERAL_MANAGER") {
+        throw new ForbiddenError("Only general managers can delete rooms");
+      }
 
-    const { id } = await params;
-    await deleteRoom(id, session.user.id);
-    return NextResponse.json({ message: "Room deleted successfully" });
-  } catch (error) {
-    return handleApiError(error, "deleting room");
-  }
+      const { id } = await params;
+      await deleteRoom(id, session.user.id);
+      return NextResponse.json({ message: "Room deleted successfully" });
+    } catch (error) {
+      return handleApiError(error, "deleting room");
+    }
+  });
 }
