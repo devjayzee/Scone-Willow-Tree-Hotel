@@ -982,7 +982,7 @@ describe("proxy", () => {
 
   describe("per-user API rate limit", () => {
     it("returns 429 when the api limiter says the caller is over quota", async () => {
-      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockGetToken.mockResolvedValue({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
       mockLimit.mockResolvedValue({
         success: false,
         limit: 120,
@@ -996,8 +996,8 @@ describe("proxy", () => {
 
       expect(response.status).toBe(429);
       expect(data.error).toMatch(/too many requests/i);
-      // Key should be the userId, not the IP fallback
-      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+      // Key should be the live session identity, not the IP fallback
+      expect(mockLimit).toHaveBeenCalledWith("user-abc:3");
     });
 
     it("keys on IP when the request is unauthenticated", async () => {
@@ -1114,7 +1114,7 @@ describe("proxy", () => {
     });
 
     it("does not rate-limit non-auth API paths via the auth-endpoint limiter (that's the general api limiter's job)", async () => {
-      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockGetToken.mockResolvedValue({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
       mockLimit.mockResolvedValue({
         success: true,
         limit: 120,
@@ -1125,9 +1125,9 @@ describe("proxy", () => {
       const req = buildReq({ path: "/api/bookings", method: "GET" });
       await proxy(req);
 
-      // Only the general api limiter fires — one call, keyed by userId, not IP.
+      // Only the general api limiter fires — one call, keyed by session identity, not IP.
       expect(mockLimit).toHaveBeenCalledTimes(1);
-      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+      expect(mockLimit).toHaveBeenCalledWith("user-abc:3");
     });
   });
 
@@ -1153,7 +1153,7 @@ describe("proxy", () => {
 
   describe("session-endpoint rate limit", () => {
     it("returns 429 when a signed-in user is over quota", async () => {
-      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockGetToken.mockResolvedValue({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
       mockLimit.mockResolvedValue({
         success: false,
         limit: 60,
@@ -1168,7 +1168,7 @@ describe("proxy", () => {
       expect(response.status).toBe(429);
       expect(data.error).toMatch(/too many requests/i);
       // Per-user key
-      expect(mockLimit).toHaveBeenCalledWith("user-abc");
+      expect(mockLimit).toHaveBeenCalledWith("user-abc:3");
     });
 
     it("keys on IP when the request is unauthenticated", async () => {
@@ -1187,7 +1187,7 @@ describe("proxy", () => {
     });
 
     it("passes through when under quota", async () => {
-      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockGetToken.mockResolvedValue({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
       mockLimit.mockResolvedValue({
         success: true,
         limit: 60,
@@ -1216,7 +1216,7 @@ describe("proxy", () => {
       // Regression: PR #260 first attempt at S3 crashed the smoke test
       // because the CI placeholder Upstash URL doesn't resolve.
       // Session polling should never 500 the app on Upstash outages.
-      mockGetToken.mockResolvedValue({ id: "user-abc" });
+      mockGetToken.mockResolvedValue({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
       mockLimit.mockRejectedValue(
         new Error("getaddrinfo ENOTFOUND ci-smoke-upstash.placeholder.invalid"),
       );
@@ -1227,6 +1227,102 @@ describe("proxy", () => {
       // Passes through to withAuth (mocked passthrough) — not a 429, not a 500
       expect(response.status).not.toBe(429);
       expect(response.status).not.toBe(500);
+    });
+  });
+
+  describe("limiter key identity (live token only)", () => {
+    const NOW_MS = Date.UTC(2026, 9, 15, 12, 0, 0);
+    const nowSec = Math.floor(NOW_MS / 1000);
+    const underQuota = {
+      success: true,
+      limit: 180,
+      remaining: 100,
+      reset: NOW_MS + 60_000,
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW_MS);
+      mockLimit.mockResolvedValue(underQuota);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const keyForPath = async (path: string, token: Record<string, unknown> | null) => {
+      mockGetToken.mockResolvedValue(token);
+      await proxy(buildReq({ path, method: "GET" }));
+      expect(mockLimit).toHaveBeenCalledTimes(1);
+      return mockLimit.mock.calls[0][0];
+    };
+
+    const limiters = [
+      { name: "session endpoint", path: "/api/auth/session" },
+      { name: "api", path: "/api/bookings" },
+    ];
+
+    for (const { name, path } of limiters) {
+      describe(name, () => {
+        const keyFor = (token: Record<string, unknown> | null) => keyForPath(path, token);
+
+        it("keys a live token on id:tokenVersion", async () => {
+          expect(
+            await keyFor({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC }),
+          ).toBe("user-abc:3");
+        });
+
+        it("keys an expired token that still has an id on the IP", async () => {
+          expect(
+            await keyFor({ id: "user-abc", tokenVersion: 3, expiresAt: nowSec - 60 }),
+          ).toBe("ip:203.0.113.7");
+        });
+
+        it("gives the same id at versions 3 and 4 two different keys", async () => {
+          const v3 = await keyFor({ id: "user-abc", tokenVersion: 3, expiresAt: FAR_FUTURE_SEC });
+          mockLimit.mockClear();
+          const v4 = await keyFor({ id: "user-abc", tokenVersion: 4, expiresAt: FAR_FUTURE_SEC });
+          expect(v3).toBe("user-abc:3");
+          expect(v4).toBe("user-abc:4");
+          expect(v3).not.toBe(v4);
+        });
+      });
+    }
+
+    describe("session endpoint: dead-token shapes", () => {
+      const keyFor = (token: Record<string, unknown> | null) =>
+        keyForPath("/api/auth/session", token);
+
+      it("keys a token with an id but no expiresAt on the IP", async () => {
+        expect(await keyFor({ id: "user-abc", tokenVersion: 3 })).toBe("ip:203.0.113.7");
+      });
+
+      it("keys a live token with tokenVersion missing on the IP", async () => {
+        expect(await keyFor({ id: "user-abc", expiresAt: FAR_FUTURE_SEC })).toBe("ip:203.0.113.7");
+      });
+
+      it("keys a live token with a string tokenVersion on the IP", async () => {
+        expect(
+          await keyFor({ id: "user-abc", tokenVersion: "3", expiresAt: FAR_FUTURE_SEC }),
+        ).toBe("ip:203.0.113.7");
+      });
+
+      it("keys a live expiresAt with a null id on the IP", async () => {
+        expect(await keyFor({ id: null, tokenVersion: 3, expiresAt: FAR_FUTURE_SEC })).toBe(
+          "ip:203.0.113.7",
+        );
+      });
+
+      it("treats expiresAt equal to now as live", async () => {
+        expect(await keyFor({ id: "user-abc", tokenVersion: 3, expiresAt: nowSec })).toBe(
+          "user-abc:3",
+        );
+      });
+
+      it("treats expiresAt one second before now as dead", async () => {
+        expect(await keyFor({ id: "user-abc", tokenVersion: 3, expiresAt: nowSec - 1 })).toBe(
+          "ip:203.0.113.7",
+        );
+      });
     });
   });
 
