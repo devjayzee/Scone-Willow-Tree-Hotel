@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { addDays, format } from "date-fns";
 
 const mockUseAvailableRooms = vi.fn();
 const mockDownloadDraftBookingPDF = vi.fn();
@@ -89,14 +90,40 @@ describe("useBookingForm", () => {
         expect(result.current.stay.checkIn).not.toBe("");
       });
 
+      // Local calendar dates, formatted like the hook does (not UTC).
       const today = new Date();
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      const fmt = (d: Date) => format(d, "yyyy-MM-dd");
 
       expect(result.current.stay.checkIn).toBe(fmt(today));
-      expect(result.current.stay.checkOut).toBe(fmt(tomorrow));
+      expect(result.current.stay.checkOut).toBe(fmt(addDays(today, 1)));
       expect(result.current.isEditMode).toBe(false);
+    });
+
+    describe("local date versus UTC date", () => {
+      const originalTz = process.env.TZ;
+      afterEach(() => {
+        vi.useRealTimers();
+        if (originalTz === undefined) delete process.env.TZ;
+        else process.env.TZ = originalTz;
+      });
+
+      // 07:30 on 15 Oct in Manila (UTC+8) is still 14 Oct in UTC. Node re-reads
+      // process.env.TZ at runtime, so this catches a UTC-based format (toISOString)
+      // even when the whole run is under TZ=UTC.
+      it("seeds the local calendar dates, not the UTC ones (early morning in UTC+8)", async () => {
+        process.env.TZ = "Asia/Manila";
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(new Date("2026-10-14T23:30:00Z"));
+
+        const { result } = setup({ open: true, initialBooking: null });
+
+        await waitFor(() => {
+          expect(result.current.stay.checkIn).not.toBe("");
+        });
+
+        expect(result.current.stay.checkIn).toBe("2026-10-15");
+        expect(result.current.stay.checkOut).toBe("2026-10-16");
+      });
     });
   });
 
