@@ -62,6 +62,16 @@ function hasLiveSession(token: JWT | null): boolean {
   );
 }
 
+// Rate-limit identity of a live token: `<id>:<tokenVersion>`. Every
+// revocation (sign-out, password write, access reset, isActive change)
+// bumps tokenVersion (ADR-016, ADR-019), so a revoked or expired copy
+// never spends the owner's current bucket. Null for a dead token or a
+// non-numeric tokenVersion.
+function liveSessionKey(token: JWT | null): string | null {
+  if (!hasLiveSession(token) || typeof token?.tokenVersion !== "number") return null;
+  return `${token.id}:${token.tokenVersion}`;
+}
+
 // Matches the production (__Secure-), development and chunked (.0, .1, ...)
 // session cookie names.
 const SESSION_COOKIE = /^(__Secure-)?next-auth\.session-token(\.\d+)?$/;
@@ -202,10 +212,11 @@ function abandonBody(
 }
 
 /**
- * Rate-limit non-auth /api/* routes. Keyed per authenticated user
- * (userId from the JWT); falls back to client IP when there's no token
- * (rare — those routes reject via getServerSession before doing real
- * work, but the limiter still protects against unauthenticated flood).
+ * Rate-limit non-auth /api/* routes. Keyed per live session identity
+ * (`<id>:<tokenVersion>` from the JWT, see liveSessionKey); a dead token
+ * (expired, no expiresAt, non-numeric tokenVersion) or no token falls back
+ * to client IP (rare — those routes reject via getServerSession before
+ * doing real work, but the limiter still protects against flood).
  */
 async function apiRateLimitMiddleware(
   req: NextRequest,
@@ -219,7 +230,7 @@ async function apiRateLimitMiddleware(
   if (!limiter) return null;
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
+  const key = liveSessionKey(token) ?? `ip:${getClientIp(req)}`;
 
   const { success, limit, remaining, reset } = await limiter.limit(key);
   if (success) return null;
@@ -271,9 +282,10 @@ async function authEndpointRateLimitMiddleware(
 /**
  * Per-user rate limit on `/api/auth/session`. That endpoint runs a
  * prisma.user.findUnique on every call and the session provider polls
- * every 60s; unbounded, any signed-in client can drive DB reads at
- * will. Per-user key with an IP fallback for the rare unauthenticated
- * caller, matching the pattern in `apiRateLimitMiddleware`.
+ * (SESSION_POLL_INTERVAL_SECONDS); unbounded, any signed-in client can
+ * drive DB reads at will. Keyed per live session identity (id plus
+ * tokenVersion); a dead token, or none, falls back to IP, matching
+ * `apiRateLimitMiddleware`.
  */
 async function sessionEndpointRateLimitMiddleware(
   req: NextRequest,
@@ -284,7 +296,7 @@ async function sessionEndpointRateLimitMiddleware(
   if (!limiter) return null;
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  const key = (token?.id as string | undefined) ?? `ip:${getClientIp(req)}`;
+  const key = liveSessionKey(token) ?? `ip:${getClientIp(req)}`;
 
   // Fail open on Upstash transport errors. Session polling should never
   // 500 the app (the session provider surfaces any non-JSON response as
