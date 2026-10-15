@@ -113,7 +113,7 @@ export async function createStaff(
 /**
  * Update an existing staff member
  * @throws NotFoundError if staff member not found
- * @throws ConflictError if new email already exists
+ * @throws ConflictError if new email already exists, or the row changed after it was read (stale write)
  * @throws ValidationError if a changed email is outside the recipient-domain allowlist
  * @throws RateLimitError if an email change is past the per-GM or deployment-wide invite limit
  * @throws BusinessRuleError if the caller tries to change their own role or deactivate themselves,
@@ -256,12 +256,21 @@ export async function updateStaff(
         ? (await voidActiveTokens(id, "SETUP", tx)) +
           (await voidActiveTokens(id, "RESET", tx))
         : 0;
-      // The where carries setupPending so the write only lands if the account
-      // is still in the state read above. If the invitee redeemed their link
-      // in between, resetsAccess was decided on a stale row: no row matches
+      // The where pins the state read above; a stale read matches no row
       // (P2025), the transaction rolls back and the GM retries.
+      // setupPending: against a redeemed invite (ADR-012).
+      // isActive: the tokenVersion bump is decided from the value read (ADR-016).
+      // The pins only hold because Prisma puts them in the UPDATE's own WHERE,
+      // re-checked under the row lock (verified on Prisma 7.9.1; re-check on a
+      // major upgrade).
       const staff = await tx.user.update({
-        where: { id, setupPending: existingStaff.setupPending },
+        where: {
+          id,
+          setupPending: existingStaff.setupPending,
+          ...(data.isActive !== undefined && {
+            isActive: existingStaff.isActive,
+          }),
+        },
         data: updateData,
         select: staffSelectFieldsMinimal,
       });

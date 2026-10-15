@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
-import { NotFoundError, RateLimitError } from "@/lib/errors";
+import { ConflictError, NotFoundError, RateLimitError } from "@/lib/errors";
 
 const h = vi.hoisted(() => {
   const mockUserFindUnique = vi.fn();
@@ -293,7 +293,7 @@ describe("Password Reset Service", () => {
     });
 
     it("U2: the setup token is created with sentTo = the recipient email it was given", async () => {
-      mockUserFindUnique.mockResolvedValue({ id: "u1" });
+      mockUserFindUnique.mockResolvedValue({ id: "u1", email: "jane@example.com" });
 
       await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
 
@@ -552,7 +552,7 @@ describe("Password Reset Service", () => {
 
   describe("issueSetupTokenForUser", () => {
     it("stores a hashed SETUP token with the 72h TTL and returns the raw token", async () => {
-      mockUserFindUnique.mockResolvedValue({ id: "u1" });
+      mockUserFindUnique.mockResolvedValue({ id: "u1", email: "jane@example.com" });
 
       const raw = await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
 
@@ -565,7 +565,7 @@ describe("Password Reset Service", () => {
     });
 
     it("voids prior unused SETUP tokens before inserting the new one", async () => {
-      mockUserFindUnique.mockResolvedValue({ id: "u1" });
+      mockUserFindUnique.mockResolvedValue({ id: "u1", email: "jane@example.com" });
 
       await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
 
@@ -582,6 +582,35 @@ describe("Password Reset Service", () => {
       expect(mockTokenUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
         mockTokenCreate.mock.invocationCallOrder[0]
       );
+    });
+
+    it("T3.1: refuses with a ConflictError when the row's email differs from the recipient's, before voiding or creating", async () => {
+      mockUserFindUnique.mockResolvedValue({ id: "u1", email: "new@example.com" });
+
+      const error = await issueSetupTokenForUser({
+        id: "u1",
+        email: "old@example.com",
+      }).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictError);
+      expect((error as Error).message).toBe(
+        "This account's email changed. Refresh and try again."
+      );
+      expect(mockTokenUpdateMany).not.toHaveBeenCalled();
+      expect(mockTokenCreate).not.toHaveBeenCalled();
+    });
+
+    it("T3.2 (control): a matching email voids the old tokens, then creates one bound to that email", async () => {
+      mockUserFindUnique.mockResolvedValue({ id: "u1", email: "jane@example.com" });
+
+      await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
+
+      expect(mockTokenUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockTokenCreate).toHaveBeenCalledTimes(1);
+      expect(mockTokenUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTokenCreate.mock.invocationCallOrder[0]
+      );
+      expect(mockTokenCreate.mock.calls[0][0].data.sentTo).toBe("jane@example.com");
     });
 
     it("throws NotFoundError for an unknown user", async () => {

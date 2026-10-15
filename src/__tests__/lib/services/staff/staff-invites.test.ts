@@ -292,6 +292,18 @@ describe("Staff invites", () => {
       expect(mockEmailSend.mock.calls[0][0].to).toBe(recipient.email);
     });
 
+    it("T3.3 (control): propagates a stale-recipient ConflictError with no audit and no email scheduled", async () => {
+      mockUserFindUnique.mockResolvedValue(pendingInvitee());
+      const stale = new ConflictError("This account's email changed. Refresh and try again.");
+      mockIssueSetupTokenForUser.mockRejectedValue(stale);
+
+      await expect(resendInvite("u1", "manager-1", deferSend)).rejects.toBe(stale);
+
+      expect(createAuditLog).not.toHaveBeenCalled();
+      expect(deferSend).not.toHaveBeenCalled();
+      expect(mockEmailSend).not.toHaveBeenCalled();
+    });
+
     it("logs and swallows a mail failure in the deferred task", async () => {
       mockUserFindUnique.mockResolvedValue(pendingInvitee());
       const mailError = new Error("smtp down");

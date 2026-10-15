@@ -17,8 +17,11 @@ Three layers of protection:
    account for trusted devices). NOT the
    security boundary — `withAuth` calls `getToken()` internally, which decodes
    the JWE but does NOT invoke the `jwt` callback. The proxy copies the expiry
-   rule (`hasLiveSession`, mirroring `src/lib/auth.ts:120-123`) but cannot check
-   revocation (`tokenVersion`/`isActive`), which needs a DB read (#181).
+   rule (`hasLiveSession`, mirroring the expiry check in
+   `authOptions.callbacks.jwt`): a missing or non-numeric `expiresAt` is
+   refused (ADR-018, amending ADR-002), and both copies must change together.
+   It cannot check revocation (`tokenVersion`/`isActive`), which needs a DB
+   read (#181).
    On the four public auth pages it clears the session cookies (all
    `next-auth.session-token` variants, `secure` matching the `__Secure-` prefix)
    when `hasLiveSession` is false. It must never clear them on `/api/auth/*` (that

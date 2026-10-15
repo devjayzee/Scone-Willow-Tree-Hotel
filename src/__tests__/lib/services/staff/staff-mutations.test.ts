@@ -276,12 +276,75 @@ describe("Staff Mutations", () => {
       await updateStaff("staff-1", { isActive: false }, "current-user-id");
 
       expect(mockUserUpdate).toHaveBeenCalledWith({
-        where: { id: "staff-1", setupPending: false },
+        where: { id: "staff-1", setupPending: false, isActive: true },
         data: {
           isActive: false,
           tokenVersion: { increment: 1 },
         },
         select: expect.any(Object),
+      });
+    });
+
+    describe("isActive write is pinned to the value that was read (stale-read guard)", () => {
+      const staleMessage = "This account changed while you were editing. Try again.";
+      const whereOf = () => mockUserUpdate.mock.calls[0][0].where;
+      const dataOf = () => mockUserUpdate.mock.calls[0][0].data;
+
+      it("T2.1: deactivating an active row pins isActive: true", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue({ ...existingStaff, isActive: false });
+
+        await updateStaff("staff-1", { isActive: false }, "gm-1");
+
+        expect(whereOf()).toEqual({ id: "staff-1", setupPending: false, isActive: true });
+      });
+
+      it("T2.2: reactivating an inactive row pins isActive: false and still bumps tokenVersion", async () => {
+        const inactive = { ...existingStaff, isActive: false };
+        mockUserFindUnique.mockResolvedValue(inactive);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { isActive: true }, "gm-1");
+
+        expect(whereOf()).toEqual({ id: "staff-1", setupPending: false, isActive: false });
+        expect(dataOf().tokenVersion).toEqual({ increment: 1 });
+      });
+
+      it("T2.3: a no-op isActive (equal to the read value) is still pinned, and does not bump", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { isActive: true, firstName: "Johnny" }, "gm-1");
+
+        expect(whereOf()).toEqual({ id: "staff-1", setupPending: false, isActive: true });
+        expect(dataOf()).not.toHaveProperty("tokenVersion");
+      });
+
+      it("control: an edit that does not send isActive carries no isActive in the where", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockResolvedValue(existingStaff);
+
+        await updateStaff("staff-1", { firstName: "Johnny" }, "gm-1");
+
+        expect(whereOf()).toEqual({ id: "staff-1", setupPending: false });
+      });
+
+      it("T2.4 (guard): P2025 on an isActive write becomes the stale ConflictError and writes no audit", async () => {
+        mockUserFindUnique.mockResolvedValue(existingStaff);
+        mockUserUpdate.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("No record", {
+            code: "P2025",
+            clientVersion: "x",
+          })
+        );
+
+        const error = await updateStaff("staff-1", { isActive: false }, "gm-1").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(ConflictError);
+        expect((error as Error).message).toBe(staleMessage);
+        expect(createAuditLog).not.toHaveBeenCalled();
       });
     });
 
@@ -449,7 +512,7 @@ describe("Staff Mutations", () => {
         await updateStaff("staff-8", { isActive: true }, "current-user-id");
 
         expect(mockUserUpdate).toHaveBeenCalledWith({
-          where: { id: "staff-8", setupPending: false },
+          where: { id: "staff-8", setupPending: false, isActive: false },
           data: { isActive: true, tokenVersion: { increment: 1 } },
           select: expect.any(Object),
         });
