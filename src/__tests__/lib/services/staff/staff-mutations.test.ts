@@ -95,7 +95,11 @@ describe("Staff Mutations", () => {
           setupPending: true,
         }),
       });
-      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith("new-staff");
+      expect(mockIssueSetupTokenForUser).toHaveBeenCalledWith(createdStaff);
+      expect(mockIssueSetupTokenForUser.mock.calls[0][0]).toMatchObject({
+        id: "new-staff",
+        email: "jane.smith@sconewillowtree.com",
+      });
       expect(result).toEqual({
         staff: createdStaff,
         setupToken: "raw-setup-token",

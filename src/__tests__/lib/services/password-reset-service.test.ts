@@ -137,6 +137,7 @@ function validToken(overrides: Record<string, unknown> = {}) {
     purpose: "RESET",
     expiresAt: new Date(Date.now() + 60_000),
     usedAt: null,
+    sentTo: "jane@example.com",
     createdAt: new Date(),
     user: {
       id: "u1",
@@ -162,6 +163,7 @@ describe("Password Reset Service", () => {
     it("P1: a reset revokes the user's devices once, before the transaction", async () => {
       mockTokenFindUnique.mockResolvedValue(validToken());
       mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
 
       await consumeResetToken(input);
 
@@ -275,6 +277,173 @@ describe("Password Reset Service", () => {
     );
   });
 
+  // ============================================================
+  // Recipient binding (plan: link-recipient-race)
+  // ============================================================
+  describe("recipient binding", () => {
+    const INVALID = "This link is invalid or has expired";
+    const input = { rawToken: "raw-token", newPassword: "NewStr0ng!Pass" };
+
+    it("U1: the reset token is created with sentTo = the email from the user lookup, not the typed input", async () => {
+      mockUserFindUnique.mockResolvedValue(activeUser);
+
+      await issueResetTokenForEmail("JANE@example.com");
+
+      expect(mockTokenCreate.mock.calls[0][0].data.sentTo).toBe("jane@example.com");
+    });
+
+    it("U2: the setup token is created with sentTo = the recipient email it was given", async () => {
+      mockUserFindUnique.mockResolvedValue({ id: "u1" });
+
+      await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
+
+      expect(mockUserFindUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "u1" } })
+      );
+      expect(mockTokenCreate.mock.calls[0][0].data.sentTo).toBe("jane@example.com");
+    });
+
+    const entrypoints: Array<[string, () => Promise<unknown>, "RESET" | "SETUP"]> = [
+      ["resolveSetupInvite", () => resolveSetupInvite("raw-token"), "SETUP"],
+      ["consumeSetupToken", () => consumeSetupToken(input), "SETUP"],
+      ["consumeResetToken", () => consumeResetToken(input), "RESET"],
+    ];
+    const tokenFor = (purpose: "RESET" | "SETUP", over: Record<string, unknown>) =>
+      purpose === "SETUP" ? pendingSetupToken(over) : validToken(over);
+
+    it.each(entrypoints)(
+      "U3: %s refuses a link whose sentTo differs from the account's current email, with the standard error",
+      async (_name, run, purpose) => {
+        mockTokenFindUnique.mockResolvedValue(
+          tokenFor(purpose, { sentTo: "old.holder@example.com" })
+        );
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+        mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+        const error = await run().catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe(INVALID);
+        expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockAuditLogCreate).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(entrypoints)(
+      "U4: %s refuses a link with a null sentTo (issued before the column existed)",
+      async (_name, run, purpose) => {
+        mockTokenFindUnique.mockResolvedValue(tokenFor(purpose, { sentTo: null }));
+        mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+        mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+        const error = await run().catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe(INVALID);
+        expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+      }
+    );
+
+    it("edge: a case-only difference between sentTo and the stored email fails closed (exact comparison)", async () => {
+      mockTokenFindUnique.mockResolvedValue(
+        pendingSetupToken({ sentTo: "Jane@Example.com" })
+      );
+
+      await expect(resolveSetupInvite("raw-token")).rejects.toThrow(INVALID);
+    });
+
+    it("edge: an expired link with a matching sentTo is still refused", async () => {
+      mockTokenFindUnique.mockResolvedValue(
+        pendingSetupToken({ expiresAt: new Date(Date.now() - 1_000) })
+      );
+
+      await expect(consumeSetupToken(input)).rejects.toThrow(INVALID);
+      expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+    });
+
+    it("edge: a wrong-purpose link with a matching sentTo is still refused", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken({ purpose: "RESET" }));
+      await expect(resolveSetupInvite("raw-token")).rejects.toThrow(INVALID);
+
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      await expect(consumeResetToken(input)).rejects.toThrow(INVALID);
+      expect(mockRevokeTrustedDevices).not.toHaveBeenCalled();
+    });
+
+    it("U5: the RESET user write is conditional on id and email = sentTo", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      await consumeResetToken(input);
+
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockUserUpdateMany.mock.calls[0][0].where).toEqual({
+        id: "u1",
+        email: "jane@example.com",
+      });
+      expect(mockUserUpdate).not.toHaveBeenCalled();
+    });
+
+    it("U5: a RESET whose email changed after the read (double race, count 0) is refused with no audit", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 0 });
+
+      const error = await consumeResetToken(input).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect((error as Error).message).toBe(INVALID);
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockAuditLogCreate).not.toHaveBeenCalled();
+    });
+
+    it("U6: a SETUP whose email changed after the read (double race, count 0) is refused with no audit", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 0 });
+
+      const error = await consumeSetupToken(input).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect((error as Error).message).toBe(INVALID);
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      expect(mockUserUpdateMany).toHaveBeenCalledWith({
+        where: { id: "u1", email: "jane@example.com", setupPending: true },
+        data: {
+          password: expect.any(String),
+          tokenVersion: { increment: 1 },
+          isActive: true,
+          setupPending: false,
+        },
+      });
+      expect(mockAuditLogCreate).not.toHaveBeenCalled();
+    });
+
+    it("C1: a RESET link whose sentTo matches still redeems", async () => {
+      mockTokenFindUnique.mockResolvedValue(validToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      await expect(consumeResetToken(input)).resolves.toMatchObject({ userId: "u1" });
+      expect(mockAuditLogCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("C2: a SETUP link whose sentTo matches still redeems and resolves", async () => {
+      mockTokenFindUnique.mockResolvedValue(pendingSetupToken());
+      mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
+
+      await expect(resolveSetupInvite("raw-token")).resolves.toMatchObject({
+        email: "jane@example.com",
+      });
+      await expect(consumeSetupToken(input)).resolves.toMatchObject({ userId: "u1" });
+      expect(mockAuditLogCreate).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("hashToken", () => {
     it("is deterministic and returns 64 hex chars", () => {
       expect(hashToken("abc")).toBe(hashToken("abc"));
@@ -385,7 +554,7 @@ describe("Password Reset Service", () => {
     it("stores a hashed SETUP token with the 72h TTL and returns the raw token", async () => {
       mockUserFindUnique.mockResolvedValue({ id: "u1" });
 
-      const raw = await issueSetupTokenForUser("u1");
+      const raw = await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
 
       const createArg = mockTokenCreate.mock.calls[0][0];
       expect(createArg.data.tokenHash).toBe(hashToken(raw));
@@ -398,7 +567,7 @@ describe("Password Reset Service", () => {
     it("voids prior unused SETUP tokens before inserting the new one", async () => {
       mockUserFindUnique.mockResolvedValue({ id: "u1" });
 
-      await issueSetupTokenForUser("u1");
+      await issueSetupTokenForUser({ id: "u1", email: "jane@example.com" });
 
       expect(mockTokenUpdateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -418,9 +587,9 @@ describe("Password Reset Service", () => {
     it("throws NotFoundError for an unknown user", async () => {
       mockUserFindUnique.mockResolvedValue(null);
 
-      await expect(issueSetupTokenForUser("ghost")).rejects.toThrow(
-        NotFoundError
-      );
+      await expect(
+        issueSetupTokenForUser({ id: "ghost", email: "ghost@example.com" })
+      ).rejects.toThrow(NotFoundError);
     });
   });
 
@@ -464,6 +633,7 @@ describe("Password Reset Service", () => {
     it("hashes the password, marks the token used, and bumps tokenVersion in a transaction", async () => {
       mockTokenFindUnique.mockResolvedValue(validToken());
       mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
 
       const result = await consumeResetToken({
         rawToken: "raw-token",
@@ -489,8 +659,8 @@ describe("Password Reset Service", () => {
         })
       );
 
-      const userUpdateArg = mockUserUpdate.mock.calls[0][0];
-      expect(userUpdateArg.where).toEqual({ id: "u1" });
+      const userUpdateArg = mockUserUpdateMany.mock.calls[0][0];
+      expect(userUpdateArg.where).toEqual({ id: "u1", email: "jane@example.com" });
       expect(userUpdateArg.data.tokenVersion).toEqual({ increment: 1 });
       expect(userUpdateArg.data.isActive).toBeUndefined();
       expect(userUpdateArg.data.password).not.toBe("NewStr0ng!Pass");
@@ -514,6 +684,7 @@ describe("Password Reset Service", () => {
       // Race: read saw usedAt: null, but by the time the transaction runs
       // another request already claimed the row → count: 0.
       mockTokenUpdateMany.mockResolvedValue({ count: 0 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
 
       await expect(
         consumeResetToken({
@@ -522,7 +693,7 @@ describe("Password Reset Service", () => {
         })
       ).rejects.toThrow(NotFoundError);
 
-      expect(mockUserUpdate).not.toHaveBeenCalled();
+      expect(mockUserUpdateMany).not.toHaveBeenCalled();
       expect(mockAuditLogCreate).not.toHaveBeenCalled();
     });
 
@@ -595,7 +766,7 @@ describe("Password Reset Service", () => {
 
       expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
       expect(mockUserUpdateMany).toHaveBeenCalledWith({
-        where: { id: "u1", setupPending: true },
+        where: { id: "u1", email: "jane@example.com", setupPending: true },
         data: {
           password: expect.any(String),
           tokenVersion: { increment: 1 },
@@ -688,6 +859,7 @@ describe("Password Reset Service", () => {
     it("is not refused and never writes setupPending or isActive", async () => {
       mockTokenFindUnique.mockResolvedValue(validToken());
       mockTokenUpdateMany.mockResolvedValue({ count: 1 });
+      mockUserUpdateMany.mockResolvedValue({ count: 1 });
 
       await expect(
         consumeResetToken({
@@ -700,8 +872,8 @@ describe("Password Reset Service", () => {
         validAfter: null,
       });
 
-      expect(mockUserUpdateMany).not.toHaveBeenCalled();
-      const data = mockUserUpdate.mock.calls[0][0].data;
+      expect(mockUserUpdateMany).toHaveBeenCalledTimes(1);
+      const data = mockUserUpdateMany.mock.calls[0][0].data;
       expect(data).not.toHaveProperty("setupPending");
       expect(data).not.toHaveProperty("isActive");
     });

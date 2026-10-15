@@ -52,6 +52,7 @@ model PasswordResetToken {
   purpose   PasswordResetTokenPurpose
   expiresAt DateTime
   usedAt    DateTime?
+  sentTo    String? // the address this link was emailed to; redemption requires User.email === sentTo. NULL = issued before this column (never valid)
   createdAt DateTime                  @default(now())
 
   @@index([userId])

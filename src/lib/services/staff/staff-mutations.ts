@@ -88,7 +88,7 @@ export async function createStaff(
     select: staffSelectFieldsMinimal,
   });
 
-  const setupToken = await issueSetupTokenForUser(staff.id);
+  const setupToken = await issueSetupTokenForUser(staff);
 
   if (performedBy) {
     await createAuditLog(
