@@ -58,6 +58,8 @@ import { RateLimitError } from "@/lib/errors";
 import {
   DEVICE_REVOCATION_READ_TIMEOUT_MS,
   DEVICE_REVOCATION_TTL,
+  SESSION_ENDPOINT_LIMIT_PER_MINUTE,
+  SESSION_POLL_INTERVAL_SECONDS,
 } from "@/lib/constants/auth";
 import {
   revokeTrustedDevices,
@@ -693,6 +695,45 @@ describe("rate-limit-service", () => {
       expect(mod.getStaffInviteGlobalRateLimiter()).toBeNull();
 
       vi.unstubAllEnvs();
+    });
+  });
+
+  describe("getSessionEndpointRateLimiter", () => {
+    it("uses a 180 / 1 m sliding window under the session-endpoint prefix", async () => {
+      vi.resetModules();
+      constructed.length = 0;
+
+      const mod = await import("@/lib/services/rate-limit-service");
+      mod.getSessionEndpointRateLimiter();
+
+      expect(constructed).toEqual([
+        expect.objectContaining({
+          prefix: "ratelimit:session-endpoint",
+          limiter: "sliding-window:180:1 m",
+        }),
+      ]);
+    });
+
+    it("pins SESSION_ENDPOINT_LIMIT_PER_MINUTE at 180", () => {
+      expect(SESSION_ENDPOINT_LIMIT_PER_MINUTE).toBe(180);
+    });
+
+    it("fits 8 tabs' worst-case poll round plus 12 tab switches in one 60 s window", () => {
+      // The limiter is a 60 s sliding window, so size for the window peak, not
+      // an average. Every poll or switch in one browser costs n fetches (each
+      // tab refetches once through next-auth's localStorage broadcast), so a
+      // poll round is up to n * n and a switch is n. 12 switches/min is the
+      // pace the Chrome probe (S2) drove. Re-check when T, tab count or
+      // refetchOnWindowFocus changes.
+      const n = 8;
+      const switchesPerMinute = 12;
+      const pollRounds = Math.ceil(60 / SESSION_POLL_INTERVAL_SECONDS);
+      const peak = n * n * pollRounds + switchesPerMinute * n;
+      expect(peak).toBeLessThanOrEqual(SESSION_ENDPOINT_LIMIT_PER_MINUTE);
+    });
+
+    it("polls no faster than every 300 s to stay inside the Upstash free-tier command quota", () => {
+      expect(SESSION_POLL_INTERVAL_SECONDS).toBeGreaterThanOrEqual(300);
     });
   });
 });

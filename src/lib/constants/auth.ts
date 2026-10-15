@@ -41,13 +41,30 @@ export const SESSION_MAX_AGE_REMEMBER = 30 * 24 * 60 * 60;
 export const SESSION_UPDATE_AGE = 60 * 60;
 
 /**
- * `useSession`'s client-side poll interval, in seconds. Load-bearing:
- * `getSessionEndpointRateLimiter` (`rate-limit-service.ts`) is sized at
- * this same number of requests/minute *because* every signed-in tab
- * polls at this interval — the two must move together, so both import
- * this constant rather than repeating the literal.
+ * `useSession`'s client-side poll interval, in seconds (T).
+ *
+ * Budget note: one tab's poll or focus refetch is broadcast by next-auth to
+ * the other tabs, which each refetch once. With n tabs in one browser a poll
+ * round costs at most n^2 session fetches (8 Chrome tabs measured about 22,
+ * thanks to same-second merging), and a whole round can land in one 60 s
+ * window. Add n per tab switch and n per full page load, including the
+ * dashboard's `hardReload` (ADR-019).
+ *
+ * `SESSION_ENDPOINT_LIMIT_PER_MINUTE` is sized for that window peak: 8 tabs'
+ * round (64) plus 12 switches (96) = 160 <= 180, which a test in
+ * `rate-limit-service.test.ts` pins. Changing T, `refetchOnWindowFocus` or
+ * the limit means re-checking that test.
+ *
+ * 300 s also keeps Upstash commands down (each limiter call is about 2
+ * commands), within the free tier.
  */
-export const SESSION_POLL_INTERVAL_SECONDS = 60;
+export const SESSION_POLL_INTERVAL_SECONDS = 300;
+
+/**
+ * Session-endpoint requests allowed per minute per live session identity.
+ * Sized for the multi-tab fan-out described above, not for a single poll.
+ */
+export const SESSION_ENDPOINT_LIMIT_PER_MINUTE = 180;
 
 /** How long a forgot-password reset link stays valid. */
 export const RESET_TOKEN_TTL_MINUTES = 30;
