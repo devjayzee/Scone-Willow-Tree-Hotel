@@ -473,6 +473,25 @@ describe("Room Service", () => {
         expect(createAuditLog).not.toHaveBeenCalled();
       });
 
+      it("P2025 from the delete (room already gone) becomes NotFoundError and writes no ROOM_DELETED audit", async () => {
+        mockRoomFindUnique.mockResolvedValue(zeroBookings());
+        mockRoomDelete.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("Gone", {
+            code: "P2025",
+            clientVersion: "x",
+          })
+        );
+        const { createAuditLog } = await import("@/lib/services/audit-service");
+
+        const error = await deleteRoom("room-1", "user-42").catch(
+          (e: unknown) => e
+        );
+
+        expect(error).toBeInstanceOf(NotFoundError);
+        expect((error as Error).message).toBe("Room not found");
+        expect(createAuditLog).not.toHaveBeenCalled();
+      });
+
       it("any other error from the delete is rethrown unchanged", async () => {
         mockRoomFindUnique.mockResolvedValue(zeroBookings());
         const boom = new Error("db down");

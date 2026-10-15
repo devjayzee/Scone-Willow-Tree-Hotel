@@ -24,10 +24,12 @@ vi.mock("@/lib/query-invalidation", () => ({
 const mockCreateStaff = vi.fn();
 const mockUpdateStaff = vi.fn();
 const mockDeleteStaff = vi.fn();
+const mockResendInvite = vi.fn();
 vi.mock("@/hooks/staff/staff-api", () => ({
   createStaff: (...args: unknown[]) => mockCreateStaff(...args),
   updateStaff: (...args: unknown[]) => mockUpdateStaff(...args),
   deleteStaff: (...args: unknown[]) => mockDeleteStaff(...args),
+  resendInvite: (...args: unknown[]) => mockResendInvite(...args),
 }));
 
 import type { Staff, Role } from "@/types/staff";
@@ -37,6 +39,7 @@ import {
   useUpdateStaff,
   useDeleteStaff,
   useToggleStaffActive,
+  useResendInvite,
 } from "@/hooks/staff/staff-mutations";
 
 function makeStaff(overrides: Partial<Staff> = {}): Staff {
@@ -440,6 +443,25 @@ describe("staff mutation hooks", () => {
         expect(mockToastError).toHaveBeenCalledWith("toggle failed");
       });
       expect(queryClient.getQueryData<Staff[]>(staffKeys.list())).toEqual(snapshot);
+    });
+  });
+
+  describe("useResendInvite", () => {
+    it("toasts the error message when the resend request fails", async () => {
+      mockResendInvite.mockRejectedValue(new Error("Too many staff invites. Try again later."));
+
+      const { result } = renderHook(() => useResendInvite(), { wrapper });
+
+      await expect(result.current.mutateAsync("s-1")).rejects.toThrow(
+        "Too many staff invites. Try again later."
+      );
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          "Too many staff invites. Try again later."
+        );
+      });
+      expect(mockToastSuccess).not.toHaveBeenCalled();
     });
   });
 });
