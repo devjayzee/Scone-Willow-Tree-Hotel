@@ -29,6 +29,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # ESLint 10 crashes inside eslint-config-next's bundled
+      # eslint-plugin-react ("contextOrFilename.getFilename is not a
+      # function", see #303). Hold the major until eslint-config-next
+      # supports ESLint 10, then delete this entry.
+      - dependency-name: "eslint"
+        update-types:
+          - "version-update:semver-major"
 
   # GitHub Actions — the CI workflow
   - package-ecosystem: "github-actions"
