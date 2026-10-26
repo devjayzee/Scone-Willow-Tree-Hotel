@@ -5,6 +5,10 @@ on:
     branches: [main]
     types: [opened, edited, reopened, synchronize, ready_for_review]
 
+# The guard reads only the event payload, never the API or the checkout,
+# so its token needs no scopes at all.
+permissions: {}
+
 jobs:
   guard:
     name: PR to main must come from development or hotfix/*
