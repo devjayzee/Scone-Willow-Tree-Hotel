@@ -63,6 +63,7 @@ export function useBookingForm({
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Rule 6: the form hook resets the wizard when `open` flips to false.
       setStep("guest");
       dispatch({ type: "RESET" });
     }

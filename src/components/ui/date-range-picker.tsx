@@ -59,6 +59,7 @@ export function DateRangePicker({
 
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Copies the applied range into the draft each time the popover opens, so Cancel and Apply start from it (the Rule 6 reset-on-open pattern).
       setTempRange(value);
     }
   }, [open, value]);

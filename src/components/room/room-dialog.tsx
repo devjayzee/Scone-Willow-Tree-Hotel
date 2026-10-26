@@ -38,6 +38,7 @@ export function RoomDialog({ open, onOpenChange, room, onSubmit }: RoomDialogPro
 
   useEffect(() => {
     if (room) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Rule 6: dialogs reset their state when `open` flips; this re-seeds the form from `room` on every open.
       setRoomNumber(room.roomNumber);
       setCapacity(room.capacity.toString());
       setPricePerNight(
