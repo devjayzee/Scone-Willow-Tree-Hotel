@@ -3,9 +3,9 @@
 Hotel management system built for the Willow Tree Hotel (Scone, NSW):
 bookings, rooms, staff, calendar, and reports behind a role-gated dashboard.
 
-> **Status:** pre-launch. The app is under active development for a working
-> boutique hotel. A public demo and screenshots are pending the current UI
-> redesign.
+> **Status:** live. The app is launched and in use at the hotel, and still
+> under active development. A public demo and screenshots are pending the
+> current UI redesign.
 
 <!-- TODO(readme): live demo — add once the public URL + demo credentials are ready
 ## Live demo
